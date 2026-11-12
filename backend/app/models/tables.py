@@ -86,8 +86,13 @@ class AlarmEvent(Base):
 class Alarm(Base):
     """Vong doi canh bao phia server (M3-03): ACK, leo thang, giai toa, MTTA."""
     __tablename__ = "alarms"
+    # alarm_id do thiet bi tu sinh (A-0001...), co the trung giua cac tau/lan khoi dong
+    # -> dinh danh that la (device_id, boot_id, alarm_id).
+    __table_args__ = (UniqueConstraint("device_id", "boot_id", "alarm_id", name="uq_alarm_identity"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    alarm_id: Mapped[str] = mapped_column(String(64), unique=True)
+    alarm_id: Mapped[str] = mapped_column(String(64), index=True)
+    boot_id: Mapped[str] = mapped_column(String(64))
+    last_seq: Mapped[int] = mapped_column(Integer, default=-1)  # seq event moi nhat da ap dung
     device_id: Mapped[str] = mapped_column(String(64), index=True)
     voyage_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     state: Mapped[AlarmState] = mapped_column(_enum(AlarmState), default=AlarmState.ACTIVE)
