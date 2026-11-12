@@ -8,13 +8,18 @@ import unittest
 from simulation.generator.config import (
     DatasetPlanConfig,
     DatasetSplit,
+    GrowthCriterion,
     IMUNoiseConfig,
+    LabelingVersion,
+    MotionLabelConfig,
     ParameterRange,
+    ProfileCalibrationStatus,
     RollDynamicsConfig,
     ScenarioCode,
     SimulationConfig,
     SimulationTimeConfig,
     ScenarioDefinition,
+    SeaStateProfileConfig,
     WaveExcitationConfig,
     WaveGenerator,
 )
@@ -27,10 +32,16 @@ from simulation.generator.roll_dynamics import (
 from simulation.generator.wave_generator import CorrelatedWaveGenerator
 from simulation.generator.imu_simulator import GRAVITY_M_S2, IMUSimulator
 from simulation.generator.scenarios import (
+    CausalMotionLabelerV2,
     ScenarioRunner,
     assign_motion_label,
     generate_scenario,
 )
+from simulation.visualization.plot_scenarios import (
+    parse_sea_state_profile,
+    run_validation,
+)
+from simulation.calibration.calibrate_labeling_v2 import build_pilot_plan
 
 
 class SimulationConfigTests(unittest.TestCase):
@@ -48,7 +59,29 @@ class SimulationConfigTests(unittest.TestCase):
             DatasetSplit.TEST_G1: 120,
             DatasetSplit.TEST_G2: 120,
         })
+        self.assertEqual(config.dataset.scenario_counts, {
+            ScenarioCode.S0: {DatasetSplit.TRAIN: 80, DatasetSplit.VALIDATION: 20,
+                              DatasetSplit.TEST_G1: 30, DatasetSplit.TEST_G2: 30},
+            ScenarioCode.S0B: {DatasetSplit.TRAIN: 30, DatasetSplit.VALIDATION: 10,
+                               DatasetSplit.TEST_G1: 15, DatasetSplit.TEST_G2: 15},
+            ScenarioCode.S1: {DatasetSplit.TRAIN: 50, DatasetSplit.VALIDATION: 15,
+                              DatasetSplit.TEST_G1: 20, DatasetSplit.TEST_G2: 20},
+            ScenarioCode.S2: {DatasetSplit.TRAIN: 50, DatasetSplit.VALIDATION: 15,
+                              DatasetSplit.TEST_G1: 20, DatasetSplit.TEST_G2: 20},
+            ScenarioCode.S3: {DatasetSplit.TRAIN: 50, DatasetSplit.VALIDATION: 15,
+                              DatasetSplit.TEST_G1: 20, DatasetSplit.TEST_G2: 20},
+            ScenarioCode.H1: {DatasetSplit.TRAIN: 20, DatasetSplit.VALIDATION: 10,
+                              DatasetSplit.TEST_G1: 15, DatasetSplit.TEST_G2: 15},
+        })
         self.assertEqual(config.random_seed, 1)
+        self.assertFalse(config.labeling.labeling_v2_ready)
+        self.assertFalse(config.official_dataset_ready)
+        self.assertEqual(config.sea_state_profile.calibration_status,
+                         ProfileCalibrationStatus.CANDIDATE)
+        self.assertEqual(config.sea_state_profile.sigma_w_by_state_deg, {
+            "SS0": 0.5, "SS1": 0.9, "SS2": 1.5,
+            "SS3": 2.2, "SS4": 3.0, "SS5": 4.5,
+        })
         self.assertEqual(
             tuple(item.code for item in config.scenarios),
             (ScenarioCode.S0, ScenarioCode.S0B, ScenarioCode.S1,
@@ -71,6 +104,32 @@ class SimulationConfigTests(unittest.TestCase):
                          ParameterRange(240.0, 480.0, "s"))
         self.assertEqual(config.dataset.domains.validation.parameters["t0_s"],
                          ParameterRange(240.0, 480.0, "s"))
+
+    def test_calibration_pilot_plan_is_reproducible_unique_and_has_no_test_splits(self):
+        first = build_pilot_plan(12345)
+        second = build_pilot_plan(12345)
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 90)
+        self.assertEqual(len({entry.session_id for entry in first}), 90)
+        self.assertEqual(len({entry.seed for entry in first}), 90)
+        self.assertTrue(all(entry.split in (DatasetSplit.TRAIN,
+                                            DatasetSplit.VALIDATION)
+                            for entry in first))
+        self.assertEqual(sum(entry.split is DatasetSplit.TRAIN for entry in first), 60)
+        self.assertEqual(sum(entry.split is DatasetSplit.VALIDATION for entry in first), 30)
+        for scenario in ScenarioCode:
+            self.assertEqual(sum(entry.scenario is scenario and
+                                 entry.split is DatasetSplit.TRAIN for entry in first), 10)
+            self.assertEqual(sum(entry.scenario is scenario and
+                                 entry.split is DatasetSplit.VALIDATION for entry in first), 5)
+
+    def test_validation_tool_uses_candidate_profile_and_blocks_uncalibrated_v2(self):
+        profile_deg, is_default = parse_sea_state_profile(None)
+        self.assertTrue(is_default)
+        self.assertEqual(profile_deg, SimulationConfig().sea_state_profile.sigma_w_by_state_deg)
+        with self.assertRaisesRegex(ValueError, "thresholds are not calibrated"):
+            run_validation(sessions_per_scenario=1, labeling_version=LabelingVersion.V2,
+                           make_plots=False)
 
     def test_unspecified_physical_parameters_are_not_assumed(self):
         config = SimulationConfig()
@@ -130,6 +189,11 @@ class SimulationConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SimulationConfig.from_dict(config_data)
 
+        config_data = SimulationConfig().to_dict()
+        config_data["dataset"]["scenario_counts"]["H1"]["Train"] += 1
+        with self.assertRaises(ValueError):
+            SimulationConfig.from_dict(config_data)
+
     def test_metadata_json_roundtrip_restores_configuration(self):
         config = SimulationConfig(
             roll=RollDynamicsConfig(heel_offset_rad=0.1,
@@ -147,12 +211,42 @@ class SimulationConfigTests(unittest.TestCase):
             "Test-G1": 120,
             "Test-G2": 120,
         })
+        self.assertEqual(restored.dataset.scenario_counts, config.dataset.scenario_counts)
         self.assertEqual(metadata["roll"]["heel_offset_rad"], 0.1)
         self.assertEqual(
             metadata["dataset"]["domains"]["train"]["parameters"]
             ["natural_period_s"]["unit"], "s")
         self.assertEqual(set(item.value for item in DatasetSplit),
                          {"Train", "Validation", "Test-G1", "Test-G2"})
+
+    def test_labeling_thresholds_are_optional_until_validation_calibration(self):
+        self.assertIsNone(SimulationConfig().labeling.high_roll_centered_threshold_deg)
+        calibrated_fixture = MotionLabelConfig(
+            high_roll_centered_threshold_deg=1.25,
+            growth_criterion=GrowthCriterion.SLOPE_AND_RATIO,
+            growth_slope_threshold_deg_per_min=0.2,
+            growth_ratio_threshold=1.1,
+            growth_ratio_floor_deg=0.01,
+            growth_confirmation_s=10.0,
+            threshold_calibration_status=ProfileCalibrationStatus.CALIBRATED,
+        )
+        self.assertTrue(calibrated_fixture.labeling_v2_ready)
+        partial = MotionLabelConfig(growth_ratio_threshold=1.1)
+        self.assertFalse(partial.labeling_v2_configured)
+        self.assertIn("growth_criterion", partial.unresolved_v2_thresholds)
+
+    def test_candidate_sea_state_profile_converts_degrees_once_and_validates(self):
+        profile = SeaStateProfileConfig.from_degrees({
+            "SS0": 0.5, "SS1": 0.9, "SS2": 1.5,
+            "SS3": 2.2, "SS4": 3.0, "SS5": 4.5,
+        })
+        self.assertAlmostEqual(profile.sigma_w_by_state_rad["SS5"], math.radians(4.5))
+        self.assertEqual(profile.sigma_w_by_state_deg["SS4"], 3.0)
+        with self.assertRaises(ValueError):
+            SeaStateProfileConfig.from_degrees({
+                "SS0": 1.0, "SS1": 0.9, "SS2": 1.5,
+                "SS3": 2.2, "SS4": 3.0, "SS5": 4.5,
+            })
 
     def test_angular_units_are_explicit_and_reproducible_construction_matches(self):
         kwargs = {
@@ -427,23 +521,9 @@ class IMUSimulatorTests(unittest.TestCase):
 
 
 class ScenarioRunnerTests(unittest.TestCase):
-    # Test-only forcing values. They exercise the injected profile API and are
-    # not proposed as the project's physical SS0--SS5 calibration.
-    TEST_SEA_STATE_SIGMA_DEG = {
-        "SS0": 0.0,
-        "SS1": 0.01,
-        "SS2": 0.02,
-        "SS3": 0.03,
-        "SS4": 0.04,
-        "SS5": 0.05,
-    }
-
     @classmethod
     def make_runner(cls):
-        return ScenarioRunner(
-            SimulationConfig(),
-            sea_state_sigma_deg=cls.TEST_SEA_STATE_SIGMA_DEG,
-        )
+        return ScenarioRunner(SimulationConfig())
 
     def test_label_priority_and_warmup_are_explicit(self):
         common = {
@@ -542,6 +622,10 @@ class ScenarioRunnerTests(unittest.TestCase):
         self.assertGreaterEqual(parameters["event_sigma_w_deg"], 3.0)
         self.assertLessEqual(parameters["event_sigma_w_deg"], 4.5)
         self.assertIn(event["sea_state"], ("SS4", "SS5"))
+        self.assertEqual(
+            parameters["event_sigma_w_deg"],
+            SimulationConfig().sea_state_profile.sigma_w_by_state_deg[event["sea_state"]],
+        )
         self.assertIn("high_roll_threshold_reached",
                       result.metadata["outcome_checks"])
 
@@ -579,6 +663,10 @@ class ScenarioRunnerTests(unittest.TestCase):
         event = result.events[0]
         index = int(event["t0_s"] / 0.05)
         self.assertIn(event["sea_state"], ("SS4", "SS5"))
+        self.assertEqual(
+            result.metadata["sampled_parameters"]["event_sigma_w_deg"],
+            SimulationConfig().sea_state_profile.sigma_w_by_state_deg[event["sea_state"]],
+        )
         self.assertGreaterEqual(event["heel_offset_deg"], 3.0)
         self.assertLessEqual(event["heel_offset_deg"], 6.0)
         self.assertAlmostEqual(result.heel_offset_rad[index],
@@ -595,19 +683,115 @@ class ScenarioRunnerTests(unittest.TestCase):
         self.assertTrue(result.transition_flags[end - 1])
         self.assertFalse(result.transition_flags[end])
 
-    def test_profile_is_required_instead_of_silently_inventing_sea_state_sigma(self):
-        with self.assertRaises(TypeError):
-            ScenarioRunner(SimulationConfig())
+    def test_default_uses_approved_candidate_profile_and_rejects_partial_override(self):
+        self.assertEqual(
+            ScenarioRunner(SimulationConfig()).sea_state_sigma_deg,
+            SimulationConfig().sea_state_profile.sigma_w_by_state_deg)
         with self.assertRaises(ValueError):
             ScenarioRunner(SimulationConfig(), sea_state_sigma_deg={"SS0": 0.1})
         with self.assertRaises(ValueError):
             self.make_runner().generate(ScenarioCode.S0, seed=0)
 
+    @staticmethod
+    def make_v2_labeler():
+        config = SimulationConfig(labeling=MotionLabelConfig(
+            high_roll_centered_threshold_deg=1.0,
+            growth_criterion=GrowthCriterion.SLOPE,
+            growth_slope_threshold_deg_per_min=0.05,
+            growth_confirmation_s=1.0,
+        ))
+        return CausalMotionLabelerV2(config)
+
+    def test_labeling_v1_remains_available_and_v2_default_is_not_dataset_ready(self):
+        runner = self.make_runner()
+        result_v1 = runner.generate(ScenarioCode.S0, seed=100, labeling_version="v1")
+        result_v2 = runner.generate(ScenarioCode.S0, seed=100, labeling_version="v2")
+        self.assertEqual(result_v1.labels, result_v1.labels_v1)
+        self.assertEqual(result_v2.labels, result_v2.labels_v2)
+        self.assertEqual(result_v1.labels_v1, result_v2.labels_v1)
+        self.assertFalse(result_v2.metadata["labeling"]["v2_ready"])
+        self.assertFalse(result_v2.metadata["labeling"]["official_dataset_ready"])
+        self.assertTrue(all(label is None for label in result_v2.labels_v2))
+        self.assertEqual(result_v1.labels_for(LabelingVersion.V1), result_v1.labels_v1)
+
+    def test_centered_rms_matches_population_standard_deviation(self):
+        labeler = self.make_v2_labeler()
+        values = [0.0 if index % 2 == 0 else math.radians(2.0)
+                  for index in range(1201)]
+        step = None
+        for index, value in enumerate(values):
+            step = labeler.step(index * 0.05, value)
+        expected = statistics.pstdev(values)
+        self.assertAlmostEqual(step.metrics.rms_centered_60_rad, expected, places=12)
+
+    def test_constant_offset_alone_does_not_set_high_roll(self):
+        labeler = self.make_v2_labeler()
+        step = None
+        for index in range(7001):
+            step = labeler.step(index * 0.05, math.radians(5.0))
+        self.assertFalse(step.flags.high_roll_active)
+        self.assertAlmostEqual(step.metrics.rms_centered_60_rad, 0.0, places=12)
+        self.assertTrue(step.flags.persistent_offset_active)
+        self.assertEqual(step.label, "PERSISTENT_OFFSET")
+
+    def test_large_oscillation_around_offset_can_set_both_phenotypes(self):
+        labeler = self.make_v2_labeler()
+        step = None
+        for index in range(7001):
+            timestamp = index * 0.05
+            roll = math.radians(5.0 + 2.0 * math.sin(2.0 * math.pi * timestamp / 8.0))
+            step = labeler.step(timestamp, roll)
+        self.assertTrue(step.flags.high_roll_active)
+        self.assertTrue(step.flags.persistent_offset_active)
+        self.assertEqual(step.label, "HIGH_ROLL")
+
+    def test_temporary_offset_does_not_reach_persistent_duration(self):
+        labeler = self.make_v2_labeler()
+        for index in range(6001):
+            timestamp = index * 0.05
+            roll = math.radians(5.0) if timestamp < 90.0 else 0.0
+            step = labeler.step(timestamp, roll)
+        self.assertFalse(step.flags.persistent_offset_active)
+        self.assertNotEqual(step.label, "PERSISTENT_OFFSET")
+
+    def test_growth_requires_observed_trend_and_ignores_source_metadata(self):
+        labeler = self.make_v2_labeler()
+        final = None
+        for index in range(7001):
+            timestamp = index * 0.05
+            # Constant zero roll is deliberately paired with no source input;
+            # the labeler API has no h, scenario, seed, sea-state or t0 argument.
+            final = labeler.step(timestamp, 0.0)
+        self.assertFalse(final.flags.observed_amplitude_growth)
+        self.assertEqual(final.label, "NORMAL")
+
+    def test_future_samples_cannot_change_a_past_label(self):
+        prefix_count = 7000
+        prefix = [math.radians(1.5 * math.sin(2 * math.pi * index * 0.05 / 8.0))
+                  for index in range(prefix_count)]
+        future_a = [0.0] * 100
+        future_b = [math.radians(20.0)] * 100
+        outputs = []
+        for future in (future_a, future_b):
+            labeler = self.make_v2_labeler()
+            labels = []
+            for index, value in enumerate(prefix + future):
+                labels.append(labeler.step(index * 0.05, value).label)
+            outputs.append(labels)
+        self.assertEqual(outputs[0][:prefix_count], outputs[1][:prefix_count])
+
+    def test_transition_and_scenario_metadata_are_not_labeler_inputs(self):
+        before = self.make_v2_labeler()
+        after = self.make_v2_labeler()
+        prefix = [math.radians(0.5 * math.sin(index * 0.02)) for index in range(4801)]
+        decisions_a = [before.step(index * 0.05, value) for index, value in enumerate(prefix)]
+        decisions_b = [after.step(index * 0.05, value) for index, value in enumerate(prefix)]
+        self.assertEqual(decisions_a, decisions_b)
+
     def test_convenience_api_accepts_split_and_seed(self):
         result = generate_scenario(
             SimulationConfig(),
             ScenarioCode.S0,
-            sea_state_sigma_deg=self.TEST_SEA_STATE_SIGMA_DEG,
             seed=123,
             dataset_split=DatasetSplit.VALIDATION,
         )
