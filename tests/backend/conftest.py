@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite://"  # in-memory cho test
+os.environ["MQTT_ENABLED"] = "false"
+os.environ["ALARM_ESCALATION_ENABLED"] = "false"  # test goi escalate_overdue truc tiep
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 import pytest  # noqa: E402
