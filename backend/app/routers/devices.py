@@ -3,10 +3,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.security import get_current_user
 from app.models import Device, Telemetry
 from app.schemas.device import DeviceOut, TelemetryOut
 
-router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
+# Xem du lieu: moi vai tro (OPERATOR tro len) deu duoc, nhung phai dang nhap.
+router = APIRouter(prefix="/api/v1/devices", tags=["devices"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[DeviceOut])

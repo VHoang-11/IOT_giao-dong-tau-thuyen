@@ -46,3 +46,10 @@
 - PR ≤ 400 dòng, ghi rõ gói công việc
 - Không sửa code ngoài thư mục `backend/` (mở issue/PR cho module khác)
 
+### Git — AI agent KHÔNG được commit/push
+- **CẤM** AI agent (Claude, v.v.) tự chạy `git commit`, `git push`, `git commit --amend`, `git rebase`, `git reset --hard`, `git push --force`, tạo/merge PR. Mọi commit do **người dùng tự làm thủ công**.
+- AI chỉ được sửa file và chạy test. Xong việc thì dừng, báo danh sách file đã đổi và **gợi ý** message commit để người dùng tự copy.
+- Lệnh git chỉ đọc (`git status`, `git diff`, `git log`) thì được phép.
+- Không thêm `Co-Authored-By`, "Generated with Claude" hay bất kỳ dấu hiệu AI nào vào commit/PR/tài liệu, trừ khi người dùng yêu cầu.
+- Nếu người dùng bảo commit/push, vẫn nhắc lại quy tắc này và hướng dẫn họ tự chạy lệnh.
+

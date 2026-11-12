@@ -22,3 +22,6 @@ def setup_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.handlers[:] = [h]
     root.setLevel(level)
+    # httpx/httpcore ghi ca URL o muc INFO; URL Telegram chua BOT TOKEN (/bot<TOKEN>/sendMessage) -> khong duoc de lo ra log
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)

@@ -15,6 +15,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from alarms.service import apply_event
+from commands.config_service import mark_applied as mark_config_applied
+from commands.service import handle_ack as handle_command_ack
+from notify.service import notify_device_offline
 from app.models import AlarmEvent, Device, DeviceHealth, Telemetry
 from app.models.enums import AlarmLevel, DeviceState, MotionClass, SourceMode
 from ingest.validator import validate
@@ -133,6 +136,7 @@ def _handle_event(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> 
 
 def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
     dev = _get_or_create_device(db, dev_id)
+    was_online = dev.state == DeviceState.online
     dev.state = DeviceState(p["state"])  # offline (LWT) cung di qua day
     dev.last_seen = rx
     for src, dst in (("fw", "fw"), ("model_version", "model_version"),
@@ -140,6 +144,10 @@ def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) ->
         if src in p:
             setattr(dev, dst, p[src])
     db.commit()
+    if p.get("state") == "online":
+        mark_config_applied(db, dev_id, p.get("config_version"))  # thiet bi bao dang dung phien ban nay
+    elif was_online:  # chi bao khi chuyen online -> offline (LWT gui lai khong bao lap)
+        notify_device_offline(dev_id, dev.source_mode.value)
     return Result(Outcome.STORED, "status", dev_id)
 
 
@@ -190,6 +198,18 @@ def _process(db: Session, topic: str, payload: bytes, rx: datetime) -> Result:
         return Result(Outcome.REJECTED, kind, dev_id,
                       f"device_id payload '{data['device_id']}' khac topic '{dev_id}'")
     if kind == "cmd/ack":
-        # TODO: M3-04 - cap nhat vong doi lenh (SENT -> APPLIED/REJECTED)
-        return Result(Outcome.IGNORED, kind, dev_id, "xu ly o M3-04")
+        return _handle_ack(db, dev_id, data, rx)
     return _HANDLERS[kind](db, dev_id, data, rx)
+
+
+def _handle_ack(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    """M3-04: cap nhat vong doi lenh tu bao cao cua thiet bi."""
+    status, _ = handle_command_ack(db, dev_id, p, rx)
+    if status in ("applied", "rejected"):
+        return Result(Outcome.STORED, "cmd/ack", dev_id)
+    if status == "duplicate":
+        return Result(Outcome.DUPLICATE, "cmd/ack", dev_id)
+    if status == "mismatch":  # thiet bi ACK lenh cua tau khac
+        return Result(Outcome.REJECTED, "cmd/ack", dev_id, f"cmd_id '{p['cmd_id']}' khong thuoc thiet bi nay")
+    reason = "cmd_id khong ton tai" if status == "unknown" else "ACK den sau khi lenh het han (TIMEOUT)"
+    return Result(Outcome.IGNORED, "cmd/ack", dev_id, reason)
