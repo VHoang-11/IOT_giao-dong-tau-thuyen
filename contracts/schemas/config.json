@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Device Config",
+  "description": "Cấu hình thiết bị (retained) qua svmg/{device_id}/config",
+  "type": "object",
+  "required": ["config_version", "profile"],
+  "properties": {
+    "config_version": {"type": "integer"},
+    "profile": {"type": "string", "enum": ["STANDARD", "SENSITIVE", "CONSERVATIVE"]},
+    "debounce_n": {"type": "integer", "minimum": 1, "maximum": 10},
+    "phi_hard_deg": {"type": "number", "minimum": 15, "maximum": 25},
+    "mai_caution": {"type": "integer", "minimum": 30, "maximum": 90},
+    "report_interval_s": {"type": "integer", "minimum": 1},
+    "primary_model": {"type": "string", "enum": ["RF", "BASELINE_B"]},
+    "crc": {"type": "string"}
+  }
+}

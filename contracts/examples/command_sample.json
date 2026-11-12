@@ -1,0 +1,4 @@
+{
+  "cmd_id": "c-7f21", "cmd": "set_profile",
+  "params": { "profile": "SENSITIVE" }, "ttl_s": 30, "issued_by": "sup01"
+}

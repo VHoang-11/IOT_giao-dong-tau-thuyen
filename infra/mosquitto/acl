@@ -1,0 +1,16 @@
+# SVMG MQTT ACL
+# Thiết bị: chỉ ghi vào topic của mình, chỉ đọc cmd/config
+user vessel-demo-01
+topic write svmg/vessel-demo-01/telemetry
+topic write svmg/vessel-demo-01/event
+topic write svmg/vessel-demo-01/status
+topic write svmg/vessel-demo-01/health
+topic write svmg/vessel-demo-01/cmd/ack
+topic read svmg/vessel-demo-01/cmd
+topic read svmg/vessel-demo-01/config
+
+# Backend: đọc tất cả, ghi cmd/config
+user backend
+topic read svmg/#
+topic write svmg/+/cmd
+topic write svmg/+/config

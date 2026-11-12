@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Telemetry",
+  "description": "Bản tin telemetry từ thiết bị ESP32 gửi lên qua MQTT topic svmg/{device_id}/telemetry",
+  "type": "object",
+  "required": ["device_id", "boot_id", "seq", "t_sim_s", "uptime_ms", "source_mode", "roll_deg", "pitch_deg", "class_rf", "alarm_level", "model_version", "config_version", "sensor_ok"],
+  "properties": {
+    "device_id": {"type": "string"},
+    "boot_id": {"type": "string"},
+    "seq": {"type": "integer", "minimum": 0},
+    "t_sim_s": {"type": "number"},
+    "uptime_ms": {"type": "integer"},
+    "timewarp": {"type": "integer", "default": 1},
+    "source_mode": {"type": "string", "enum": ["SENSOR", "SIMULATION"]},
+    "synthetic": {"type": "boolean"},
+    "scenario_id": {"type": ["string", "null"]},
+    "voyage_id": {"type": ["string", "null"]},
+    "roll_deg": {"type": "number"},
+    "pitch_deg": {"type": "number"},
+    "rms_roll_deg": {"type": "number"},
+    "heel_offset_deg": {"type": "number"},
+    "trend_rms_deg_per_min": {"type": "number"},
+    "class_rf": {"type": "string", "enum": ["NORMAL", "HIGH_ROLL", "PERSISTENT_OFFSET", "AMPLITUDE_GROWTH", "UNKNOWN", "FAULT"]},
+    "class_baseline_b": {"type": "string", "enum": ["NORMAL", "HIGH_ROLL", "PERSISTENT_OFFSET", "AMPLITUDE_GROWTH", "UNKNOWN"]},
+    "mai": {"type": "integer", "minimum": 0, "maximum": 100},
+    "alarm_level": {"type": "string", "enum": ["NORMAL", "CAUTION", "WARNING", "CRITICAL"]},
+    "model_version": {"type": "string"},
+    "config_version": {"type": "integer"},
+    "sensor_ok": {"type": "boolean"}
+  }
+}

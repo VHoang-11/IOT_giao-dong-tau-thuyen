@@ -1,0 +1,5 @@
+{
+  "config_version": 8, "profile": "SENSITIVE", "debounce_n": 2,
+  "phi_hard_deg": 20, "mai_caution": 70, "report_interval_s": 5,
+  "primary_model": "RF", "crc": "9c1e"
+}

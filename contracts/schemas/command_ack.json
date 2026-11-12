@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Command ACK",
+  "description": "Xác nhận lệnh từ thiết bị qua svmg/{device_id}/cmd/ack",
+  "type": "object",
+  "required": ["cmd_id", "result"],
+  "properties": {
+    "cmd_id": {"type": "string"},
+    "result": {"type": "string", "enum": ["APPLIED", "REJECTED"]},
+    "config_version": {"type": ["integer", "null"]},
+    "reason": {"type": ["string", "null"]}
+  }
+}

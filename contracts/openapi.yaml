@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info:
+  title: SVMG Backend API
+  version: 0.1.0
+  description: Placeholder — M3 hoàn thiện (xuất từ /openapi.json của FastAPI).
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK

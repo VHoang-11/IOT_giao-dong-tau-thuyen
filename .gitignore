@@ -1,0 +1,42 @@
+# Secrets
+.env
+infra/.env
+infra/mosquitto/passwd
+*.pem
+*.key
+
+# AI agent memory (không push)
+.agents/memory/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+frontend/dist/
+
+# C / firmware build
+build/
+*.o
+*.elf
+*.bin
+.pio/
+
+# ML artifacts
+ml/data/*.csv
+ml/notebooks/.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

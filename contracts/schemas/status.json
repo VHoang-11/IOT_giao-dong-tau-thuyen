@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Device Status",
+  "description": "Trạng thái thiết bị (retained + LWT) qua svmg/{device_id}/status",
+  "type": "object",
+  "required": ["state"],
+  "properties": {
+    "state": {"type": "string", "enum": ["online", "offline"]},
+    "fw": {"type": "string"},
+    "model_version": {"type": "string"},
+    "config_version": {"type": "integer"},
+    "boot_id": {"type": "string"}
+  }
+}

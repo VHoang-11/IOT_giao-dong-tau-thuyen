@@ -1,0 +1,40 @@
+# Smart Vessel Motion Guard — Docker Compose
+# TODO: M4-07 — Hoàn thiện
+
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/passwd:/mosquitto/config/passwd
+      - ./mosquitto/acl:/mosquitto/config/acl
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  backend:
+    build: ../backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./svmg.db
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mosquitto
+
+  frontend:
+    build: ../frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:

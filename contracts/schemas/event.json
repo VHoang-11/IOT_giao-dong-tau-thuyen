@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Alarm Event",
+  "description": "Sự kiện cảnh báo từ thiết bị gửi qua svmg/{device_id}/event",
+  "type": "object",
+  "required": ["device_id", "boot_id", "seq", "type", "alarm_id", "level", "t_sim_s"],
+  "properties": {
+    "device_id": {"type": "string"},
+    "boot_id": {"type": "string"},
+    "seq": {"type": "integer", "minimum": 0},
+    "type": {"type": "string", "const": "ALARM_STATE"},
+    "alarm_id": {"type": "string"},
+    "level": {"type": "string", "enum": ["NORMAL", "CAUTION", "WARNING", "CRITICAL"]},
+    "prev_level": {"type": "string", "enum": ["NORMAL", "CAUTION", "WARNING", "CRITICAL"]},
+    "class": {"type": "string", "enum": ["NORMAL", "HIGH_ROLL", "PERSISTENT_OFFSET", "AMPLITUDE_GROWTH"]},
+    "t_sim_s": {"type": "number"},
+    "acked_by": {"type": ["string", "null"]}
+  }
+}

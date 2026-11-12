@@ -1,0 +1,6 @@
+{
+  "device_id": "vessel-demo-01", "boot_id": "a3f9", "seq": 126,
+  "type": "ALARM_STATE", "alarm_id": "A-0042",
+  "level": "WARNING", "prev_level": "CAUTION", "class": "AMPLITUDE_GROWTH",
+  "t_sim_s": 625.0, "acked_by": null
+}

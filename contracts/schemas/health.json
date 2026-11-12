@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Device Health",
+  "description": "Sức khỏe thiết bị qua svmg/{device_id}/health",
+  "type": "object",
+  "required": ["device_id", "free_heap_bytes", "uptime_ms", "sensor_ok"],
+  "properties": {
+    "device_id": {"type": "string"},
+    "free_heap_bytes": {"type": "integer"},
+    "min_free_heap_bytes": {"type": "integer"},
+    "uptime_ms": {"type": "integer"},
+    "sensor_ok": {"type": "boolean"},
+    "i2c_errors": {"type": "integer"},
+    "inference_ms": {"type": "number"},
+    "mqtt_reconnects": {"type": "integer"},
+    "buffer_used": {"type": "integer"},
+    "buffer_capacity": {"type": "integer"}
+  }
+}

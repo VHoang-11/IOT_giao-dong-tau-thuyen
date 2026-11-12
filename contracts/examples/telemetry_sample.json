@@ -1,0 +1,11 @@
+{
+  "device_id": "vessel-demo-01", "boot_id": "a3f9", "seq": 125,
+  "t_sim_s": 625.0, "uptime_ms": 62500, "timewarp": 10,
+  "source_mode": "SIMULATION", "synthetic": true,
+  "scenario_id": "S3", "voyage_id": "V-2026-001",
+  "roll_deg": 8.4, "pitch_deg": 1.2,
+  "rms_roll_deg": 5.6, "heel_offset_deg": 0.4, "trend_rms_deg_per_min": 1.1,
+  "class_rf": "AMPLITUDE_GROWTH", "class_baseline_b": "AMPLITUDE_GROWTH",
+  "mai": 64, "alarm_level": "WARNING",
+  "model_version": "rf_v1", "config_version": 7, "sensor_ok": true
+}
