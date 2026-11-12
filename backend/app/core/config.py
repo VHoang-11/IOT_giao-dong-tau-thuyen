@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "sqlite:///./svmg.db"
+    log_level: str = "INFO"
+    cors_origins: str = "http://localhost:5173"
     mqtt_broker: str = "localhost"
     mqtt_port: int = 1883
     mqtt_user: str = "backend"

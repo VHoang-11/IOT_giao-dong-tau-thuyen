@@ -1,12 +1,279 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
-  title: SVMG Backend API
+  title: SVMG Backend
+  description: Smart Vessel Motion Guard - nguyên mẫu nghiên cứu/đào tạo, dữ liệu
+    mô phỏng. Không phải hệ thống an toàn hàng hải.
   version: 0.1.0
-  description: Placeholder — M3 hoàn thiện (xuất từ /openapi.json của FastAPI).
 paths:
   /healthz:
     get:
-      summary: Liveness probe
+      tags:
+      - health
+      summary: Healthz
+      operationId: healthz_healthz_get
       responses:
-        "200":
-          description: OK
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOut'
+  /api/v1/devices:
+    get:
+      tags:
+      - devices
+      summary: List Devices
+      operationId: list_devices_api_v1_devices_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/DeviceOut'
+                type: array
+                title: Response List Devices Api V1 Devices Get
+  /api/v1/devices/{device_id}:
+    get:
+      tags:
+      - devices
+      summary: Get Device
+      operationId: get_device_api_v1_devices__device_id__get
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/devices/{device_id}/telemetry:
+    get:
+      tags:
+      - devices
+      summary: Get Telemetry
+      operationId: get_telemetry_api_v1_devices__device_id__telemetry_get
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TelemetryOut'
+                title: Response Get Telemetry Api V1 Devices  Device Id  Telemetry
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AlarmLevel:
+      type: string
+      enum:
+      - NORMAL
+      - CAUTION
+      - WARNING
+      - CRITICAL
+      title: AlarmLevel
+    DeviceOut:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+        state:
+          $ref: '#/components/schemas/DeviceState'
+        last_seen:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Seen
+        fw:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Fw
+        boot_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Boot Id
+        model_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model Version
+        config_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Config Version
+      type: object
+      required:
+      - device_id
+      - source_mode
+      - state
+      title: DeviceOut
+    DeviceState:
+      type: string
+      enum:
+      - online
+      - offline
+      title: DeviceState
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthOut:
+      properties:
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - status
+      title: HealthOut
+    MotionClass:
+      type: string
+      enum:
+      - NORMAL
+      - HIGH_ROLL
+      - PERSISTENT_OFFSET
+      - AMPLITUDE_GROWTH
+      - UNKNOWN
+      - FAULT
+      title: MotionClass
+    SourceMode:
+      type: string
+      enum:
+      - SENSOR
+      - SIMULATION
+      title: SourceMode
+    TelemetryOut:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        boot_id:
+          type: string
+          title: Boot Id
+        seq:
+          type: integer
+          title: Seq
+        t_sim_s:
+          type: number
+          title: T Sim S
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+        roll_deg:
+          type: number
+          title: Roll Deg
+        pitch_deg:
+          type: number
+          title: Pitch Deg
+        rms_roll_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rms Roll Deg
+        class_rf:
+          $ref: '#/components/schemas/MotionClass'
+        class_baseline_b:
+          anyOf:
+          - $ref: '#/components/schemas/MotionClass'
+          - type: 'null'
+        mai:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Mai
+        alarm_level:
+          $ref: '#/components/schemas/AlarmLevel'
+        sensor_ok:
+          type: boolean
+          title: Sensor Ok
+        server_rx_time:
+          type: string
+          format: date-time
+          title: Server Rx Time
+      type: object
+      required:
+      - device_id
+      - boot_id
+      - seq
+      - t_sim_s
+      - source_mode
+      - roll_deg
+      - pitch_deg
+      - class_rf
+      - alarm_level
+      - sensor_ok
+      - server_rx_time
+      title: TelemetryOut
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
