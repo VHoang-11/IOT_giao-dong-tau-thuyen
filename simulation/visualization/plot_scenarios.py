@@ -1,8 +1,7 @@
 """Validate and plot SVMG scenarios without creating a training dataset.
 
-Run with ``python -m simulation.visualization.plot_scenarios``. The default
-sea-state profile is copied from the generator unit-test fixture and is only
-an analysis fixture; it is not an official SS0--SS5 calibration.
+The default sea-state profile is the approved candidate, not a physical
+calibration. Labeling v2 multi-seed validation requires calibrated thresholds.
 """
 
 from __future__ import annotations
@@ -17,27 +16,22 @@ import tempfile
 from collections import Counter
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from simulation.generator.config import DatasetSplit, ScenarioCode, SimulationConfig
+from simulation.generator.config import (
+    DatasetSplit, LabelingVersion, ScenarioCode, SimulationConfig,
+)
 from simulation.generator.scenarios import ScenarioResult, ScenarioRunner
 
 
-ANALYSIS_FIXTURE_PROFILE_DEG = {
-    "SS0": 0.0,
-    "SS1": 0.01,
-    "SS2": 0.02,
-    "SS3": 0.03,
-    "SS4": 0.04,
-    "SS5": 0.05,
-}
+APPROVED_CANDIDATE_PROFILE_DEG = SimulationConfig().sea_state_profile.sigma_w_by_state_deg
 LABEL_ORDER = ("NORMAL", "HIGH_ROLL", "PERSISTENT_OFFSET", "AMPLITUDE_GROWTH")
 HIGH_ROLL_THRESHOLD_RAD = math.radians(6.0)
 LABEL_NAME_TO_Y = {name: float(index) for index, name in enumerate(LABEL_ORDER)}
 
 
 def parse_sea_state_profile(raw: Optional[str]) -> Tuple[Dict[str, float], bool]:
-    """Parse a JSON profile in degrees; return profile and fixture-use flag."""
+    """Parse degree-equivalent sigma values; bool marks use of approved default."""
     if raw is None:
-        return dict(ANALYSIS_FIXTURE_PROFILE_DEG), True
+        return dict(APPROVED_CANDIDATE_PROFILE_DEG), True
     try:
         profile = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -105,22 +99,25 @@ def _s2_metrics(result: ScenarioResult) -> Dict[str, Any]:
     persistent_count = sum(result.labels[index] == "PERSISTENT_OFFSET"
                            for index in classified_indices)
 
-    # Diagnose the exact 60-second windows that triggered HIGH_ROLL. RMS in
-    # scenarios.py is around zero. Centered RMS isolates oscillatory motion;
-    # the remaining mean component is the static heel contribution.
+    selected_version = result.metadata["labeling"]["selected_version"]
     dt = float(result.metadata["dt_s"])
     window_samples = int(round(60.0 / dt)) + 1
     causes: Counter = Counter()
     for index in high_indices:
         mean_window, dynamic_rms = _rolling_window_moments(
             roll, index, window_samples)
-        static_component = abs(mean_window)
-        if dynamic_rms >= HIGH_ROLL_THRESHOLD_RAD and static_component < HIGH_ROLL_THRESHOLD_RAD:
-            causes["A: oscillation-dominant"] += 1
-        elif static_component >= HIGH_ROLL_THRESHOLD_RAD and dynamic_rms < HIGH_ROLL_THRESHOLD_RAD:
-            causes["B: static-heel-dominant"] += 1
+        if selected_version == LabelingVersion.V2.value:
+            causes["centered oscillation threshold"] += 1
         else:
-            causes["C: combined contribution"] += 1
+            static_component = abs(mean_window)
+            if (dynamic_rms >= HIGH_ROLL_THRESHOLD_RAD and
+                    static_component < HIGH_ROLL_THRESHOLD_RAD):
+                causes["A: oscillation-dominant"] += 1
+            elif (static_component >= HIGH_ROLL_THRESHOLD_RAD and
+                  dynamic_rms < HIGH_ROLL_THRESHOLD_RAD):
+                causes["B: static-heel-dominant"] += 1
+            else:
+                causes["C: combined contribution"] += 1
     if not high_indices:
         predominant_cause = "No HIGH_ROLL windows"
     else:
@@ -333,8 +330,13 @@ def _plot_scenario(scenario: ScenarioCode, results: Sequence[ScenarioResult],
         axes[2].plot(times, [math.degrees(v) for v in result.wave_sigma_rad[::stride]],
                      color=color, alpha=min(alpha + 0.2, 0.85), linestyle="--", linewidth=0.65)
         rms_times = result.timestamps_s[::stride]
+        if result.selected_labeling_version is LabelingVersion.V2:
+            rms_source = [item.rms_centered_60_rad
+                          for item in result.labeling_metrics_v2]
+        else:
+            rms_source = result.rolling_rms_roll_rad
         rms_values = [math.degrees(v) if v is not None else math.nan
-                      for v in result.rolling_rms_roll_rad[::stride]]
+                      for v in rms_source[::stride]]
         axes[3].plot(rms_times, rms_values, color=color, alpha=alpha, linewidth=0.8)
         label_values = [LABEL_NAME_TO_Y.get(value, math.nan) if value is not None else math.nan
                         for value in result.labels[::stride]]
@@ -358,7 +360,10 @@ def _plot_scenario(scenario: ScenarioCode, results: Sequence[ScenarioResult],
     axes[0].set_ylabel("Roll (deg)")
     axes[1].set_ylabel("Roll rate (deg/s)")
     axes[2].set_ylabel("w(t), σw (deg equiv.)")
-    axes[3].set_ylabel("60 s RMS (deg)")
+    axes[3].set_ylabel(
+        "60 s centered RMS/std (deg)" if
+        results[0].selected_labeling_version is LabelingVersion.V2 else
+        "60 s RMS about zero (deg)")
     axes[4].set_ylabel("Label")
     axes[4].set_yticks(list(LABEL_NAME_TO_Y.values()), LABEL_ORDER)
     axes[4].set_xlabel("Time (s)")
@@ -393,7 +398,8 @@ def _print_s2(analyses: Sequence[Mapping[str, Any]]) -> None:
             print("  triggering-window causes:", item["high_roll_cause_windows"])
 
 
-def _print_s3(analyses: Sequence[Mapping[str, Any]]) -> None:
+def _print_s3(analyses: Sequence[Mapping[str, Any]],
+              labeling_version: LabelingVersion) -> None:
     increased = sum(item["increased_from_first_to_last_post_window"] is True
                     for item in analyses)
     print("\nS3 diagnostics (label rule and measured growth are separate):")
@@ -405,12 +411,18 @@ def _print_s3(analyses: Sequence[Mapping[str, Any]]) -> None:
               "{label_amplitude_growth_windows} | {possible_non_growth_reason}".format(**item))
     print("Observed RMS increase: {}/{} sessions ({:.1f}%).".format(
         increased, len(analyses), 100.0 * increased / len(analyses) if analyses else 0.0))
-    print("AMPLITUDE_GROWTH labels are assigned by parametric-excitation-active "
-          "priority after HIGH_ROLL; they do not establish measured growth.")
+    if labeling_version is LabelingVersion.V1:
+        print("v1 AMPLITUDE_GROWTH labels reflect active parametric excitation; "
+              "they do not establish measured growth.")
+    else:
+        print("v2 AMPLITUDE_GROWTH labels require observed causal RMS trend; "
+              "source activation is metadata only.")
 
 
 def run_validation(*, sessions_per_scenario: int = 10, seed: int = 1000,
                    sea_state_sigma_deg: Optional[Mapping[str, float]] = None,
+                   labeling_version: LabelingVersion = LabelingVersion.V1,
+                   config: Optional[SimulationConfig] = None,
                    output_dir: Optional[str] = None, make_plots: bool = True
                    ) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]], List[str]]:
     """Run reproducible diagnostic sessions and return summaries, details, plots."""
@@ -418,9 +430,16 @@ def run_validation(*, sessions_per_scenario: int = 10, seed: int = 1000,
         raise ValueError("sessions_per_scenario must be a positive integer")
     if isinstance(seed, bool) or not isinstance(seed, int) or not 1 <= seed <= 0xFFFFFFFF:
         raise ValueError("seed must be in [1, 2**32 - 1]")
-    profile = dict(ANALYSIS_FIXTURE_PROFILE_DEG if sea_state_sigma_deg is None
+    if not isinstance(labeling_version, LabelingVersion):
+        labeling_version = LabelingVersion(labeling_version)
+    config = SimulationConfig() if config is None else config
+    if not isinstance(config, SimulationConfig):
+        raise TypeError("config must be a SimulationConfig")
+    if labeling_version is LabelingVersion.V2 and not config.labeling.labeling_v2_ready:
+        raise ValueError("labeling_v2 thresholds are not calibrated; validation is blocked")
+    profile = dict(APPROVED_CANDIDATE_PROFILE_DEG if sea_state_sigma_deg is None
                    else sea_state_sigma_deg)
-    runner = ScenarioRunner(SimulationConfig(), sea_state_sigma_deg=profile)
+    runner = ScenarioRunner(config, sea_state_sigma_deg=profile)
     if output_dir is None:
         output_dir = os.path.join(tempfile.gettempdir(), "svmg_scenario_validation")
 
@@ -436,7 +455,8 @@ def run_validation(*, sessions_per_scenario: int = 10, seed: int = 1000,
             if run_seed > 0xFFFFFFFF:
                 run_seed = ((run_seed - 1) % 0xFFFFFFFF) + 1
             result = runner.generate(scenario, seed=run_seed,
-                                     dataset_split=DatasetSplit.TRAIN)
+                                     dataset_split=DatasetSplit.TRAIN,
+                                     labeling_version=labeling_version)
             analysis = _analyze_run(result)
             analysis["seed"] = run_seed
             results.append(result)
@@ -450,7 +470,7 @@ def run_validation(*, sessions_per_scenario: int = 10, seed: int = 1000,
                 plot_paths.append(path)
     if ScenarioCode.S2 in all_results:
         _print_s2(all_analyses[ScenarioCode.S2.value])
-    _print_s3(all_analyses[ScenarioCode.S3.value])
+    _print_s3(all_analyses[ScenarioCode.S3.value], labeling_version)
     return summary_rows, all_analyses, plot_paths
 
 
@@ -460,9 +480,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="diagnostic sessions per scenario (recommended: 10-20)")
     parser.add_argument("--seed", type=int, default=1000,
                         help="first nonzero xorshift32 seed")
+    parser.add_argument("--labeling-version", choices=("v1", "v2"), default="v1",
+                        help="labeler for summaries; v2 requires calibrated thresholds")
+    parser.add_argument("--config", metavar="JSON",
+                        help="optional SimulationConfig JSON for calibrated thresholds")
     parser.add_argument("--sea-state-profile", metavar="JSON", default=None,
                         help="SS0-SS5 sigma_w values in degrees as a JSON object; "
-                             "default is a unit-test fixture, not official calibration")
+                             "default is the approved candidate profile, not calibration")
     parser.add_argument("--output-dir", default=None,
                         help="PNG destination (default: system temp directory)")
     parser.add_argument("--no-plots", action="store_true",
@@ -472,10 +496,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         parser.error("sessions must be positive and seed must be a nonzero uint32")
     try:
         profile, is_fixture = parse_sea_state_profile(args.sea_state_profile)
+        config = SimulationConfig()
+        if args.config:
+            with open(args.config, "r", encoding="utf-8") as config_file:
+                config = SimulationConfig.from_dict(json.load(config_file))
         summaries, _, plot_paths = run_validation(
             sessions_per_scenario=args.sessions,
             seed=args.seed,
             sea_state_sigma_deg=profile,
+            labeling_version=LabelingVersion(args.labeling_version),
+            config=config,
             output_dir=args.output_dir,
             make_plots=not args.no_plots,
         )
@@ -484,7 +514,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     print("SVMG scenario validation (diagnostic only; no training dataset written)")
     print("profile source: {}".format(
-        "unit-test analysis fixture (not official)" if is_fixture else "user supplied"))
+        "approved candidate profile (not calibrated)" if is_fixture else "user supplied"))
+    print("labeling version: {}".format(args.labeling_version))
     print("sea_state_sigma_deg:", json.dumps(profile, sort_keys=True))
     print("sessions/scenario: {}; base seed: {}".format(args.sessions, args.seed))
     print("label percentages use classified windows only; warm-up (None) is excluded.")
@@ -496,9 +527,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print("  " + path)
     elif not args.no_plots:
         print("\nmatplotlib unavailable; plots skipped. Statistics completed with Python standard library.")
-    print("\nS2 interpretation: label HIGH_ROLL uses 60-second RMS around zero. "
-          "A means centered oscillation alone reaches 6 deg; B means static mean alone "
-          "reaches 6 deg; C means both contribute or only combined RMS crosses 6 deg.")
+    print("\nLabel interpretation: {}".format(
+        "v1 retains the historical 60-second RMS-around-zero threshold."
+        if args.labeling_version == "v1" else
+        "v2 uses centered 60-second population standard deviation."))
+    if not config.labeling.labeling_v2_ready:
+        print("labeling_v2 status: NOT READY; thresholds require Validation calibration. "
+              "No v2 multi-seed rates are reported.")
     print("No label rule or generator parameter was modified by this tool.")
     return 0
 
