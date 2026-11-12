@@ -28,7 +28,17 @@ Trong đó:
 | **S1** | Sóng vừa, lắc mạnh | σ_w tăng → HIGH_ROLL |
 | **S2** | Nghiêng lệch bền | b > 0, heel kéo dài → PERSISTENT_OFFSET |
 | **S3** | Cộng hưởng tham số | h > 0, biên độ tăng dần → AMPLITUDE_GROWTH |
-| **H1** | Cảm biến lỗi | NaN / spike / stuck-at → FAULT |
+| **H1** | Combined high sea state + heel offset | SS4–SS5 cùng heel offset 3–6°; nhãn chuyển động được xác định từ tín hiệu |
+
+H1 là kịch bản kết hợp, không phải lớp `FAULT`. Fault injection thuộc nhóm tình huống chất lượng cảm biến riêng; bước này chưa triển khai fault injector. `FAULT` và `UNKNOWN` không phải lớp chuyển động.
+
+### Sea-state profile ứng viên
+
+Profile sigma kích động tương đương góc `w(t)` (độ; chuyển sang radian tại cấu hình): SS0=0.5°, SS1=0.9°, SS2=1.5°, SS3=2.2°, SS4=3.0°, SS5=4.5°. Đây là profile ứng viên đã được nhóm duyệt để mô phỏng, chưa được hiệu chỉnh thực nghiệm và không biểu diễn độ cao sóng thực tế.
+
+### Phiên bản gán nhãn
+
+`labeling_v1` giữ quy tắc lịch sử để tái lập kết quả. `labeling_v2` dùng population standard deviation của roll trên cửa sổ 60 giây để đo HIGH_ROLL, offset trung bình có dấu và tăng biên độ quan sát theo lịch sử nhân quả. Ngưỡng HIGH_ROLL và AMPLITUDE_GROWTH vẫn cần hiệu chỉnh bằng Validation; khi chưa cấu hình/hiệu chỉnh, labeling v2 chưa sẵn sàng cho dataset chính thức. H1/S1 metadata và cờ sự kiện không được dùng làm feature phân loại.
 
 ## Bộ sinh (Generators)
 
