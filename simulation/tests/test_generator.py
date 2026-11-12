@@ -41,6 +41,7 @@ from simulation.visualization.plot_scenarios import (
     parse_sea_state_profile,
     run_validation,
 )
+from simulation.calibration.calibrate_labeling_v2 import build_pilot_plan
 
 
 class SimulationConfigTests(unittest.TestCase):
@@ -103,6 +104,24 @@ class SimulationConfigTests(unittest.TestCase):
                          ParameterRange(240.0, 480.0, "s"))
         self.assertEqual(config.dataset.domains.validation.parameters["t0_s"],
                          ParameterRange(240.0, 480.0, "s"))
+
+    def test_calibration_pilot_plan_is_reproducible_unique_and_has_no_test_splits(self):
+        first = build_pilot_plan(12345)
+        second = build_pilot_plan(12345)
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 90)
+        self.assertEqual(len({entry.session_id for entry in first}), 90)
+        self.assertEqual(len({entry.seed for entry in first}), 90)
+        self.assertTrue(all(entry.split in (DatasetSplit.TRAIN,
+                                            DatasetSplit.VALIDATION)
+                            for entry in first))
+        self.assertEqual(sum(entry.split is DatasetSplit.TRAIN for entry in first), 60)
+        self.assertEqual(sum(entry.split is DatasetSplit.VALIDATION for entry in first), 30)
+        for scenario in ScenarioCode:
+            self.assertEqual(sum(entry.scenario is scenario and
+                                 entry.split is DatasetSplit.TRAIN for entry in first), 10)
+            self.assertEqual(sum(entry.scenario is scenario and
+                                 entry.split is DatasetSplit.VALIDATION for entry in first), 5)
 
     def test_validation_tool_uses_candidate_profile_and_blocks_uncalibrated_v2(self):
         profile_deg, is_default = parse_sea_state_profile(None)
