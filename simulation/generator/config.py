@@ -38,6 +38,29 @@ class DatasetSplit(str, Enum):
     TEST_G2 = "Test-G2"
 
 
+class LabelingVersion(str, Enum):
+    """Versioned motion-label definitions used by scenario generation."""
+
+    V1 = "v1"
+    V2 = "v2"
+
+
+class GrowthCriterion(str, Enum):
+    """How configured causal growth metrics combine into one phenotype."""
+
+    SLOPE = "slope"
+    RATIO = "ratio"
+    SLOPE_AND_RATIO = "slope_and_ratio"
+    SLOPE_OR_RATIO = "slope_or_ratio"
+
+
+class ProfileCalibrationStatus(str, Enum):
+    """Whether a sea-state forcing profile is only a candidate or calibrated."""
+
+    CANDIDATE = "candidate"
+    CALIBRATED = "calibrated"
+
+
 def _require_finite(name: str, value: float) -> None:
     if not math.isfinite(value):
         raise ValueError("{} must be finite".format(name))
@@ -55,6 +78,168 @@ def _optional_number(name: str, value: Optional[float], *, minimum: Optional[flo
         if invalid:
             operator = ">" if strict_minimum else ">="
             raise ValueError("{} must be {} {}".format(name, operator, minimum))
+
+
+_SEA_STATE_CODES = ("SS0", "SS1", "SS2", "SS3", "SS4", "SS5")
+_CANDIDATE_SEA_STATE_SIGMA_DEG = {
+    "SS0": 0.5,
+    "SS1": 0.9,
+    "SS2": 1.5,
+    "SS3": 2.2,
+    "SS4": 3.0,
+    "SS5": 4.5,
+}
+
+
+def _candidate_sea_state_sigma_rad() -> Dict[str, float]:
+    """Convert the approved candidate profile to canonical radians once."""
+    return {state: math.radians(value)
+            for state, value in _CANDIDATE_SEA_STATE_SIGMA_DEG.items()}
+
+
+@dataclass(frozen=True)
+class SeaStateProfileConfig:
+    """Equivalent-angle wave forcing profile, stored canonically in radians.
+
+    The default profile is an approved simulation candidate, not an empirical
+    calibration or a mapping to physical wave height.
+    """
+
+    profile_id: str = "svmg-sea-state-candidate-v1"
+    calibration_status: ProfileCalibrationStatus = ProfileCalibrationStatus.CANDIDATE
+    sigma_w_by_state_rad: Dict[str, float] = field(
+        default_factory=_candidate_sea_state_sigma_rad)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.profile_id, str) or not self.profile_id.strip():
+            raise ValueError("profile_id must be a non-empty string")
+        if not isinstance(self.calibration_status, ProfileCalibrationStatus):
+            raise TypeError("calibration_status must be a ProfileCalibrationStatus")
+        if not isinstance(self.sigma_w_by_state_rad, dict):
+            raise TypeError("sigma_w_by_state_rad must be a mapping")
+        if set(self.sigma_w_by_state_rad) != set(_SEA_STATE_CODES):
+            raise ValueError("profile must define SS0 through SS5 exactly")
+        previous = -1.0
+        for state in _SEA_STATE_CODES:
+            value = self.sigma_w_by_state_rad[state]
+            _optional_number("sigma_w_by_state_rad[{}]".format(state), value,
+                             minimum=0.0)
+            if value <= previous:
+                raise ValueError("sea-state sigma values must increase from SS0 to SS5")
+            previous = float(value)
+
+    @classmethod
+    def from_degrees(
+        cls,
+        sigma_w_by_state_deg: Dict[str, float],
+        *,
+        profile_id: str = "svmg-custom-sea-state-profile",
+        calibration_status: ProfileCalibrationStatus = ProfileCalibrationStatus.CANDIDATE,
+    ) -> "SeaStateProfileConfig":
+        """Convert degree-equivalent forcing values at the config boundary."""
+        if not isinstance(sigma_w_by_state_deg, dict):
+            raise TypeError("sigma_w_by_state_deg must be a dictionary")
+        return cls(
+            profile_id=profile_id,
+            calibration_status=calibration_status,
+            sigma_w_by_state_rad={
+                state: math.radians(value)
+                for state, value in sigma_w_by_state_deg.items()
+            },
+        )
+
+    @property
+    def sigma_w_by_state_deg(self) -> Dict[str, float]:
+        """Return a metadata/display copy in degree-equivalent units."""
+        return {state: round(math.degrees(value), 12)
+                for state, value in self.sigma_w_by_state_rad.items()}
+
+
+@dataclass(frozen=True)
+class MotionLabelConfig:
+    """Label thresholds and causal windows for labeling_v1/v2.
+
+    V2 thresholds without validation calibration intentionally remain unset;
+    this prevents candidate values from being mistaken for official criteria.
+    """
+
+    high_roll_centered_threshold_deg: Optional[float] = None
+    persistent_offset_threshold_deg: float = 3.0
+    persistent_offset_window_s: float = 180.0
+    persistent_offset_duration_s: float = 120.0
+    growth_window_s: float = 180.0
+    growth_ratio_lag_s: float = 120.0
+    growth_criterion: Optional[GrowthCriterion] = None
+    growth_slope_threshold_deg_per_min: Optional[float] = None
+    growth_ratio_threshold: Optional[float] = None
+    growth_ratio_floor_deg: Optional[float] = None
+    growth_confirmation_s: Optional[float] = None
+    threshold_calibration_status: ProfileCalibrationStatus = (
+        ProfileCalibrationStatus.CANDIDATE)
+
+    def __post_init__(self) -> None:
+        _optional_number("high_roll_centered_threshold_deg",
+                         self.high_roll_centered_threshold_deg,
+                         minimum=0.0, strict_minimum=True)
+        _optional_number("persistent_offset_threshold_deg",
+                         self.persistent_offset_threshold_deg,
+                         minimum=0.0, strict_minimum=True)
+        for name in ("persistent_offset_window_s", "persistent_offset_duration_s",
+                     "growth_window_s", "growth_ratio_lag_s"):
+            _optional_number(name, getattr(self, name), minimum=0.0,
+                             strict_minimum=True)
+        _optional_number("growth_slope_threshold_deg_per_min",
+                         self.growth_slope_threshold_deg_per_min,
+                         minimum=0.0, strict_minimum=True)
+        _optional_number("growth_ratio_threshold", self.growth_ratio_threshold,
+                         minimum=1.0, strict_minimum=True)
+        _optional_number("growth_ratio_floor_deg", self.growth_ratio_floor_deg,
+                         minimum=0.0, strict_minimum=True)
+        _optional_number("growth_confirmation_s", self.growth_confirmation_s,
+                         minimum=0.0)
+        if self.growth_confirmation_s == 0.0:
+            raise ValueError("growth_confirmation_s must be positive when configured")
+        if self.growth_criterion is not None and not isinstance(
+                self.growth_criterion, GrowthCriterion):
+            raise TypeError("growth_criterion must be a GrowthCriterion or None")
+        if not isinstance(self.threshold_calibration_status, ProfileCalibrationStatus):
+            raise TypeError(
+                "threshold_calibration_status must be a ProfileCalibrationStatus")
+        if self.growth_window_s < self.growth_ratio_lag_s:
+            raise ValueError("growth_ratio_lag_s cannot exceed growth_window_s")
+
+    @property
+    def unresolved_v2_thresholds(self) -> Tuple[str, ...]:
+        missing = []
+        if self.high_roll_centered_threshold_deg is None:
+            missing.append("high_roll_centered_threshold_deg")
+        criterion = self.growth_criterion
+        if criterion is None:
+            missing.append("growth_criterion")
+        else:
+            if criterion in (GrowthCriterion.SLOPE, GrowthCriterion.SLOPE_AND_RATIO,
+                             GrowthCriterion.SLOPE_OR_RATIO):
+                if self.growth_slope_threshold_deg_per_min is None:
+                    missing.append("growth_slope_threshold_deg_per_min")
+            if criterion in (GrowthCriterion.RATIO, GrowthCriterion.SLOPE_AND_RATIO,
+                             GrowthCriterion.SLOPE_OR_RATIO):
+                if self.growth_ratio_threshold is None:
+                    missing.append("growth_ratio_threshold")
+                if self.growth_ratio_floor_deg is None:
+                    missing.append("growth_ratio_floor_deg")
+            if self.growth_confirmation_s is None:
+                missing.append("growth_confirmation_s")
+        return tuple(missing)
+
+    @property
+    def labeling_v2_configured(self) -> bool:
+        return not self.unresolved_v2_thresholds
+
+    @property
+    def labeling_v2_ready(self) -> bool:
+        return (self.labeling_v2_configured and
+                self.threshold_calibration_status is
+                ProfileCalibrationStatus.CALIBRATED)
 
 
 @dataclass(frozen=True)
@@ -241,12 +426,29 @@ def _default_session_counts() -> Dict[DatasetSplit, int]:
     }
 
 
+def _default_scenario_counts() -> Dict[ScenarioCode, Dict[DatasetSplit, int]]:
+    """Approved 605-session allocation, keyed by scenario then split."""
+    rows = {
+        ScenarioCode.S0: (80, 20, 30, 30),
+        ScenarioCode.S0B: (30, 10, 15, 15),
+        ScenarioCode.S1: (50, 15, 20, 20),
+        ScenarioCode.S2: (50, 15, 20, 20),
+        ScenarioCode.S3: (50, 15, 20, 20),
+        ScenarioCode.H1: (20, 10, 15, 15),
+    }
+    split_order = tuple(DatasetSplit)
+    return {scenario: dict(zip(split_order, values))
+            for scenario, values in rows.items()}
+
+
 @dataclass(frozen=True)
 class DatasetPlanConfig:
     """Dataset-scale metadata; this object does not generate any data."""
 
     total_sessions: int = 605
     session_counts: Dict[DatasetSplit, int] = field(default_factory=_default_session_counts)
+    scenario_counts: Dict[ScenarioCode, Dict[DatasetSplit, int]] = field(
+        default_factory=_default_scenario_counts)
     domains: ParameterDomains = field(default_factory=_default_parameter_domains)
 
     def __post_init__(self) -> None:
@@ -268,6 +470,22 @@ class DatasetPlanConfig:
                 raise ValueError("session counts must be non-negative integers")
         if sum(self.session_counts.values()) != 605:
             raise ValueError("session counts across all splits must sum to 605")
+        if not isinstance(self.scenario_counts, dict):
+            raise TypeError("scenario_counts must map ScenarioCode to split counts")
+        if set(self.scenario_counts) != set(ScenarioCode):
+            raise ValueError("scenario_counts must define every scenario exactly once")
+        column_totals = {split: 0 for split in DatasetSplit}
+        for scenario, split_counts in self.scenario_counts.items():
+            if not isinstance(scenario, ScenarioCode):
+                raise TypeError("scenario_counts keys must be ScenarioCode values")
+            if not isinstance(split_counts, dict) or set(split_counts) != expected_splits:
+                raise ValueError("each scenario must define every DatasetSplit exactly once")
+            for split, count in split_counts.items():
+                if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                    raise ValueError("scenario split counts must be non-negative integers")
+                column_totals[split] += count
+        if column_totals != self.session_counts:
+            raise ValueError("scenario allocation column totals must match session_counts")
         if not isinstance(self.domains, ParameterDomains):
             raise TypeError("domains must be a ParameterDomains instance")
 
@@ -296,7 +514,8 @@ DEFAULT_SCENARIOS: Tuple[ScenarioDefinition, ...] = (
     ScenarioDefinition(ScenarioCode.S2, "Persistent heel offset", "PERSISTENT_OFFSET"),
     ScenarioDefinition(ScenarioCode.S3, "Parametric resonance and amplitude growth",
                        "AMPLITUDE_GROWTH"),
-    ScenarioDefinition(ScenarioCode.H1, "Sensor fault", "FAULT"),
+    ScenarioDefinition(ScenarioCode.H1, "Combined high sea state and heel offset",
+                       "COMBINED_SCENARIO"),
 )
 
 
@@ -314,13 +533,17 @@ class SimulationConfig:
         default_factory=lambda: DEFAULT_SCENARIOS)
     config_version: str = "1.0.0"
     generator_version: str = "0.1.0"
+    sea_state_profile: SeaStateProfileConfig = field(default_factory=SeaStateProfileConfig)
+    labeling: MotionLabelConfig = field(default_factory=MotionLabelConfig)
 
     def __post_init__(self) -> None:
         for name, expected_type in (("time", SimulationTimeConfig),
                                     ("roll", RollDynamicsConfig),
                                     ("waves", WaveExcitationConfig),
                                     ("imu", IMUNoiseConfig),
-                                    ("dataset", DatasetPlanConfig)):
+                                    ("dataset", DatasetPlanConfig),
+                                    ("sea_state_profile", SeaStateProfileConfig),
+                                    ("labeling", MotionLabelConfig)):
             if not isinstance(getattr(self, name), expected_type):
                 raise TypeError("{} must be a {}".format(name, expected_type.__name__))
         self._validate_parameter_domains()
@@ -363,6 +586,13 @@ class SimulationConfig:
             if t0_range.minimum < 0 or t0_range.maximum > self.time.duration_s:
                 raise ValueError("t0_s range must fit inside duration_s")
 
+    @property
+    def official_dataset_ready(self) -> bool:
+        """True only when v2 thresholds and sea-state profile are calibrated."""
+        return (self.labeling.labeling_v2_ready and
+                self.sea_state_profile.calibration_status is
+                ProfileCalibrationStatus.CALIBRATED)
+
     def to_dict(self) -> Dict[str, Any]:
         """Return JSON-friendly metadata without changing this configuration."""
         return _to_plain_data(self)
@@ -382,9 +612,31 @@ class SimulationConfig:
         waves = WaveExcitationConfig(**wave_data)
         imu = IMUNoiseConfig(**data.get("imu", {}))
 
+        profile_data = dict(data.get("sea_state_profile", {}))
+        if "calibration_status" in profile_data:
+            profile_data["calibration_status"] = ProfileCalibrationStatus(
+                profile_data["calibration_status"])
+        sea_state_profile = SeaStateProfileConfig(**profile_data)
+
+        labeling_data = dict(data.get("labeling", {}))
+        if labeling_data.get("growth_criterion") is not None:
+            labeling_data["growth_criterion"] = GrowthCriterion(
+                labeling_data["growth_criterion"])
+        if "threshold_calibration_status" in labeling_data:
+            labeling_data["threshold_calibration_status"] = ProfileCalibrationStatus(
+                labeling_data["threshold_calibration_status"])
+        labeling = MotionLabelConfig(**labeling_data)
+
         dataset_data = dict(data.get("dataset", {}))
         raw_counts = dataset_data.get("session_counts", _default_session_counts())
         counts = {DatasetSplit(key): value for key, value in raw_counts.items()}
+        raw_scenario_counts = dataset_data.get("scenario_counts", _default_scenario_counts())
+        scenario_counts = {
+            ScenarioCode(scenario): {
+                DatasetSplit(split): count for split, count in split_counts.items()
+            }
+            for scenario, split_counts in raw_scenario_counts.items()
+        }
         raw_domains = dataset_data.get("domains")
         default_domains = _default_parameter_domains()
         domains_kwargs = {}
@@ -403,6 +655,7 @@ class SimulationConfig:
         dataset = DatasetPlanConfig(
             total_sessions=dataset_data.get("total_sessions", 605),
             session_counts=counts,
+            scenario_counts=scenario_counts,
             domains=domains,
         )
 
@@ -423,6 +676,8 @@ class SimulationConfig:
             "waves": waves,
             "imu": imu,
             "dataset": dataset,
+            "sea_state_profile": sea_state_profile,
+            "labeling": labeling,
             "random_seed": data.get("random_seed", 1),
             "config_version": data.get("config_version", "1.0.0"),
             "generator_version": data.get("generator_version", "0.1.0"),
