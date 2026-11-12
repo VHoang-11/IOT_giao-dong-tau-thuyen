@@ -1,0 +1,6 @@
+{
+  "name": "svmg-msg",
+  "version": "0.1.0",
+  "description": "Tạo/phân tích bản tin MQTT JSON của thiết bị (không phụ thuộc Arduino, kiểm thử được trên máy).",
+  "frameworks": "*"
+}

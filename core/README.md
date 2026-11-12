@@ -1,70 +1,46 @@
-# SVMG Core — Thư viện C dùng chung
+# SVMG Core — Thư viện C dùng chung (M1)
 
-Thư viện lõi C dùng chung cho cả **ESP32 firmware** (chạy trên vi điều khiển) và **máy chủ** (kiểm thử hàng loạt trên PC).
+Thư viện lõi C dùng chung cho cả **ESP32 firmware** (chạy trên vi điều khiển) và **máy chủ** (kiểm thử native trên PC).
+Đặc điểm: C99, float, không phụ thuộc Arduino, không cấp phát động (`malloc`), an toàn thời gian thực.
 
 ## Cấu trúc thư mục
 
 ```
 core/
 ├── include/
-│   ├── svmg_core.h      # Header chính — cấu trúc dữ liệu & API
-│   └── svmg_sim.h       # Header bộ sinh tín hiệu mô phỏng
+│   ├── svmg_common.h    # Định nghĩa kiểu dữ liệu cơ sở, hằng số toán học/vật lý
+│   ├── svmg_core.h      # Header tổng hợp chính — cấu trúc dữ liệu & API
+│   ├── svmg_filter.h    # Bộ lọc bù (complementary filter), Butterworth, giảm mẫu 20→2 Hz
+│   ├── svmg_features.h  # Trích xuất đặc trưng cửa sổ 60s / 180s, cờ chất lượng
+│   ├── svmg_decision.h  # Lớp ngưỡng cứng (safety envelope), chỉ số MAI, Baseline B
+│   ├── svmg_alarm.h     # Máy trạng thái cảnh báo (FSM), leo thang, giải tỏa
+│   ├── svmg_cmd.h       # Xử lý kênh lệnh (idempotent, CRC, TTL, mã từ chối)
+│   ├── svmg_config.h    # Cấu hình có phiên bản, kiểm tra biên an toàn
+│   ├── svmg_calib.h     # Hiệu chuẩn zero lệch tĩnh và ma trận bù
+│   ├── svmg_evbuf.h     # Bộ đệm sự kiện ngoại tuyến (ring buffer)
+│   ├── svmg_engine.h    # Động cơ tích hợp toàn chuỗi xử lý lõi
+│   └── svmg_sim.h       # Header bộ sinh tín hiệu mô phỏng (M2)
 ├── src/
-│   ├── filter.c          # Bộ lọc bù (complementary filter), giảm mẫu 20→2 Hz
-│   ├── features.c        # Trích xuất đặc trưng cửa sổ 60s/180s
-│   ├── baseline.c        # Baseline B — phân loại dựa trên quy tắc
-│   ├── safety.c          # Lớp ngưỡng cứng (safety envelope)
-│   ├── mai.c             # Motion Anomaly Index (MAI, 0–100)
-│   ├── alarm_fsm.c       # Máy trạng thái cảnh báo (FSM)
+│   ├── filter.c         # Cài đặt bộ lọc & giảm mẫu
+│   ├── features.c       # Cài đặt trích xuất đặc trưng cửa sổ trượt
+│   ├── decision.c       # Cài đặt logic ra quyết định, ngưỡng cứng, MAI & Baseline B
+│   ├── alarm_fsm.c      # Cài đặt máy trạng thái cảnh báo
+│   ├── cmd.c            # Xử lý và thẩm định lệnh
+│   ├── config.c         # Quản lý cấu hình thiết bị
+│   ├── calib.c          # Xử lý lệnh hiệu chuẩn zero
+│   ├── evbuf.c          # Cài đặt bộ đệm sự kiện
+│   ├── engine.c         # Tích hợp toàn bộ pipeline
 │   └── sim/
-│       └── generator.c   # Bộ sinh tín hiệu C — dao động tử roll bậc 2
+│       └── generator.c  # Bộ sinh tín hiệu C — dao động tử roll bậc 2 (M2)
+├── library.json         # PlatformIO library manifest
 └── README.md
 ```
 
-## Mục đích từng file
+## Kiểm thử đơn vị
 
-| File           | Mô tả |
-|----------------|--------|
-| `svmg_core.h`  | Định nghĩa `MotionSample`, `FeatureVector`, `MotionClass`, `AlarmLevel` và các API chính |
-| `svmg_sim.h`   | Cấu hình và API cho bộ sinh tín hiệu mô phỏng (`SimConfig`, `simInit`, `simStep`) |
-| `filter.c`     | Complementary filter kết hợp gia tốc kế + con quay hồi chuyển, giảm mẫu từ 20 Hz xuống 2 Hz |
-| `features.c`   | Trích xuất 14 đặc trưng từ cửa sổ trượt (RMS, P95, zero-crossing, trend, v.v.) |
-| `baseline.c`   | Phân loại Baseline B dựa trên quy tắc ngưỡng — dùng để so sánh với mô hình RF |
-| `safety.c`     | Kiểm tra ngưỡng cứng: \|roll\| ≥ 20° liên tục ≥ 5s → CRITICAL |
-| `mai.c`        | Tính chỉ số bất thường chuyển động MAI (0–100) |
-| `alarm_fsm.c`  | Máy trạng thái: NORMAL → CAUTION → WARNING → CRITICAL → ACKED → NORMAL |
-| `generator.c`  | Bộ sinh tín hiệu mô phỏng (C port từ Python), dùng dao động tử roll bậc 2 |
-
-## Build cho máy chủ (Host)
-
+Toàn bộ lõi C được kiểm thử 100% tự động bằng Unity trên môi trường host (`native`):
 ```bash
-# Dùng gcc + make
-cd core
-gcc -I include -c src/filter.c src/features.c src/baseline.c \
-    src/safety.c src/mai.c src/alarm_fsm.c src/sim/generator.c
-ar rcs libsvmg_core.a *.o
+cd tests/firmware
+pio test -e native
 ```
-
-## Build cho ESP32 (PlatformIO)
-
-Thư viện được tích hợp như một component trong PlatformIO project:
-
-```ini
-; platformio.ini
-[env:esp32]
-platform = espressif32
-board = esp32dev
-framework = arduino
-build_flags = -I core/include
-build_src_filter = +<*> +<../core/src/*>
-```
-
-## Chạy kiểm thử đơn vị (Unit Tests)
-
-```bash
-cd tests
-gcc -I ../core/include -o test_core test_core.c ../core/src/*.c -lm
-./test_core
-```
-
-Xem thêm chi tiết tại `tests/README.md`.
+Chi tiết nhật ký kiểm thử và kết quả đo đạc xem tại [`tests/firmware/TEST_LOG.md`](../tests/firmware/TEST_LOG.md).

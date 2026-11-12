@@ -30,6 +30,8 @@ build/
 *.elf
 *.bin
 .pio/
+.cache/
+compile_commands.json
 
 # ML artifacts
 ml/data/*.csv

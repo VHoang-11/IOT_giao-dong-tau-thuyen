@@ -1,0 +1,5 @@
+{
+  "baseline_b": {"hi_rms_deg": 6.0, "off_mean_deg": 2.5, "off_same_sign": 0.85, "grow_trend": 1.0, "grow_ratio": 1.5, "grow_min_rms": 1.5},
+  "mai": {"a_ref_deg": 8.0, "b_ref_deg": 5.0, "g_ref_deg_per_min": 2.0},
+  "generator_version": "example", "data_hash": "none"
+}

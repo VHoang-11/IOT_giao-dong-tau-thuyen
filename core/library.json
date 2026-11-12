@@ -1,0 +1,9 @@
+{
+  "name": "svmg-core",
+  "version": "0.1.0",
+  "description": "Smart Vessel Motion Guard - lõi C dùng chung ESP32/máy chủ (M1). Không Arduino, không malloc.",
+  "build": {
+    "srcFilter": ["+<*>", "-<sim/>"],
+    "flags": ["-Wall", "-Wextra", "-Wdouble-promotion"]
+  }
+}

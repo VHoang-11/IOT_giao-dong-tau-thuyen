@@ -1,0 +1,6 @@
+# Cấu hình Wokwi cho bản có chèn lỗi qua Serial (T05/T07/T13). Build trước: pio run -e esp32dev_inject
+# Chọn: F1 -> "Wokwi: Select Config File" -> firmware/wokwi/wokwi.inject.toml
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32dev_inject/firmware.bin'
+elf = '../.pio/build/esp32dev_inject/firmware.elf'

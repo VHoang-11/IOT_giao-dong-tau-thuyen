@@ -1,0 +1,7 @@
+# Cấu hình mô phỏng Wokwi (VS Code extension / wokwi-cli).
+# Đường dẫn tính theo thư mục chứa file này (firmware/wokwi/), nên lùi 1 cấp để tới .pio/ của PlatformIO.
+# Cần build trước: `pio run` (Wokwi không tự biên dịch).
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32dev/firmware.bin'
+elf = '../.pio/build/esp32dev/firmware.elf'
