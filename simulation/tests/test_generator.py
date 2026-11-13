@@ -42,9 +42,46 @@ from simulation.visualization.plot_scenarios import (
     run_validation,
 )
 from simulation.calibration.calibrate_labeling_v2 import build_pilot_plan
+from simulation.calibration.validate_labeling_v2_independent import (
+    build_confirmation_plan,
+    load_frozen_candidate,
+)
 
 
 class SimulationConfigTests(unittest.TestCase):
+    def test_independent_confirmation_plan_is_fixed_reproducible_and_disjoint(self):
+        excluded_ids = {"pilot-s0", "pilot-s2"}
+        excluded_seeds = {20261202, 20261209}
+        first = build_confirmation_plan(20261202, excluded_ids=excluded_ids,
+                                        excluded_seeds=excluded_seeds)
+        second = build_confirmation_plan(20261202, excluded_ids=excluded_ids,
+                                         excluded_seeds=excluded_seeds)
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 60)
+        self.assertEqual(len({item.session_id for item in first}), 60)
+        self.assertEqual(len({item.seed for item in first}), 60)
+        self.assertFalse({item.session_id for item in first} & excluded_ids)
+        self.assertFalse({item.seed for item in first} & excluded_seeds)
+        self.assertTrue(all(item.split is DatasetSplit.VALIDATION for item in first))
+        for scenario in ScenarioCode:
+            self.assertEqual(sum(item.scenario is scenario for item in first), 10)
+
+    def test_independent_validator_loads_frozen_candidate_without_calibrating(self):
+        config, document = load_frozen_candidate()
+        self.assertAlmostEqual(config.high_roll_centered_threshold_deg, 8.40884426)
+        self.assertEqual(config.persistent_offset_threshold_deg, 3.0)
+        self.assertEqual(config.persistent_offset_duration_s, 120.0)
+        self.assertEqual(config.growth_criterion, GrowthCriterion.SLOPE)
+        self.assertAlmostEqual(config.growth_slope_threshold_deg_per_min,
+                               1.769349623333755)
+        self.assertEqual(config.growth_confirmation_s, 10.0)
+        self.assertIsNone(config.growth_ratio_threshold)
+        self.assertIsNone(config.growth_ratio_floor_deg)
+        self.assertEqual(config.threshold_calibration_status,
+                         ProfileCalibrationStatus.CANDIDATE)
+        self.assertEqual(document["recommended_thresholds"]["calibration_status"],
+                         "candidate")
+
     def test_documented_defaults_and_scenario_codes(self):
         config = SimulationConfig()
         self.assertEqual(config.time.sample_rate_hz, 20.0)
