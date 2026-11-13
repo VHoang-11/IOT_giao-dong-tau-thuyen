@@ -16,6 +16,8 @@ from app.services.audit import audit
 log = logging.getLogger("svmg.auth")
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
+MAX_TRACKED_KEYS = 10_000     # so muc toi da bo gioi han dang nhap giu trong bo nho
+IP_FAILURE_MULTIPLIER = 4     # nguong khoa theo IP = login_max_failures x 4 (chong doi username lien tuc)
 
 
 class AuthFailed(Exception):
@@ -62,15 +64,32 @@ class LoginLimiter:
             self._locked_until.pop(key, None)
             self._fails.pop(key, None)
 
-    def fail(self, key: str) -> None:
+    def fail(self, key: str, max_failures: Optional[int] = None) -> None:
+        limit = max_failures if max_failures is not None else settings.login_max_failures
         n = self._fails.get(key, 0) + 1
         self._fails[key] = n
-        if n >= settings.login_max_failures:
+        if n >= limit:
             self._locked_until[key] = self.clock() + settings.login_lockout_s
+        if len(self._fails) > MAX_TRACKED_KEYS:
+            self._evict()
 
     def success(self, key: str) -> None:
         self._fails.pop(key, None)
         self._locked_until.pop(key, None)
+
+    def _evict(self) -> None:
+        """Gioi han bo nho: ke tan cong thu hang trieu username ngau nhien khong the lam day RAM.
+        Uu tien bo cac muc cu CHUA bi khoa; chi khi toan bo deu dang bi khoa moi bo muc khoa cu nhat."""
+        for k in list(self._fails):
+            if len(self._fails) <= MAX_TRACKED_KEYS:
+                return
+            if k not in self._locked_until:
+                self._fails.pop(k)
+        for k in list(self._fails):
+            if len(self._fails) <= MAX_TRACKED_KEYS:
+                return
+            self._fails.pop(k)
+            self._locked_until.pop(k, None)
 
 
 limiter = LoginLimiter()
@@ -82,17 +101,23 @@ def check_password_policy(pw: str) -> None:
 
 
 def authenticate(db: Session, username: str, password: str, ip: str = "?") -> User:
-    key = f"{username.lower()}|{ip}"
+    key = f"{username.lower()}|{ip}"   # khoa theo (user, IP)
+    ip_key = f"ip|{ip}"                # khoa theo IP: doi username lien tuc van bi chan (va khong lam day bang audit)
+    limiter.check(ip_key)
     limiter.check(key)  # ca username khong ton tai cung dem -> khong lo user nao co that
     user = db.scalar(select(User).where(User.username == username))
-    # luon chay 1 lan verify (hash gia neu khong co user) de thoi gian khong tiet lo user ton tai
-    ok = verify_password(password, user.password_hash if user else DUMMY_HASH)
+    if len(password) > MAX_PASSWORD_LEN:
+        ok = False  # mat khau vo ly: khong ton CPU bam
+    else:
+        # luon chay 1 lan verify (hash gia neu khong co user) de thoi gian khong tiet lo user ton tai
+        ok = verify_password(password, user.password_hash if user else DUMMY_HASH)
     if user is None or not ok or not user.is_active:
         limiter.fail(key)
+        limiter.fail(ip_key, settings.login_max_failures * IP_FAILURE_MULTIPLIER)
         audit(db, username[:64], "AUTH_LOGIN_FAILED", None, {"ip": ip})
         db.commit()
         raise AuthFailed("Sai tên đăng nhập hoặc mật khẩu")
-    limiter.success(key)
+    limiter.success(key)  # chi xoa dem cua (user, IP); dem theo IP khong bi reset boi 1 lan dang nhap dung
     audit(db, user.username, "AUTH_LOGIN", None, {"ip": ip})
     db.commit()
     return user
@@ -109,7 +134,8 @@ def create_user(db: Session, actor: str, username: str, password: str, role: Rol
     if not USERNAME_RE.match(username):
         raise InvalidInput("Tên đăng nhập chỉ gồm chữ, số, '_', '.', '-' (3–64 ký tự)")
     check_password_policy(password)
-    if db.scalar(select(User.id).where(User.username == username)) is not None:
+    # khong phan biet hoa/thuong: 'SUP01' va 'sup01' la cung 1 nguoi (tranh nham lan khi doc audit)
+    if db.scalar(select(User.id).where(func.lower(User.username) == username.lower())) is not None:
         raise UserConflict(f"Tên đăng nhập '{username}' đã tồn tại")
     user = User(username=username, password_hash=hash_password(password), role=role, is_active=True)
     db.add(user)

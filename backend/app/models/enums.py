@@ -28,6 +28,13 @@ class AlarmState(str, enum.Enum):
     CLEARED = "CLEARED"
 
 
+class AlarmLabel(str, enum.Enum):
+    """Danh gia sau su viec (G4): canh bao do dung / sai / chua ro. Chi phuc vu danh gia, KHONG anh huong vong doi."""
+    TRUE_ALARM = "TRUE_ALARM"
+    FALSE_ALARM = "FALSE_ALARM"
+    UNCLEAR = "UNCLEAR"
+
+
 class CommandName(str, enum.Enum):
     set_profile = "set_profile"
     set_threshold = "set_threshold"

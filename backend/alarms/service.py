@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from alarms.realtime import hub
 from app.core.config import settings
 from app.models import Alarm, AlarmEvent, Device, Telemetry
-from app.models.enums import AlarmLevel, AlarmState, SourceMode
+from app.models.enums import AlarmLabel, AlarmLevel, AlarmState, SourceMode
 from app.schemas.alarm import AlarmOut, AlarmStats
 from app.services.audit import audit
 from notify.service import notify_alarm
@@ -129,6 +129,27 @@ def ack_alarm(db: Session, pk: int, actor: str, now: Optional[datetime] = None) 
     return alarm, False
 
 
+def label_alarm(db: Session, pk: int, label: AlarmLabel, actor: str,
+                now: Optional[datetime] = None) -> tuple[Alarm, bool]:
+    """Danh gia sau su viec: dung / sai / chua ro. Tra ve (alarm, changed).
+
+    AN TOAN: nhan CHI de danh gia, tuyet doi KHONG doi state/level/escalated cua canh bao
+    (gan 'SAI' khong duoc tu ACK, tat hay chan leo thang canh bao dang xu ly).
+    """
+    alarm = db.get(Alarm, pk)
+    if alarm is None:
+        raise AlarmNotFound(f"Không tìm thấy cảnh báo #{pk}")
+    if alarm.label == label.value:
+        return alarm, False  # gan lai cung nhan: khong doi gi, khong ghi audit thua
+    previous = alarm.label
+    alarm.label, alarm.labeled_by, alarm.labeled_at = label.value, actor, now or _now()
+    audit(db, actor, "ALARM_LABEL", f"alarm:{pk}",
+          {"device_id": alarm.device_id, "alarm_id": alarm.alarm_id, "from": previous, "to": label.value})
+    db.commit()
+    _publish("labeled", alarm)
+    return alarm, True
+
+
 def escalate_overdue(db: Session, now: Optional[datetime] = None,
                      after_s: Optional[int] = None) -> list[Alarm]:
     """Danh dau leo thang cac canh bao ACTIVE chua ai ACK qua `after_s` giay."""
@@ -173,6 +194,12 @@ def compute_stats(db: Session, device_id: Optional[str] = None,
         by_level[a.max_level.value] = by_level.get(a.max_level.value, 0) + 1
     total = len(rows)
     esc = sum(1 for a in rows if a.escalated)
+    by_label: dict[str, int] = {}
+    for a in rows:
+        if a.label:
+            by_label[a.label] = by_label.get(a.label, 0) + 1
+    labeled = sum(by_label.values())
+    true_n, false_n = by_label.get(AlarmLabel.TRUE_ALARM.value, 0), by_label.get(AlarmLabel.FALSE_ALARM.value, 0)
     return AlarmStats(
         total=total,
         active=sum(1 for a in rows if a.state == AlarmState.ACTIVE),
@@ -181,4 +208,8 @@ def compute_stats(db: Session, device_id: Optional[str] = None,
         escalated=esc,
         mtta_s=(sum(ttas) / len(ttas)) if ttas else None,
         escalation_rate=(esc / total) if total else None,
-        by_max_level=by_level)
+        by_max_level=by_level,
+        labeled=labeled, by_label=by_label,
+        label_coverage=(labeled / total) if total else None,
+        # mau so chi gom canh bao DA KET LUAN (dung + sai); UNCLEAR va chua danh gia khong tinh
+        false_alarm_rate=(false_n / (true_n + false_n)) if (true_n + false_n) else None)

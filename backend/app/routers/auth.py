@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.db import get_db
 from app.core.security import create_access_token, get_current_user, require_role
@@ -14,12 +15,13 @@ router = APIRouter(tags=["auth"])
 
 
 @router.post("/api/v1/auth/login", response_model=TokenOut)
-async def login(request: Request, response: Response, form: OAuth2PasswordRequestForm = Depends(),
+async def login(request: Request, form: OAuth2PasswordRequestForm = Depends(),
                 db: Session = Depends(get_db)) -> TokenOut:
     """Dang nhap (form: username, password) -> JWT. Dung duoc voi nut Authorize cua /docs."""
     ip = request.client.host if request.client else "?"
     try:
-        user = svc.authenticate(db, form.username, form.password, ip)
+        # scrypt co chu y ton ~50-100ms CPU: chay ngoai event loop de khong chan request/WebSocket khac
+        user = await run_in_threadpool(svc.authenticate, db, form.username, form.password, ip)
     except svc.TooManyAttempts as e:
         raise HTTPException(429, str(e), headers={"Retry-After": str(e.retry_after)})
     except svc.AuthFailed as e:
@@ -37,7 +39,7 @@ async def me(user: User = Depends(get_current_user)) -> User:
 async def change_password(body: PasswordChange, user: User = Depends(get_current_user),
                           db: Session = Depends(get_db)) -> Response:
     try:
-        svc.change_own_password(db, user, body.old_password, body.new_password)
+        await run_in_threadpool(svc.change_own_password, db, user, body.old_password, body.new_password)
     except svc.AuthFailed as e:
         raise HTTPException(400, str(e))
     except svc.InvalidInput as e:
@@ -56,7 +58,7 @@ async def list_users(_: User = Depends(require_role(Role.ADMIN)), db: Session = 
 async def create_user(body: UserCreate, admin: User = Depends(require_role(Role.ADMIN)),
                       db: Session = Depends(get_db)) -> User:
     try:
-        return svc.create_user(db, admin.username, body.username, body.password, body.role)
+        return await run_in_threadpool(svc.create_user, db, admin.username, body.username, body.password, body.role)
     except svc.UserConflict as e:
         raise HTTPException(409, str(e))
     except svc.InvalidInput as e:
@@ -67,7 +69,8 @@ async def create_user(body: UserCreate, admin: User = Depends(require_role(Role.
 async def update_user(user_id: int, body: UserUpdate, admin: User = Depends(require_role(Role.ADMIN)),
                       db: Session = Depends(get_db)) -> User:
     try:
-        return svc.update_user(db, admin.username, user_id, body.role, body.is_active, body.password)
+        return await run_in_threadpool(svc.update_user, db, admin.username, user_id, body.role,
+                                       body.is_active, body.password)
     except svc.UserNotFound as e:
         raise HTTPException(404, str(e))
     except svc.UserConflict as e:

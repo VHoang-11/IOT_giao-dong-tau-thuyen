@@ -89,7 +89,7 @@ async def update_config(device_id: str, body: ConfigUpdate, db: Session = Depend
                         actor: str = Depends(current_actor)):
     try:
         return config_service.update_config(db, device_id, body.model_dump(exclude_none=True), actor)
-    except (config_service.DeviceNotFound, CommandInvalid, PublishFailed) as e:
+    except (config_service.DeviceNotFound, config_service.ConfigConflict, CommandInvalid, PublishFailed) as e:
         raise _http(e)
 
 

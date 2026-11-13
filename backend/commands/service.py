@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from alarms.realtime import hub
@@ -75,6 +76,17 @@ def cmd_topic(device_id: str) -> str:
     return f"svmg/{device_id}/cmd"
 
 
+def _find_command(db: Session, cmd_id: str) -> Optional[Command]:
+    return db.scalar(select(Command).where(Command.cmd_id == cmd_id))
+
+
+def _replay(existing: Command, device_id: str, cmd: CommandName, clean: dict[str, Any]) -> Command:
+    """Gui lai cung cmd_id: cung noi dung -> tra ket qua cu; khac noi dung -> conflict."""
+    if (existing.device_id, existing.cmd, existing.params or {}) == (device_id, cmd.value, clean):
+        return existing
+    raise CommandConflict(f"cmd_id '{existing.cmd_id}' đã được dùng cho một lệnh khác")
+
+
 def create_command(db: Session, device_id: str, cmd: CommandName, params: dict[str, Any],
                    ttl_s: int, actor: str, cmd_id: Optional[str] = None,
                    now: Optional[datetime] = None) -> tuple[Command, bool]:
@@ -84,11 +96,9 @@ def create_command(db: Session, device_id: str, cmd: CommandName, params: dict[s
     clean = validate_params(cmd, params)
     cmd_id = cmd_id or "c-" + uuid.uuid4().hex[:8]
 
-    existing = db.scalar(select(Command).where(Command.cmd_id == cmd_id))
+    existing = _find_command(db, cmd_id)
     if existing is not None:  # idempotent
-        if (existing.device_id, existing.cmd, existing.params or {}) == (device_id, cmd.value, clean):
-            return existing, False
-        raise CommandConflict(f"cmd_id '{cmd_id}' đã được dùng cho một lệnh khác")
+        return _replay(existing, device_id, cmd, clean), False
 
     if cmd == CommandName.mute_alarm:
         try:
@@ -107,7 +117,16 @@ def create_command(db: Session, device_id: str, cmd: CommandName, params: dict[s
                   issued_by=actor, state=CommandState.SENT, created_at=now or _now())
     db.add(row)
     audit(db, actor, "CMD_SENT", f"{device_id}:{cmd_id}", {"cmd": cmd.value, "params": clean, "ttl_s": ttl_s})
-    db.commit()  # ghi TRUOC khi gui: PUBACK co the ve nhanh hon commit
+    try:
+        db.commit()  # ghi TRUOC khi gui: PUBACK co the ve nhanh hon commit
+    except IntegrityError:
+        # Hai request cung cmd_id den sat nhau: ca hai deu thay 'chua ton tai', request cham hon vi pham unique.
+        # Coi nhu gui lai (idempotent), KHONG gui lenh lan hai.
+        db.rollback()
+        existing = _find_command(db, cmd_id)
+        if existing is None:
+            raise
+        return _replay(existing, device_id, cmd, clean), False
     try:
         get_publisher().publish(cmd_topic(device_id), json.dumps(payload), qos=1, retain=False,
                                 on_delivered=lambda: mark_delivered(cmd_id))

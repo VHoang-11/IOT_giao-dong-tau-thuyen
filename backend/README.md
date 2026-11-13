@@ -16,7 +16,7 @@ Backend của **Smart Vessel Motion Guard**: nhận bản tin MQTT từ thiết 
 | M3-06 | Voyage + báo cáo PDF/CSV | **Chưa làm** (chờ xác nhận cách M1 xử lý `voyage_id`) |
 | M3-07 | Replay, Health, Model monitor | Mới có **Health**; replay và model monitor chưa làm (chờ M2) |
 | M3-08 | Thông báo Telegram/email | Xong |
-| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong; **chưa chạy với broker thật** |
+| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong (173 test); **chưa chạy với broker thật** |
 
 ## Công nghệ
 
@@ -37,7 +37,7 @@ backend/
 ├── alarms/                  # service (vòng đời cảnh báo), realtime (WebSocket hub)
 ├── commands/                # params (an toàn), service (vòng đời lệnh), config_service, publisher
 ├── notify/                  # Telegram + email webhook
-├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo)
+├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo, 0003 nhãn cảnh báo)
 ├── scripts/                 # export_openapi.py, create_user.py
 └── (reports/ replay/ monitor/ — chưa làm)
 ```
@@ -93,7 +93,7 @@ uvicorn main:app --reload --port 8000
 | Vai trò | Quyền |
 |---------|-------|
 | **OPERATOR** | Xem dữ liệu, ACK cảnh báo, gửi lệnh `mute_alarm` |
-| **SUPERVISOR** | + `set_profile`, `set_threshold`, `calibrate_zero`, `start/stop_voyage`, `PUT /config`, rollback, xem audit |
+| **SUPERVISOR** | + `set_profile`, `set_threshold`, `calibrate_zero`, `start/stop_voyage`, `PUT /config`, rollback, **gắn nhãn cảnh báo**, xem audit |
 | **ADMIN** | + `restart_device`, quản lý người dùng, kiểm tra kênh thông báo |
 
 Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào `audit_log` (`GET /api/v1/audit`).
@@ -106,7 +106,7 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 | Người dùng (Admin) | `GET/POST /users`, `PATCH /users/{id}` |
 | Thiết bị | `GET /devices`, `/devices/{id}`, `/devices/{id}/telemetry` |
 | Sức khỏe | `GET /health/devices`, `/devices/{id}/health` |
-| Cảnh báo | `GET /alarms`, `/alarms/{id}`, `/alarms/stats`, `POST /alarms/{id}/ack`, WebSocket `/ws/alarms` |
+| Cảnh báo | `GET /alarms` (lọc `state`, `label`, `unlabeled`), `/alarms/{id}`, `/alarms/stats`, `POST /alarms/{id}/ack`, `PUT /alarms/{id}/label`, WebSocket `/ws/alarms` |
 | Lệnh | `POST /devices/{id}/commands`, `GET /commands`, `/commands/{cmd_id}`, `/commands/stats` |
 | Cấu hình | `GET/PUT /devices/{id}/config`, `POST /devices/{id}/config/rollback` |
 | Kiểm toán | `GET /audit` |
@@ -134,6 +134,18 @@ Topic `svmg/{device_id}/…` theo `contracts/mqtt_topics.md`.
 - Mức cảnh báo nặng hơn sau khi đã ACK → cảnh báo bật lại, yêu cầu xác nhận lại.
 - Rollback cấu hình tạo phiên bản **mới** (số lớn hơn) vì thiết bị chỉ nhận `config_version` lớn hơn hiện tại.
 - Thông báo luôn ghi nhãn `SENSOR`/`SIMULATION`; token Telegram không bao giờ vào log.
+- Bản tin chứa `NaN`/`Infinity`/số tràn, hoặc chuỗi dài quá cột trong CSDL, bị từ chối ngay ở ingest (không làm hỏng API đọc).
+- Backend **không tự điền giá trị cấu hình mặc định**: phiên bản config đầu tiên chỉ chứa đúng những trường người gọi gửi.
+- Việc nặng (băm mật khẩu, gửi thông báo thử) chạy ngoài event loop; WebSocket gửi song song, client chậm bị loại để không chặn cảnh báo tới người khác.
+- SQLite chạy chế độ WAL + `busy_timeout` để MQTT, API và tác vụ nền ghi đồng thời không gây `database is locked`.
+
+## Gắn nhãn cảnh báo (đánh giá sau sự việc)
+
+`PUT /api/v1/alarms/{id}/label` với `{"label": "TRUE_ALARM" | "FALSE_ALARM" | "UNCLEAR"}` (SUPERVISOR trở lên). Ghi lại ai gắn và lúc nào, mọi lần đổi nhãn đều có audit `ALARM_LABEL`.
+
+- Nhãn **chỉ để đánh giá**, không bao giờ đổi trạng thái cảnh báo: gắn "sai" không tự ACK, không tắt, không chặn leo thang.
+- `GET /alarms/stats` trả thêm `labeled`, `by_label`, `label_coverage` và `false_alarm_rate = FALSE / (TRUE + FALSE)`. `UNCLEAR` và cảnh báo chưa đánh giá **không** nằm trong mẫu số; chưa có kết luận nào thì giá trị là `null`, không phải 0%.
+- Tên giá trị nhãn do backend đặt từ "đúng/sai/chưa rõ" trong README gốc, **cần M4 xác nhận** khi làm giao diện.
 
 ## Thông báo Telegram / email
 
@@ -160,6 +172,9 @@ Test dùng SQLite trong bộ nhớ, publisher MQTT giả và mạng giả (`http
 - Bộ đếm khóa đăng nhập nằm trong bộ nhớ tiến trình (mất khi restart, không chia sẻ giữa nhiều worker).
 - Token WebSocket nằm trong URL (có thể vào log của proxy); phiên WebSocket không tự ngắt khi token hết hạn.
 - MTTA tính theo giờ server nhận bản tin, nên có thể bị phóng đại khi thiết bị gửi lại dữ liệu đệm sau mất mạng.
+- Bảng `telemetry`, `device_health`, `audit_log` **chưa có cơ chế dọn dữ liệu cũ** (retention); cần xử lý nếu chạy dài ngày.
+- `Dockerfile` chưa được thử build. Thư mục `contracts/` không nằm trong image, cần mount và đặt `CONTRACTS_DIR`.
+- Nếu chạy nhiều instance backend, `client_id` MQTT cố định (`svmg-backend-ingest`) sẽ làm các instance đá nhau khỏi broker.
 
 ## Điểm cần thống nhất với nhóm (chưa chốt)
 

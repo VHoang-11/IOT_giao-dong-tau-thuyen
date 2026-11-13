@@ -4,6 +4,7 @@ Ham thuan (khong phu thuoc broker) de test duoc. consumer.py goi ham nay.
 """
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,6 +26,29 @@ from ingest.validator import validate
 log = logging.getLogger("svmg.ingest")
 
 MAX_PAYLOAD_BYTES = 16 * 1024
+
+# Do dai toi da cua tung truong chuoi, bam sat do rong cot trong DB (PostgreSQL se bao loi neu vuot).
+# Schema hop dong (M1) khong gioi han do dai nen backend phai tu chan.
+DEFAULT_MAX_STR = 64
+FIELD_MAX_STR = {"scenario_id": 32, "model_version": 32, "fw": 32, "reason": 256}
+
+
+def _reject_constant(name: str) -> None:
+    raise ValueError(f"giá trị JSON không hợp lệ: {name}")  # NaN / Infinity / -Infinity
+
+
+def _finite_float(s: str) -> float:
+    v = float(s)
+    if not math.isfinite(v):  # vd. 1e999 -> inf
+        raise ValueError(f"số quá lớn: {s}")
+    return v
+
+
+def _too_long(data: dict[str, Any]) -> Optional[str]:
+    for key, value in data.items():
+        if isinstance(value, str) and len(value) > FIELD_MAX_STR.get(key, DEFAULT_MAX_STR):
+            return f"trường '{key}' quá dài (tối đa {FIELD_MAX_STR.get(key, DEFAULT_MAX_STR)} ký tự)"
+    return None
 TOPIC_RE = re.compile(r"^svmg/([A-Za-z0-9_.-]{1,64})/(telemetry|event|status|health|cmd/ack)$")
 SUBSCRIPTIONS = [("svmg/+/telemetry", 0), ("svmg/+/event", 1), ("svmg/+/status", 1),
                  ("svmg/+/health", 0), ("svmg/+/cmd/ack", 1)]
@@ -188,12 +212,16 @@ def _process(db: Session, topic: str, payload: bytes, rx: datetime) -> Result:
     if len(payload) > MAX_PAYLOAD_BYTES:
         return Result(Outcome.INVALID, kind, dev_id, "payload qua lon")
     try:
-        data = json.loads(payload)
+        # parse_constant/parse_float: JSON chuan khong co NaN/Infinity; Python mac dinh van nhan -> phai tu choi
+        data = json.loads(payload, parse_constant=_reject_constant, parse_float=_finite_float)
     except (UnicodeDecodeError, ValueError) as e:
         return Result(Outcome.INVALID, kind, dev_id, f"JSON loi: {e}")
     errs = validate(kind, data)
     if errs:
         return Result(Outcome.INVALID, kind, dev_id, "; ".join(errs[:5]))
+    too_long = _too_long(data)
+    if too_long:
+        return Result(Outcome.INVALID, kind, dev_id, too_long)
     if "device_id" in data and data["device_id"] != dev_id:
         return Result(Outcome.REJECTED, kind, dev_id,
                       f"device_id payload '{data['device_id']}' khac topic '{dev_id}'")

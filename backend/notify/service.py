@@ -23,6 +23,7 @@ from app.core.config import settings
 log = logging.getLogger("svmg.notify")
 
 MAX_TEXT = 4000  # Telegram gioi han 4096 ky tu
+MAX_COOLDOWN_KEYS = 1000
 _FOOTER = {
     "SIMULATION": "Dữ liệu MÔ PHỎNG — chỉ phục vụ đồ án.",
     "SENSOR": "Dữ liệu từ cảm biến — nguyên mẫu nghiên cứu, không phải hệ thống an toàn hàng hải.",
@@ -130,6 +131,10 @@ class Dispatcher:
                 self.stats["suppressed"] += 1
                 return False
             self._last[key] = now
+            if len(self._last) > MAX_COOLDOWN_KEYS:
+                # muc het cooldown khong con tac dung -> don de bang khong phinh mai theo so canh bao
+                cutoff = now - settings.notify_cooldown_s
+                self._last = {k: t for k, t in self._last.items() if t > cutoff}
             if self._pool is None:
                 self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="notify")
             fut = self._pool.submit(self._deliver, msg, chans)

@@ -105,7 +105,9 @@ class Alarm(Base):
     acked_by: Mapped[Optional[str]] = mapped_column(String(64))
     cleared_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     escalated: Mapped[bool] = mapped_column(Boolean, default=False)
-    label: Mapped[Optional[str]] = mapped_column(String(16))  # dung/sai/chua ro (G4)
+    label: Mapped[Optional[str]] = mapped_column(String(16))  # AlarmLabel: dung/sai/chua ro (G4)
+    labeled_by: Mapped[Optional[str]] = mapped_column(String(64))
+    labeled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 
 class Command(Base):

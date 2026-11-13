@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -39,7 +40,9 @@ async def notify_status(_: User = Depends(require_role(Role.ADMIN))) -> NotifySt
 @router.post("/test", response_model=TestResult)
 async def notify_test(admin: User = Depends(require_role(Role.ADMIN)), db: Session = Depends(get_db)) -> TestResult:
     """Gui 1 tin thu toi moi kenh da cau hinh (dong bo) de kiem tra token/webhook."""
-    results = dispatcher.send_now(Message(
+    # Gui mang dong bo co the cho vai giay (timeout x so lan thu lai): PHAI chay ngoai event loop,
+    # neu khong moi request va moi WebSocket deu dung im.
+    results = await run_in_threadpool(dispatcher.send_now, Message(
         kind="TEST", title="Tin nhắn thử", text=f"Kiểm tra kênh thông báo do {admin.username} yêu cầu."))
     audit(db, admin.username, "NOTIFY_TEST", None, {"results": results})
     db.commit()

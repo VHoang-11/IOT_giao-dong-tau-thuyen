@@ -9,6 +9,7 @@ import logging
 from typing import Any, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Device, DeviceConfigVersion
@@ -18,12 +19,6 @@ from commands.publisher import PublishFailed, get_publisher
 from ingest.validator import validate
 
 log = logging.getLogger("svmg.config")
-
-DEFAULT_CONFIG: dict[str, Any] = {
-    "profile": "STANDARD", "debounce_n": 3, "phi_hard_deg": 20.0,
-    "mai_caution": 70, "report_interval_s": 5, "primary_model": "RF",
-}
-
 
 class DeviceNotFound(Exception):
     pass
@@ -72,7 +67,12 @@ def _publish_new_version(db: Session, dev: Device, body: dict[str, Any], actor: 
                               created_by=actor, applied=False)
     db.add(row)
     audit(db, actor, action, f"{dev.device_id}:v{version}", detail)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # Hai nguoi doi cau hinh cung luc: ca hai tinh ra cung so phien ban, nguoi den sau vi pham unique.
+        db.rollback()
+        raise ConfigConflict("Có thay đổi cấu hình đồng thời, vui lòng thử lại") from None
     try:
         # retained: thiet bi ket noi lai van nhan duoc cau hinh moi nhat
         get_publisher().publish(config_topic(dev.device_id), json.dumps(payload), qos=1, retain=True)
@@ -87,7 +87,10 @@ def _publish_new_version(db: Session, dev: Device, body: dict[str, Any], actor: 
 def update_config(db: Session, device_id: str, changes: dict[str, Any], actor: str) -> DeviceConfigVersion:
     dev = _device(db, device_id)
     existing = history(db, device_id)
-    base = {k: v for k, v in (existing[0].payload if existing else DEFAULT_CONFIG).items()
+    # KHONG tu dien gia tri mac dinh: gia tri cau hinh thuoc ve M1/hop dong, backend khong duoc doan.
+    # Phien ban dau tien chi chua dung cac truong nguoi goi gui (schema hop dong bat buoc co 'profile');
+    # tu phien ban thu hai tro di moi tron voi phien ban truoc do.
+    base = {k: v for k, v in (existing[0].payload if existing else {}).items()
             if k not in ("config_version", "crc")}
     return _publish_new_version(db, dev, {**base, **changes}, actor, "CONFIG_UPDATE",
                                 {"changes": changes})

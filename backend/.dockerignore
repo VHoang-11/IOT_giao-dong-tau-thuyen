@@ -1,0 +1,14 @@
+# Khong dong goi bi mat / rac vao image
+.env
+.env.*
+*.db
+*.sqlite3
+*.db-wal
+*.db-shm
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+.git/

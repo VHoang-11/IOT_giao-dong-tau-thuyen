@@ -253,6 +253,8 @@ paths:
       tags:
       - alarms
       summary: List Alarms
+      description: Loc theo thiet bi, trang thai, nhan danh gia. `unlabeled=true`
+        -> chi cac canh bao chua duoc danh gia.
       operationId: list_alarms_api_v1_alarms_get
       security:
       - OAuth2PasswordBearer: []
@@ -273,6 +275,21 @@ paths:
           - $ref: '#/components/schemas/AlarmState'
           - type: 'null'
           title: State
+      - name: label
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/AlarmLabel'
+          - type: 'null'
+          title: Label
+      - name: unlabeled
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Unlabeled
       - name: limit
         in: query
         required: false
@@ -389,6 +406,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AckResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/alarms/{alarm_pk}/label:
+    put:
+      tags:
+      - alarms
+      summary: Label Alarm
+      description: 'Danh gia sau su viec: TRUE_ALARM / FALSE_ALARM / UNCLEAR (chi
+        SUPERVISOR tro len).
+
+        Nhan KHONG anh huong vong doi canh bao (khong ACK, khong tat, khong chan leo
+        thang).'
+      operationId: label_alarm_api_v1_alarms__alarm_pk__label_put
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: alarm_pk
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Alarm Pk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlarmLabelRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlarmOut'
         '422':
           description: Validation Error
           content:
@@ -796,6 +852,24 @@ components:
       - alarm
       - already_acked
       title: AckResult
+    AlarmLabel:
+      type: string
+      enum:
+      - TRUE_ALARM
+      - FALSE_ALARM
+      - UNCLEAR
+      title: AlarmLabel
+      description: 'Danh gia sau su viec (G4): canh bao do dung / sai / chua ro. Chi
+        phuc vu danh gia, KHONG anh huong vong doi.'
+    AlarmLabelRequest:
+      properties:
+        label:
+          $ref: '#/components/schemas/AlarmLabel'
+      additionalProperties: false
+      type: object
+      required:
+      - label
+      title: AlarmLabelRequest
     AlarmLevel:
       type: string
       enum:
@@ -861,9 +935,19 @@ components:
           title: Escalated
         label:
           anyOf:
+          - $ref: '#/components/schemas/AlarmLabel'
+          - type: 'null'
+        labeled_by:
+          anyOf:
           - type: string
           - type: 'null'
-          title: Label
+          title: Labeled By
+        labeled_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Labeled At
         time_to_ack_s:
           anyOf:
           - type: number
@@ -923,6 +1007,26 @@ components:
             type: integer
           type: object
           title: By Max Level
+        labeled:
+          type: integer
+          title: Labeled
+          default: 0
+        by_label:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By Label
+          default: {}
+        label_coverage:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Label Coverage
+        false_alarm_rate:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: False Alarm Rate
       type: object
       required:
       - total

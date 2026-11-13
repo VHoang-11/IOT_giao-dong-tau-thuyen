@@ -214,7 +214,8 @@ def test_config_update_versioning_crc_and_retained_publish(client, db, pub, devi
     assert r.status_code == 201
     p = r.json()["payload"]
     assert p["config_version"] == 8  # thiet bi dang o v7 -> v8
-    assert p["profile"] == "SENSITIVE" and p["phi_hard_deg"] == 22 and p["mai_caution"] == 70  # tron voi mac dinh
+    assert p["profile"] == "SENSITIVE" and p["phi_hard_deg"] == 22
+    assert "mai_caution" not in p  # backend khong tu dien gia tri mac dinh thay M1
     topic, sent, qos, retain = pub.sent[-1]
     assert topic == f"svmg/{DEV}/config" and retain is True and qos == 1
     assert validate("config", sent) == [] and sent["crc"] == p["crc"]
