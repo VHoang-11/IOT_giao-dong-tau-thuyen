@@ -181,10 +181,12 @@ def ensure_mute_allowed(db: Session, device_id: str) -> None:
 
 
 def compute_stats(db: Session, device_id: Optional[str] = None,
-                  since: Optional[datetime] = None) -> AlarmStats:
+                  since: Optional[datetime] = None, voyage_id: Optional[str] = None) -> AlarmStats:
     q = select(Alarm)
     if device_id:
         q = q.where(Alarm.device_id == device_id)
+    if voyage_id:
+        q = q.where(Alarm.voyage_id == voyage_id)
     if since:
         q = q.where(Alarm.opened_at >= since)
     rows = list(db.scalars(q))

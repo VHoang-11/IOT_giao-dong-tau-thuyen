@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Index, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -166,6 +166,11 @@ class User(Base):
 
 class Voyage(Base):
     __tablename__ = "voyages"
+    __table_args__ = (
+        # DB tu chan: moi thiet bi chi co TOI DA 1 chuyen dang chay (khong chi dua vao code kiem tra, vi code bi race)
+        Index("uq_voyage_one_active_per_device", "device_id", unique=True,
+              sqlite_where=text("status = 'ACTIVE'"), postgresql_where=text("status = 'ACTIVE'")),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     voyage_id: Mapped[str] = mapped_column(String(64), unique=True)
     device_id: Mapped[str] = mapped_column(String(64), index=True)
@@ -174,6 +179,7 @@ class Voyage(Base):
     started_by: Mapped[str] = mapped_column(String(64))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    ended_by: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 class AuditLog(Base):

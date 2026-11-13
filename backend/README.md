@@ -13,10 +13,10 @@ Backend của **Smart Vessel Motion Guard**: nhận bản tin MQTT từ thiết 
 | M3-03 | Alarm service (ACK, MTTA, leo thang, WebSocket) | Xong |
 | M3-04 | Command service (vòng đời lệnh, TTL, cấu hình có phiên bản, rollback) | Xong |
 | M3-05 | JWT + RBAC (3 vai trò) | Xong |
-| M3-06 | Voyage + báo cáo PDF/CSV | **Chưa làm** (chờ xác nhận cách M1 xử lý `voyage_id`) |
+| M3-06 | Voyage + báo cáo PDF/CSV | Phần lõi xong (chuyến đi, số liệu, CSV, PDF). **Chưa nối** với lệnh `start_voyage` xuống thiết bị (chờ M1) |
 | M3-07 | Replay, Health, Model monitor | Mới có **Health**; replay và model monitor chưa làm (chờ M2) |
 | M3-08 | Thông báo Telegram/email | Xong |
-| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong (173 test); **chưa chạy với broker thật** |
+| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong (205 test); **chưa chạy với broker thật** |
 
 ## Công nghệ
 
@@ -37,9 +37,10 @@ backend/
 ├── alarms/                  # service (vòng đời cảnh báo), realtime (WebSocket hub)
 ├── commands/                # params (an toàn), service (vòng đời lệnh), config_service, publisher
 ├── notify/                  # Telegram + email webhook
-├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo, 0003 nhãn cảnh báo)
+├── reports/                 # metrics (số liệu), csvexport, pdf, fonts/ (DejaVu, kèm license)
+├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo, 0003 nhãn cảnh báo, 0004 chuyến đi)
 ├── scripts/                 # export_openapi.py, create_user.py
-└── (reports/ replay/ monitor/ — chưa làm)
+└── (replay/ monitor/ — chưa làm)
 ```
 
 ## Cài đặt & chạy
@@ -50,7 +51,7 @@ Chạy các lệnh **từ thư mục `backend/`** (file `.env` được đọc t
 cd backend
 python -m venv venv
 venv\Scripts\activate            # Windows   |   source venv/bin/activate  (Linux/Mac)
-pip install -r requirements.txt
+pip install -r requirements.txt        # hoặc requirements-dev.txt (thêm pdfplumber cho test đọc PDF)
 
 cp ../infra/.env.example .env    # rồi sửa .env (xem bảng biến môi trường)
 python scripts/create_user.py admin ADMIN   # tạo admin đầu tiên (hỏi mật khẩu, không hiện trên màn hình)
@@ -93,7 +94,7 @@ uvicorn main:app --reload --port 8000
 | Vai trò | Quyền |
 |---------|-------|
 | **OPERATOR** | Xem dữ liệu, ACK cảnh báo, gửi lệnh `mute_alarm` |
-| **SUPERVISOR** | + `set_profile`, `set_threshold`, `calibrate_zero`, `start/stop_voyage`, `PUT /config`, rollback, **gắn nhãn cảnh báo**, xem audit |
+| **SUPERVISOR** | + tạo/kết thúc chuyến đi, `set_profile`, `set_threshold`, `calibrate_zero`, `start/stop_voyage`, `PUT /config`, rollback, **gắn nhãn cảnh báo**, xem audit |
 | **ADMIN** | + `restart_device`, quản lý người dùng, kiểm tra kênh thông báo |
 
 Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào `audit_log` (`GET /api/v1/audit`).
@@ -107,6 +108,8 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 | Thiết bị | `GET /devices`, `/devices/{id}`, `/devices/{id}/telemetry` |
 | Sức khỏe | `GET /health/devices`, `/devices/{id}/health` |
 | Cảnh báo | `GET /alarms` (lọc `state`, `label`, `unlabeled`), `/alarms/{id}`, `/alarms/stats`, `POST /alarms/{id}/ack`, `PUT /alarms/{id}/label`, WebSocket `/ws/alarms` |
+| Chuyến đi (Supervisor tạo/kết thúc) | `POST /voyages`, `GET /voyages`, `/voyages/{id}`, `POST /voyages/{id}/end` |
+| Báo cáo chuyến | `GET /voyages/{id}/summary`, `/telemetry.csv`, `/alarms.csv`, `/report.pdf` |
 | Lệnh | `POST /devices/{id}/commands`, `GET /commands`, `/commands/{cmd_id}`, `/commands/stats` |
 | Cấu hình | `GET/PUT /devices/{id}/config`, `POST /devices/{id}/config/rollback` |
 | Kiểm toán | `GET /audit` |
@@ -147,6 +150,31 @@ Topic `svmg/{device_id}/…` theo `contracts/mqtt_topics.md`.
 - `GET /alarms/stats` trả thêm `labeled`, `by_label`, `label_coverage` và `false_alarm_rate = FALSE / (TRUE + FALSE)`. `UNCLEAR` và cảnh báo chưa đánh giá **không** nằm trong mẫu số; chưa có kết luận nào thì giá trị là `null`, không phải 0%.
 - Tên giá trị nhãn do backend đặt từ "đúng/sai/chưa rõ" trong README gốc, **cần M4 xác nhận** khi làm giao diện.
 
+## Chuyến đi và báo cáo (G4)
+
+**Chuyến đi** là một bản ghi trong backend: `POST /voyages` (`device_id`, tùy chọn `voyage_id`; bỏ trống thì sinh `V-YYYY-NNN`). Mỗi thiết bị chỉ có **tối đa một chuyến đang chạy** (CSDL tự chặn bằng chỉ mục duy nhất có điều kiện). Việc này **không tự gửi lệnh `start_voyage`** xuống thiết bị; bản ghi chuyến gom dữ liệu theo trường `voyage_id` mà thiết bị gắn vào telemetry. Chưa có telemetry nào mang `voyage_id` đó thì báo cáo vẫn trả về, với số liệu rỗng và ghi chú rõ.
+
+**Báo cáo không lưu số đã tính**: mỗi lần gọi đều tính lại từ dữ liệu gốc. `summary.json` kèm `telemetry_csv_sha256`, là SHA-256 của file `telemetry.csv`, để đối chiếu rằng hai bên tính lại từ **cùng dữ liệu đầu vào**. CSV có BOM UTF-8, chuỗi bắt đầu bằng `= + - @` được chèn dấu `'` để Excel không chạy thành công thức.
+
+Công thức (để tính lại độc lập, xem thêm đầu file `reports/metrics.py`):
+
+| Số liệu | Cách tính |
+|---|---|
+| `samples` | Số dòng telemetry có `(device_id, voyage_id)` của chuyến |
+| `expected_samples` | Tổng theo từng `boot_id` của `seq_max − seq_min + 1` (`seq` đếm lại sau mỗi lần khởi động) |
+| `received_rate` | `samples / expected_samples` |
+| Thống kê roll/pitch/heel/rms | **Chỉ** mẫu `sensor_ok = true`; mẫu `sensor_ok = false` chỉ được đếm riêng |
+| `p95_abs_roll_deg` | Nearest-rank: `sorted(|roll|)[ceil(0.95·n) − 1]` |
+| `mean_rms_roll_deg` | Trung bình `rms_roll_deg` do thiết bị gửi (backend không tự tính lại từ roll) |
+| Phân bố lớp / mức cảnh báo | Đếm theo **số mẫu**, không phải theo thời gian |
+| `rf_baseline_agreement_rate` | `#(class_rf == class_baseline_b) / #(mẫu có cả hai)` |
+| `duration_s` | `last_sample_at − first_sample_at` theo `server_rx_time` |
+| `false_alarms_per_hour` | `#FALSE_ALARM / (duration_s/3600)`; là `null` nếu chưa có cảnh báo nào được đánh giá |
+
+Cảnh báo thuộc chuyến theo `voyage_id` của telemetry mới nhất lúc cảnh báo mở. Lệnh được tính nếu `created_at` nằm trong khoảng mẫu đầu → mẫu cuối. Chuyến đang chạy được đánh dấu `provisional` (số liệu tạm thời). Dữ liệu trộn `SENSOR` và `SIMULATION` ghi nhãn `MIXED`.
+
+**PDF** dùng ReportLab và font DejaVu Sans (có đủ dấu tiếng Việt) đặt trong `reports/fonts/` kèm `LICENSE_DEJAVU`; biểu đồ roll được lấy mẫu thưa tối đa 500 điểm và **không vẽ đường ngưỡng nào** vì ngưỡng chỉ là tham số demo.
+
 ## Thông báo Telegram / email
 
 1. Tạo bot qua BotFather, lấy token; lấy `chat_id` của nhóm/người nhận.
@@ -172,6 +200,7 @@ Test dùng SQLite trong bộ nhớ, publisher MQTT giả và mạng giả (`http
 - Bộ đếm khóa đăng nhập nằm trong bộ nhớ tiến trình (mất khi restart, không chia sẻ giữa nhiều worker).
 - Token WebSocket nằm trong URL (có thể vào log của proxy); phiên WebSocket không tự ngắt khi token hết hạn.
 - MTTA tính theo giờ server nhận bản tin, nên có thể bị phóng đại khi thiết bị gửi lại dữ liệu đệm sau mất mạng.
+- Báo cáo đọc toàn bộ telemetry của chuyến trong một lượt (bộ nhớ ~ số mẫu cho phân vị 95 và biểu đồ). Đã thử 6000 mẫu; chuyến rất dài (hàng trăm nghìn mẫu) chưa kiểm chứng.
 - Bảng `telemetry`, `device_health`, `audit_log` **chưa có cơ chế dọn dữ liệu cũ** (retention); cần xử lý nếu chạy dài ngày.
 - `Dockerfile` chưa được thử build. Thư mục `contracts/` không nằm trong image, cần mount và đặt `CONTRACTS_DIR`.
 - Nếu chạy nhiều instance backend, `client_id` MQTT cố định (`svmg-backend-ingest`) sẽ làm các instance đá nhau khỏi broker.
@@ -181,4 +210,5 @@ Test dùng SQLite trong bộ nhớ, publisher MQTT giả và mạng giả (`http
 1. **Thuật toán `crc` của config.** Hợp đồng chỉ có ví dụ `"9c1e"`. Backend đang dùng CRC-16/CCITT-FALSE trên JSON chuẩn hóa (khóa sắp xếp, không khoảng trắng, bỏ trường `crc`). Firmware (M1) phải tính y hệt.
 2. **`set_profile` / `set_threshold` so với `PUT /config`.** Hiện là hai đường độc lập. Cần M1 xác nhận thiết bị xử lý thế nào.
 3. **`DELIVERED`** nghĩa là broker đã nhận (PUBACK), không phải thiết bị đã nhận; chỉ `cmd/ack` mới xác nhận thiết bị.
-4. **`voyage_id` trong lệnh `start_voyage`** (cho M3-06): thiết bị nhận từ lệnh hay tự sinh rồi báo ngược lên?
+4. **`voyage_id` trong lệnh `start_voyage`**: thiết bị nhận từ lệnh hay tự sinh rồi báo ngược lên? Hiện `POST /voyages` cho phép truyền sẵn `voyage_id` để khớp với giá trị thiết bị đang phát.
+5. **Tên giá trị nhãn cảnh báo** (`TRUE_ALARM`/`FALSE_ALARM`/`UNCLEAR`) và các trường `summary.json` do backend đặt, cần M4 xác nhận khi làm giao diện.

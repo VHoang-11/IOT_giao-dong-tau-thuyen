@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
 from app.core.logging import setup_logging
 from app.core.security import validate_security_settings
-from app.routers import alarms, auth, commands, device_health, devices, health, notify as notify_router
+from app.routers import alarms, auth, commands, device_health, devices, health, notify as notify_router, voyages
 from app.services.auth import bootstrap_admin
 from commands.service import expire_overdue
 from notify.service import dispatcher
@@ -82,4 +82,5 @@ app.include_router(alarms.ws_router)
 app.include_router(commands.router)
 app.include_router(device_health.router)
 app.include_router(notify_router.router)
+app.include_router(voyages.router)
 # TODO: M3-06 voyages/reports, M3-07 replay/monitor

@@ -838,6 +838,257 @@ paths:
                 $ref: '#/components/schemas/TestResult'
       security:
       - OAuth2PasswordBearer: []
+  /api/v1/voyages:
+    post:
+      tags:
+      - voyages
+      summary: Start Voyage
+      description: Tao chuyen di (moi thiet bi toi da 1 chuyen dang chay). KHONG tu
+        gui lenh start_voyage xuong thiet bi.
+      operationId: start_voyage_api_v1_voyages_post
+      security:
+      - OAuth2PasswordBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoyageCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyageOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - voyages
+      summary: List Voyages
+      operationId: list_voyages_api_v1_voyages_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/VoyageStatus'
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VoyageOut'
+                title: Response List Voyages Api V1 Voyages Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}:
+    get:
+      tags:
+      - voyages
+      summary: Get Voyage
+      operationId: get_voyage_api_v1_voyages__voyage_id__get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyageOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}/end:
+    post:
+      tags:
+      - voyages
+      summary: End Voyage
+      operationId: end_voyage_api_v1_voyages__voyage_id__end_post
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyageOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}/summary:
+    get:
+      tags:
+      - voyages
+      summary: Voyage Summary
+      description: 'So lieu bao cao, tinh lai tu du lieu goc moi lan goi (cong thuc:
+        xem reports/metrics.py va README).'
+      operationId: voyage_summary_api_v1_voyages__voyage_id__summary_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}/telemetry.csv:
+    get:
+      tags:
+      - voyages
+      summary: Telemetry Csv
+      operationId: telemetry_csv_api_v1_voyages__voyage_id__telemetry_csv_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}/alarms.csv:
+    get:
+      tags:
+      - voyages
+      summary: Alarms Csv
+      operationId: alarms_csv_api_v1_voyages__voyage_id__alarms_csv_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}/report.pdf:
+    get:
+      tags:
+      - voyages
+      summary: Report Pdf
+      operationId: report_pdf_api_v1_voyages__voyage_id__report_pdf_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AckResult:
@@ -1262,6 +1513,21 @@ components:
       - total
       - by_state
       title: CommandStats
+    CommandSummary:
+      properties:
+        total:
+          type: integer
+          title: Total
+        by_state:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By State
+          default: {}
+      type: object
+      required:
+      - total
+      title: CommandSummary
     ConfigOut:
       properties:
         device_id:
@@ -1345,6 +1611,36 @@ components:
       title: ConfigUpdate
       description: Gioi han bam sat contracts/schemas/config.json (phi_hard 15-25,
         ...).
+    DataQuality:
+      properties:
+        samples:
+          type: integer
+          title: Samples
+        expected_samples:
+          type: integer
+          title: Expected Samples
+        missing_samples:
+          type: integer
+          title: Missing Samples
+        received_rate:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Received Rate
+        boots:
+          type: integer
+          title: Boots
+        sensor_fault_samples:
+          type: integer
+          title: Sensor Fault Samples
+      type: object
+      required:
+      - samples
+      - expected_samples
+      - missing_samples
+      - boots
+      - sensor_fault_samples
+      title: DataQuality
     DeviceHealthOut:
       properties:
         device_id:
@@ -1494,6 +1790,22 @@ components:
       - online
       - offline
       title: DeviceState
+    Distribution:
+      properties:
+        counts:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counts
+          default: {}
+        share:
+          additionalProperties:
+            type: number
+          type: object
+          title: Share
+          default: {}
+      type: object
+      title: Distribution
     HTTPValidationError:
       properties:
         detail:
@@ -1522,6 +1834,40 @@ components:
       - UNKNOWN
       - FAULT
       title: MotionClass
+    MotionStats:
+      properties:
+        samples_used:
+          type: integer
+          title: Samples Used
+        max_abs_roll_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Max Abs Roll Deg
+        p95_abs_roll_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: P95 Abs Roll Deg
+        mean_rms_roll_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Mean Rms Roll Deg
+        max_abs_pitch_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Max Abs Pitch Deg
+        max_abs_heel_offset_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Max Abs Heel Offset Deg
+      type: object
+      required:
+      - samples_used
+      title: MotionStats
     NotifyStatus:
       properties:
         channels:
@@ -1560,6 +1906,101 @@ components:
       - old_password
       - new_password
       title: PasswordChange
+    ReportSummary:
+      properties:
+        voyage:
+          $ref: '#/components/schemas/VoyageOut'
+        provisional:
+          type: boolean
+          title: Provisional
+        generated_at:
+          type: string
+          format: date-time
+          title: Generated At
+        source_label:
+          type: string
+          title: Source Label
+        source_modes:
+          items:
+            type: string
+          type: array
+          title: Source Modes
+        first_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: First Sample At
+        last_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sample At
+        duration_s:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Duration S
+        data_quality:
+          $ref: '#/components/schemas/DataQuality'
+        motion:
+          $ref: '#/components/schemas/MotionStats'
+        class_rf:
+          $ref: '#/components/schemas/Distribution'
+        class_baseline_b:
+          $ref: '#/components/schemas/Distribution'
+        rf_baseline_agreement_rate:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rf Baseline Agreement Rate
+        alarm_levels:
+          $ref: '#/components/schemas/Distribution'
+        alarms:
+          $ref: '#/components/schemas/AlarmStats'
+        false_alarms_per_hour:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: False Alarms Per Hour
+        commands:
+          $ref: '#/components/schemas/CommandSummary'
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+        telemetry_rows:
+          type: integer
+          title: Telemetry Rows
+        telemetry_csv_sha256:
+          type: string
+          title: Telemetry Csv Sha256
+        disclaimer:
+          type: string
+          title: Disclaimer
+          default: Nguyên mẫu nghiên cứu/đào tạo, KHÔNG phải hệ thống an toàn hàng
+            hải. Các ngưỡng chỉ là tham số demo. Không phải dự báo lật tàu hay đánh
+            giá ổn định tàu.
+      type: object
+      required:
+      - voyage
+      - provisional
+      - generated_at
+      - source_label
+      - source_modes
+      - data_quality
+      - motion
+      - class_rf
+      - class_baseline_b
+      - alarm_levels
+      - alarms
+      - commands
+      - notes
+      - telemetry_rows
+      - telemetry_csv_sha256
+      title: ReportSummary
     Role:
       type: string
       enum:
@@ -1768,6 +2209,70 @@ components:
       - msg
       - type
       title: ValidationError
+    VoyageCreate:
+      properties:
+        device_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          pattern: ^[A-Za-z0-9_.-]+$
+          title: Device Id
+        voyage_id:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9_.-]{1,64}$
+          - type: 'null'
+          title: Voyage Id
+      additionalProperties: false
+      type: object
+      required:
+      - device_id
+      title: VoyageCreate
+    VoyageOut:
+      properties:
+        voyage_id:
+          type: string
+          title: Voyage Id
+        device_id:
+          type: string
+          title: Device Id
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+        status:
+          $ref: '#/components/schemas/VoyageStatus'
+        started_by:
+          type: string
+          title: Started By
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Ended At
+        ended_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ended By
+      type: object
+      required:
+      - voyage_id
+      - device_id
+      - source_mode
+      - status
+      - started_by
+      - started_at
+      title: VoyageOut
+    VoyageStatus:
+      type: string
+      enum:
+      - ACTIVE
+      - ENDED
+      title: VoyageStatus
   securitySchemes:
     OAuth2PasswordBearer:
       type: oauth2
