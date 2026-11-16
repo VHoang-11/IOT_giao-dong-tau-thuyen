@@ -1,0 +1,23 @@
+paths:
+  raw_root: ml/data/raw
+  processed_root: ml/data/processed
+  report_root: ml/reports/preprocessing
+
+preprocessing:
+  target_sampling_hz: 10.0
+  maximum_gap_factor: 1.5
+  duplicate_tolerance: 0.0
+  filter_order: 4
+  anti_alias_cutoff_hz: 4.0
+  filter_warmup_seconds: 2.0
+  valid_fraction_threshold: 0.95
+  minimum_segment_seconds: 1.0
+  quantile_method: type7
+  timestamp_origin_hohai: INFERRED_FROM_SAMPLE_INDEX
+  random_seed: 0
+
+reporting:
+  representative_duration_seconds: 180
+  plot_dpi: 140
+  write_parquet_compression: zstd
+
