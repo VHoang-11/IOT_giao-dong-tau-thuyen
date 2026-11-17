@@ -1,0 +1,1367 @@
+{
+ "schema_version": "svmg-angle23-0.2.0-proposal",
+ "golden_manifest_sha256": "05e481240fdfb56d7797d2d44acfbcdcfe30d2443136c7ac055ec5c601c0a17a",
+ "manifest_verification": {
+  "files": 44,
+  "problems": [],
+  "passed": true
+ },
+ "suites": {
+  "synthetic": {
+   "available": true,
+   "cases": 31,
+   "expected_records": 11224,
+   "python_self_consistency": {
+    "verdict": "PYTHON_SELF_CONSISTENCY_PASS",
+    "outcome_counts": {
+     "PASS_STATUS_ONLY": 4709,
+     "PASS_VALUE": 6515
+    },
+    "fail_records": 0,
+    "review_records": 0
+   },
+   "float32_emulation": {
+    "verdict": "FLOAT32_EMULATION_PASS_WITH_REVIEW",
+    "outcome_counts": {
+     "PASS_STATUS_ONLY": 4708,
+     "PASS_VALUE": 6515,
+     "REVIEW_ILL_CONDITIONED": 1
+    },
+    "fail_records": 0,
+    "review_records": 1,
+    "per_feature": [
+     {
+      "feature_index": 0,
+      "feature_name": "roll_rms_60",
+      "tolerance_class": "rms",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 2.211870398394211e-06,
+      "max_rel_error": 1.2251426227293972e-06,
+      "max_error_ratio": 0.0527949828022013
+     },
+     {
+      "feature_index": 1,
+      "feature_name": "roll_std_60",
+      "tolerance_class": "dispersion",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 2.5872564968221212e-06,
+      "max_rel_error": 3.8240135924849995e-06,
+      "max_error_ratio": 0.01660422906804352
+     },
+     {
+      "feature_index": 2,
+      "feature_name": "roll_mean_60",
+      "tolerance_class": "mean",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 1.463536173140767e-06,
+      "max_rel_error": 0.0020947828221667838,
+      "max_error_ratio": 0.01327414147346413
+     },
+     {
+      "feature_index": 3,
+      "feature_name": "roll_peak_to_peak_60",
+      "tolerance_class": "extremum",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 4.76837158203125e-07,
+      "max_rel_error": 5.7043656594221036e-08,
+      "max_error_ratio": 0.18849206540690353
+     },
+     {
+      "feature_index": 4,
+      "feature_name": "roll_abs_p95_60",
+      "tolerance_class": "quantile",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 5.841255168448356e-07,
+      "max_rel_error": 2.2030253317965117e-07,
+      "max_error_ratio": 0.03986860027987167
+     },
+     {
+      "feature_index": 5,
+      "feature_name": "roll_abs_max_60",
+      "tolerance_class": "extremum",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "max_error_ratio": 0.0
+     },
+     {
+      "feature_index": 6,
+      "feature_name": "roll_iqr_60",
+      "tolerance_class": "quantile",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 476,
+      "max_abs_error": 4.76837158203125e-07,
+      "max_rel_error": 3.401476240688459e-05,
+      "max_error_ratio": 0.014712472393000397
+     },
+     {
+      "feature_index": 7,
+      "feature_name": "roll_diff_rms_60",
+      "tolerance_class": "difference_rms",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 474,
+      "max_abs_error": 1.603723391863099e-07,
+      "max_rel_error": 1.6945772843897478e-06,
+      "max_error_ratio": 0.010221447486870988
+     },
+     {
+      "feature_index": 8,
+      "feature_name": "roll_mean_180",
+      "tolerance_class": "mean",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 116,
+      "max_abs_error": 1.6435815228810213e-06,
+      "max_rel_error": 0.005660870144388561,
+      "max_error_ratio": 0.01494258542960769
+     },
+     {
+      "feature_index": 9,
+      "feature_name": "roll_median_180",
+      "tolerance_class": "quantile",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 116,
+      "max_abs_error": 5.960464477539063e-08,
+      "max_rel_error": 1.3155384827894677e-06,
+      "max_error_ratio": 0.004257292354739162
+     },
+     {
+      "feature_index": 10,
+      "feature_name": "roll_mean_abs_180",
+      "tolerance_class": "mean",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 116,
+      "max_abs_error": 3.3098459244484957e-06,
+      "max_rel_error": 2.0843624338789253e-06,
+      "max_error_ratio": 0.04412634238959987
+     },
+     {
+      "feature_index": 11,
+      "feature_name": "roll_dominant_sign_ratio_180",
+      "tolerance_class": "count_ratio",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 2.7550591363834087e-08,
+      "max_rel_error": 4.874549893284719e-08,
+      "max_error_ratio": 0.027550591363834087
+     },
+     {
+      "feature_index": 12,
+      "feature_name": "roll_segment_mean_std_180",
+      "tolerance_class": "dispersion",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 6.94630449882272e-07,
+      "max_rel_error": 116.90583505335822,
+      "max_error_ratio": 0.0025084858241604317
+     },
+     {
+      "feature_index": 13,
+      "feature_name": "roll_mean_shift_180",
+      "tolerance_class": "mean_difference",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 1.5164632349851104e-06,
+      "max_rel_error": 481.00000178813934,
+      "max_error_ratio": 0.006880212727845612
+     },
+     {
+      "feature_index": 14,
+      "feature_name": "roll_rms_early_60",
+      "tolerance_class": "rms",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 2.211870398394211e-06,
+      "max_rel_error": 1.2251426227293972e-06,
+      "max_error_ratio": 0.04314121906740391
+     },
+     {
+      "feature_index": 15,
+      "feature_name": "roll_rms_late_60",
+      "tolerance_class": "rms",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 2.021485499881237e-06,
+      "max_rel_error": 5.143396363986406e-07,
+      "max_error_ratio": 0.022484327767973756
+     },
+     {
+      "feature_index": 16,
+      "feature_name": "roll_rms_ratio_180",
+      "tolerance_class": "ratio",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 92,
+      "max_abs_error": 2.000289721414447,
+      "max_rel_error": 1.4182993916748342e-06,
+      "max_error_ratio": 0.028365827727323458
+     },
+     {
+      "feature_index": 17,
+      "feature_name": "roll_rms_slope_180",
+      "tolerance_class": "slope",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 1.7916834846865015e-06,
+      "max_rel_error": 0.00023888837230506157,
+      "max_error_ratio": 0.009746294037993663
+     },
+     {
+      "feature_index": 18,
+      "feature_name": "roll_rms_trend_r2_180",
+      "tolerance_class": "r_squared",
+      "records": 488,
+      "pass": 487,
+      "fail": 0,
+      "review": 1,
+      "values_compared": 55,
+      "max_abs_error": 1.0728833568895979e-05,
+      "max_rel_error": 3.545327884080417e-05,
+      "max_error_ratio": 0.0053644167844479895
+     },
+     {
+      "feature_index": 19,
+      "feature_name": "roll_p95_trend_slope_180",
+      "tolerance_class": "slope",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 108,
+      "max_abs_error": 3.218650812542023e-07,
+      "max_rel_error": 1.3917014264010015e-06,
+      "max_error_ratio": 0.004339910194855181
+     },
+     {
+      "feature_index": 20,
+      "feature_name": "pitch_rms_60",
+      "tolerance_class": "rms",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 486,
+      "max_abs_error": 1.7948660653854809e-06,
+      "max_rel_error": 4.461227837876704e-06,
+      "max_error_ratio": 0.18405144502646653
+     },
+     {
+      "feature_index": 21,
+      "feature_name": "pitch_std_60",
+      "tolerance_class": "dispersion",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 486,
+      "max_abs_error": 2.181969270154127e-06,
+      "max_rel_error": 3.8240135924849995e-06,
+      "max_error_ratio": 0.03474048529113874
+     },
+     {
+      "feature_index": 22,
+      "feature_name": "pitch_peak_to_peak_60",
+      "tolerance_class": "extremum",
+      "records": 488,
+      "pass": 488,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 486,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "max_error_ratio": 0.0
+     }
+    ],
+    "review_rows": [
+     {
+      "case_id": "SYN30_permuted_blocks",
+      "endpoint_index": 2100,
+      "feature_name": "roll_rms_trend_r2_180",
+      "expected_status": "UNDEFINED_MATHEMATICALLY",
+      "actual_status": "VALID",
+      "actual_value": 0.0,
+      "detail": "ILL_CONDITIONED_R2: status UNDEFINED_MATHEMATICALLY vs VALID; quyết định phụ thuộc làm tròn (xem C02/C03)"
+     }
+    ],
+    "max_error_ratio_overall": 0.18849206540690353
+   },
+   "mutation_matrix": [
+    {
+     "mutation": "sample_std_ddof1",
+     "description_vi": "std mẫu (chia n-1) thay vì std quần thể",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 589,
+     "detecting_cases": [
+      "SYN04_sine_roll",
+      "SYN05_sine_pitch",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks"
+     ],
+     "failing_features": [
+      "roll_std_60",
+      "roll_segment_mean_std_180",
+      "pitch_std_60"
+     ]
+    },
+    {
+     "mutation": "quantile_nearest_rank",
+     "description_vi": "phân vị nearest-rank thay vì Type-7",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 586,
+     "detecting_cases": [
+      "SYN04_sine_roll",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN15_low_amplitude",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_abs_p95_60",
+      "roll_iqr_60",
+      "roll_median_180",
+      "roll_p95_trend_slope_180"
+     ]
+    },
+    {
+     "mutation": "quantile_type6",
+     "description_vi": "phân vị Type-6 h=(n+1)p thay vì Type-7",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 529,
+     "detecting_cases": [
+      "SYN04_sine_roll",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN15_low_amplitude",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_abs_p95_60",
+      "roll_iqr_60",
+      "roll_p95_trend_slope_180"
+     ]
+    },
+    {
+     "mutation": "window_includes_lower_bound",
+     "description_vi": "cửa sổ [t-W, t) (lệch 1 mẫu) thay vì (t-W, t]",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 929,
+     "detecting_cases": [
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN22_nan_excess",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks"
+     ],
+     "failing_features": [
+      "roll_rms_60",
+      "roll_std_60",
+      "roll_mean_60",
+      "roll_peak_to_peak_60",
+      "roll_abs_p95_60",
+      "roll_abs_max_60",
+      "roll_iqr_60",
+      "roll_diff_rms_60",
+      "roll_mean_180",
+      "roll_median_180",
+      "roll_mean_abs_180",
+      "roll_dominant_sign_ratio_180",
+      "roll_segment_mean_std_180",
+      "roll_mean_shift_180",
+      "roll_rms_early_60",
+      "roll_rms_late_60",
+      "roll_rms_ratio_180",
+      "roll_rms_slope_180",
+      "roll_rms_trend_r2_180",
+      "pitch_rms_60",
+      "pitch_std_60"
+     ]
+    },
+    {
+     "mutation": "radians_input",
+     "description_vi": "dùng Roll/Pitch theo radian",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 4473,
+     "detecting_cases": [
+      "SYN02_const_roll_pos",
+      "SYN03_const_roll_neg_pitch_pos",
+      "SYN04_sine_roll",
+      "SYN05_sine_pitch",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN15_low_amplitude",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_rms_60",
+      "roll_std_60",
+      "roll_mean_60",
+      "roll_peak_to_peak_60",
+      "roll_abs_p95_60",
+      "roll_abs_max_60",
+      "roll_iqr_60",
+      "roll_diff_rms_60",
+      "roll_mean_180",
+      "roll_median_180",
+      "roll_mean_abs_180",
+      "roll_segment_mean_std_180",
+      "roll_mean_shift_180",
+      "roll_rms_early_60",
+      "roll_rms_late_60",
+      "roll_rms_slope_180",
+      "roll_p95_trend_slope_180",
+      "pitch_rms_60",
+      "pitch_std_60",
+      "pitch_peak_to_peak_60"
+     ]
+    },
+    {
+     "mutation": "diff_per_second",
+     "description_vi": "roll_diff_rms_60 chia cho dt (deg/s) thay vì deg/mẫu",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 398,
+     "detecting_cases": [
+      "SYN04_sine_roll",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN15_low_amplitude",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_diff_rms_60"
+     ]
+    },
+    {
+     "mutation": "slope_per_second",
+     "description_vi": "slope không nhân 60 (deg/s thay vì deg/phút)",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 95,
+     "detecting_cases": [
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN21_isolated_nan",
+      "SYN26_infinite_values",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks"
+     ],
+     "failing_features": [
+      "roll_rms_slope_180",
+      "roll_p95_trend_slope_180"
+     ]
+    },
+    {
+     "mutation": "p95_without_abs",
+     "description_vi": "P95 trên x thay vì |x|",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 333,
+     "detecting_cases": [
+      "SYN03_const_roll_neg_pitch_pos",
+      "SYN04_sine_roll",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN12_spike_window_boundaries",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric"
+     ],
+     "failing_features": [
+      "roll_abs_p95_60",
+      "roll_p95_trend_slope_180"
+     ]
+    },
+    {
+     "mutation": "centered_rms",
+     "description_vi": "RMS quanh mean (thực chất là std) thay vì RMS gồm offset",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 486,
+     "detecting_cases": [
+      "SYN02_const_roll_pos",
+      "SYN03_const_roll_neg_pitch_pos",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN15_low_amplitude",
+      "SYN16_sign_with_exact_zeros",
+      "SYN25_large_amplitude_units",
+      "SYN28_negative_offset_sine",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_rms_60",
+      "roll_rms_early_60",
+      "roll_rms_late_60",
+      "roll_rms_ratio_180",
+      "roll_rms_slope_180",
+      "roll_rms_trend_r2_180",
+      "pitch_rms_60"
+     ]
+    },
+    {
+     "mutation": "swap_roll_pitch_rms",
+     "description_vi": "đảo vị trí roll_rms_60 (0) và pitch_rms_60 (20)",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 916,
+     "detecting_cases": [
+      "SYN02_const_roll_pos",
+      "SYN03_const_roll_neg_pitch_pos",
+      "SYN04_sine_roll",
+      "SYN05_sine_pitch",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN15_low_amplitude",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_rms_60",
+      "pitch_rms_60"
+     ]
+    },
+    {
+     "mutation": "invalid_as_zero",
+     "description_vi": "feature không VALID được xuất VALID = 0",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 4663,
+     "detecting_cases": [
+      "SYN01_const_zero",
+      "SYN02_const_roll_pos",
+      "SYN03_const_roll_neg_pitch_pos",
+      "SYN04_sine_roll",
+      "SYN05_sine_pitch",
+      "SYN06_mixed_order_detector",
+      "SYN07_growing_amplitude",
+      "SYN08_decreasing_amplitude",
+      "SYN09_block_step_linear",
+      "SYN10_block_step_nonlinear",
+      "SYN11_offset_constant_amplitude",
+      "SYN12_spike_window_boundaries",
+      "SYN13_ramp_quantiles",
+      "SYN14_square_wave_quantile_discontinuity",
+      "SYN15_low_amplitude",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block",
+      "SYN18_epsilon_below",
+      "SYN19_epsilon_above",
+      "SYN20_insufficient_history",
+      "SYN21_isolated_nan",
+      "SYN22_nan_excess",
+      "SYN23_timestamp_gap",
+      "SYN24_single_dropped_sample",
+      "SYN25_large_amplitude_units",
+      "SYN26_infinite_values",
+      "SYN27_block_coverage_rule",
+      "SYN28_negative_offset_sine",
+      "SYN29_block_step_symmetric",
+      "SYN30_permuted_blocks",
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_rms_60",
+      "roll_std_60",
+      "roll_mean_60",
+      "roll_peak_to_peak_60",
+      "roll_abs_p95_60",
+      "roll_abs_max_60",
+      "roll_iqr_60",
+      "roll_diff_rms_60",
+      "roll_mean_180",
+      "roll_median_180",
+      "roll_mean_abs_180",
+      "roll_dominant_sign_ratio_180",
+      "roll_segment_mean_std_180",
+      "roll_mean_shift_180",
+      "roll_rms_early_60",
+      "roll_rms_late_60",
+      "roll_rms_ratio_180",
+      "roll_rms_slope_180",
+      "roll_rms_trend_r2_180",
+      "roll_p95_trend_slope_180",
+      "pitch_rms_60",
+      "pitch_std_60",
+      "pitch_peak_to_peak_60"
+     ]
+    },
+    {
+     "mutation": "sign_ratio_counts_zero_as_positive",
+     "description_vi": "đếm số 0 tuyệt đối là dương",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 16,
+     "detecting_cases": [
+      "SYN01_const_zero",
+      "SYN05_sine_pitch",
+      "SYN16_sign_with_exact_zeros",
+      "SYN17_zero_early_block"
+     ],
+     "failing_features": [
+      "roll_dominant_sign_ratio_180"
+     ]
+    },
+    {
+     "mutation": "one_pass_variance",
+     "description_vi": "phương sai một lượt E[x²]-E[x]² trong float32 (không ổn định)",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 32,
+     "detecting_cases": [
+      "SYN31_large_offset_small_variation"
+     ],
+     "failing_features": [
+      "roll_std_60",
+      "pitch_std_60"
+     ]
+    },
+    {
+     "mutation": "ratio_without_epsilon",
+     "description_vi": "roll_rms_ratio_180 chỉ kiểm tra rms_early > 0, bỏ epsilon 1e-9",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 4,
+     "detecting_cases": [
+      "SYN18_epsilon_below"
+     ],
+     "failing_features": [
+      "roll_rms_ratio_180"
+     ]
+    },
+    {
+     "mutation": "r2_zero_when_undefined",
+     "description_vi": "R² = 0 VALID khi SST <= ngưỡng thay vì UNDEFINED",
+     "verdict": "FLOAT32_EMULATION_FAIL",
+     "detected": true,
+     "fail_records": 8,
+     "detecting_cases": [
+      "SYN01_const_zero",
+      "SYN05_sine_pitch"
+     ],
+     "failing_features": [
+      "roll_rms_trend_r2_180"
+     ]
+    }
+   ],
+   "all_mutations_detected": true,
+   "corruption_scenarios": [
+    {
+     "scenario": "missing_case",
+     "expected_outcome": "MISSING",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "MISSING": 368
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "missing_rows",
+     "expected_outcome": "MISSING",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "MISSING": 3
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "duplicate_rows",
+     "expected_outcome": "DUPLICATE",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "DUPLICATE": 2
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "extra_case",
+     "expected_outcome": "EXTRA",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "EXTRA": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "wrong_input_sha256",
+     "expected_outcome": "FAIL_INPUT_SHA256",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_INPUT_SHA256": 368
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "wrong_schema_version",
+     "expected_outcome": "FAIL_SCHEMA_VERSION",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_SCHEMA_VERSION": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "feature_names_shifted_by_one",
+     "expected_outcome": "FAIL_FEATURE_NAME_ORDER",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_FEATURE_NAME_ORDER": 23
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "nan_reported_as_valid",
+     "expected_outcome": "FAIL_VALID_NOT_FINITE",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_VALID_NOT_FINITE": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "empty_value_reported_as_valid",
+     "expected_outcome": "FAIL_VALID_NOT_FINITE",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_VALID_NOT_FINITE": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "invalid_written_as_zero",
+     "expected_outcome": "FAIL_INVALID_HAS_VALUE",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_INVALID_HAS_VALUE": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "status_flipped",
+     "expected_outcome": "FAIL_STATUS_MISMATCH",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_STATUS_MISMATCH": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "unknown_status",
+     "expected_outcome": "FAIL_UNKNOWN_STATUS",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_UNKNOWN_STATUS": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "endpoint_time_shifted",
+     "expected_outcome": "FAIL_ENDPOINT_TIME",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_ENDPOINT_TIME": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "value_outside_tolerance",
+     "expected_outcome": "FAIL_VALUE_TOLERANCE",
+     "verdict": "PYTHON_SELF_CONSISTENCY_FAIL",
+     "outcome_counts": {
+      "FAIL_VALUE_TOLERANCE": 1
+     },
+     "behaved_as_expected": true
+    },
+    {
+     "scenario": "value_inside_tolerance",
+     "expected_outcome": "PASS",
+     "verdict": "PYTHON_SELF_CONSISTENCY_PASS",
+     "outcome_counts": {},
+     "behaved_as_expected": true
+    }
+   ],
+   "all_corruptions_behaved": true
+  },
+  "real": {
+   "available": true,
+   "cases": 5,
+   "expected_records": 2185,
+   "python_self_consistency": {
+    "verdict": "PYTHON_SELF_CONSISTENCY_PASS",
+    "outcome_counts": {
+     "PASS_STATUS_ONLY": 720,
+     "PASS_VALUE": 1465
+    },
+    "fail_records": 0,
+    "review_records": 0
+   },
+   "float32_emulation": {
+    "verdict": "FLOAT32_EMULATION_PASS",
+    "outcome_counts": {
+     "PASS_STATUS_ONLY": 720,
+     "PASS_VALUE": 1465
+    },
+    "fail_records": 0,
+    "review_records": 0,
+    "per_feature": [
+     {
+      "feature_index": 0,
+      "feature_name": "roll_rms_60",
+      "tolerance_class": "rms",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 4.558360272355344e-06,
+      "max_rel_error": 1.3393209118883393e-06,
+      "max_error_ratio": 0.05998653494195791
+     },
+     {
+      "feature_index": 1,
+      "feature_name": "roll_std_60",
+      "tolerance_class": "dispersion",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 2.508413284307842e-07,
+      "max_rel_error": 2.3755565580263918e-06,
+      "max_error_ratio": 0.003222987335900598
+     },
+     {
+      "feature_index": 2,
+      "feature_name": "roll_mean_60",
+      "tolerance_class": "mean",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 7.561047871806892e-06,
+      "max_rel_error": 2.013701887135737e-06,
+      "max_error_ratio": 0.0888489761669435
+     },
+     {
+      "feature_index": 3,
+      "feature_name": "roll_peak_to_peak_60",
+      "tolerance_class": "extremum",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 1.1920928955078125e-07,
+      "max_rel_error": 5.575401817815159e-08,
+      "max_error_ratio": 0.18098557551333852
+     },
+     {
+      "feature_index": 4,
+      "feature_name": "roll_abs_p95_60",
+      "tolerance_class": "quantile",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 2.44379042779741e-07,
+      "max_rel_error": 3.457032319521703e-07,
+      "max_error_ratio": 0.046848924218683786
+     },
+     {
+      "feature_index": 5,
+      "feature_name": "roll_abs_max_60",
+      "tolerance_class": "extremum",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 0.0,
+      "max_rel_error": 0.0,
+      "max_error_ratio": 0.0
+     },
+     {
+      "feature_index": 6,
+      "feature_name": "roll_iqr_60",
+      "tolerance_class": "quantile",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 5.960464477539063e-08,
+      "max_rel_error": 1.7790882409976652e-06,
+      "max_error_ratio": 0.015063140628710522
+     },
+     {
+      "feature_index": 7,
+      "feature_name": "roll_diff_rms_60",
+      "tolerance_class": "difference_rms",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 7.172263374877197e-08,
+      "max_rel_error": 2.456850321622923e-06,
+      "max_error_ratio": 0.012252569781344187
+     },
+     {
+      "feature_index": 8,
+      "feature_name": "roll_mean_180",
+      "tolerance_class": "mean",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 1.2135108311994713e-05,
+      "max_rel_error": 3.6431798445408295e-06,
+      "max_error_ratio": 0.1425982175322528
+     },
+     {
+      "feature_index": 9,
+      "feature_name": "roll_median_180",
+      "tolerance_class": "quantile",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 2.9802322387695312e-08,
+      "max_rel_error": 5.087415793729709e-08,
+      "max_error_ratio": 0.007193042101966061
+     },
+     {
+      "feature_index": 10,
+      "feature_name": "roll_mean_abs_180",
+      "tolerance_class": "mean",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 1.2135108311994713e-05,
+      "max_rel_error": 3.6431798445408295e-06,
+      "max_error_ratio": 0.1425982175322528
+     },
+     {
+      "feature_index": 11,
+      "feature_name": "roll_dominant_sign_ratio_180",
+      "tolerance_class": "count_ratio",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 2.9669867673831618e-08,
+      "max_rel_error": 5.1799962961102724e-08,
+      "max_error_ratio": 0.029669867673831618
+     },
+     {
+      "feature_index": 12,
+      "feature_name": "roll_segment_mean_std_180",
+      "tolerance_class": "dispersion",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 2.7642776330716323e-06,
+      "max_rel_error": 4.798762216219397e-05,
+      "max_error_ratio": 0.012667583985105705
+     },
+     {
+      "feature_index": 13,
+      "feature_name": "roll_mean_shift_180",
+      "tolerance_class": "mean_difference",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 7.10765520706147e-06,
+      "max_rel_error": 0.00017276661313348786,
+      "max_error_ratio": 0.047479326579489264
+     },
+     {
+      "feature_index": 14,
+      "feature_name": "roll_rms_early_60",
+      "tolerance_class": "rms",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 2.71799591322619e-06,
+      "max_rel_error": 7.766146145275402e-07,
+      "max_error_ratio": 0.035036555578918695
+     },
+     {
+      "feature_index": 15,
+      "feature_name": "roll_rms_late_60",
+      "tolerance_class": "rms",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 4.558360272355344e-06,
+      "max_rel_error": 1.3393209118883393e-06,
+      "max_error_ratio": 0.05945450181224538
+     },
+     {
+      "feature_index": 16,
+      "feature_name": "roll_rms_ratio_180",
+      "tolerance_class": "ratio",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 2.0646137046664848e-06,
+      "max_rel_error": 1.9312105942486863e-06,
+      "max_error_ratio": 0.038623489327610006
+     },
+     {
+      "feature_index": 17,
+      "feature_name": "roll_rms_slope_180",
+      "tolerance_class": "slope",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 3.1598504233176783e-06,
+      "max_rel_error": 2.8737261096912767e-05,
+      "max_error_ratio": 0.0366573822117854
+     },
+     {
+      "feature_index": 18,
+      "feature_name": "roll_rms_trend_r2_180",
+      "tolerance_class": "r_squared",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 1.4325839704509846e-05,
+      "max_rel_error": 4.7585504973362156e-05,
+      "max_error_ratio": 0.007162919852254923
+     },
+     {
+      "feature_index": 19,
+      "feature_name": "roll_p95_trend_slope_180",
+      "tolerance_class": "slope",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 35,
+      "max_abs_error": 1.1771917307612512e-07,
+      "max_rel_error": 1.3143968857119916e-05,
+      "max_error_ratio": 0.004154625415879671
+     },
+     {
+      "feature_index": 20,
+      "feature_name": "pitch_rms_60",
+      "tolerance_class": "rms",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 1.7698164742618872e-06,
+      "max_rel_error": 2.1701021987191377e-06,
+      "max_error_ratio": 0.09739837032670327
+     },
+     {
+      "feature_index": 21,
+      "feature_name": "pitch_std_60",
+      "tolerance_class": "dispersion",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 1.6091004538532072e-07,
+      "max_rel_error": 3.2261890233484425e-06,
+      "max_error_ratio": 0.0032356897501839886
+     },
+     {
+      "feature_index": 22,
+      "feature_name": "pitch_peak_to_peak_60",
+      "tolerance_class": "extremum",
+      "records": 95,
+      "pass": 95,
+      "fail": 0,
+      "review": 0,
+      "values_compared": 95,
+      "max_abs_error": 2.9802322387695312e-08,
+      "max_rel_error": 5.920107556514087e-08,
+      "max_error_ratio": 0.19040408963369093
+     }
+    ],
+    "review_rows": [],
+    "max_error_ratio_overall": 0.19040408963369093
+   }
+  }
+ },
+ "c03_evidence": {
+  "case_id": "SYN30_permuted_blocks",
+  "endpoint_index": 2100,
+  "python_block_rms": [
+   1.490180883822287,
+   1.490180883822287,
+   1.490180883822287
+  ],
+  "python_sst": 0.0,
+  "float32_block_rms": [
+   1.4901810884475708,
+   1.4901807308197021,
+   1.4901812076568604
+  ],
+  "float32_sst": 1.2789769243681803e-13,
+  "sst_threshold": 1e-15
+ },
+ "c_results_submitted": [],
+ "status": [
+  "PYTHON_REFERENCE_READY",
+  "C_PARITY_PENDING"
+ ],
+ "levels": {
+  "level_1_python_reference": "Golden do extractor production tạo; kiểm tra giải tích độc lập + cross-check feature table + test.",
+  "level_2_python_c_parity": "CHƯA CÓ kết quả C thật — C_PARITY_PENDING.",
+  "level_3_esp32_sensor_to_model": "CHƯA ĐÁNH GIÁ. Level 2 không chứng minh Level 3; lệch miền do chuỗi lọc firmware đã đo: POS 188 -> 4 (esp32_feature_compatibility.md)."
+ }
+}
