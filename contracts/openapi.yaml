@@ -1089,6 +1089,104 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voyages/{voyage_id}/replay:
+    get:
+      tags:
+      - replay
+      summary: Replay Voyage
+      description: 'Dữ liệu để phát lại một chuyến. Tốc độ ×1–×60 do giao diện tự
+        xử lý.
+
+
+        Sắp xếp theo (server_rx_time, id). Chọn MỘT trục lọc: from_time/to_time hoặc
+        from_t_sim/to_t_sim.
+
+        `truncated=true` nghĩa là còn trang sau: gọi lại với `cursor=next_cursor`
+        (giữ nguyên các tham số lọc).'
+      operationId: replay_voyage_api_v1_voyages__voyage_id__replay_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: voyage_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_.-]{1,64}$
+          title: Voyage Id
+      - name: from_time
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          description: Giờ server (ISO 8601; thiếu múi giờ thì coi là UTC)
+          title: From Time
+        description: Giờ server (ISO 8601; thiếu múi giờ thì coi là UTC)
+      - name: to_time
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To Time
+      - name: from_t_sim
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: 'null'
+          description: Theo t_sim_s của thiết bị
+          title: From T Sim
+        description: Theo t_sim_s của thiết bị
+      - name: to_t_sim
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: To T Sim
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 5000
+          minimum: 1
+          description: Số mẫu telemetry mỗi trang
+          default: 1000
+          title: Limit
+        description: Số mẫu telemetry mỗi trang
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          description: next_cursor của trang trước
+          title: Cursor
+        description: next_cursor của trang trước
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AckResult:
@@ -1906,6 +2004,292 @@ components:
       - old_password
       - new_password
       title: PasswordChange
+    ReplayAlarmEvent:
+      properties:
+        boot_id:
+          type: string
+          title: Boot Id
+        seq:
+          type: integer
+          title: Seq
+        alarm_id:
+          type: string
+          title: Alarm Id
+        level:
+          $ref: '#/components/schemas/AlarmLevel'
+        prev_level:
+          anyOf:
+          - $ref: '#/components/schemas/AlarmLevel'
+          - type: 'null'
+        motion_class:
+          anyOf:
+          - $ref: '#/components/schemas/MotionClass'
+          - type: 'null'
+        t_sim_s:
+          type: number
+          title: T Sim S
+        acked_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Acked By
+        server_rx_time:
+          type: string
+          format: date-time
+          title: Server Rx Time
+      type: object
+      required:
+      - boot_id
+      - seq
+      - alarm_id
+      - level
+      - t_sim_s
+      - server_rx_time
+      title: ReplayAlarmEvent
+      description: Mot lan chuyen muc canh bao do THIET BI gui (ban tin `event`).
+    ReplayCommand:
+      properties:
+        cmd_id:
+          type: string
+          title: Cmd Id
+        cmd:
+          type: string
+          title: Cmd
+        params:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Params
+        state:
+          $ref: '#/components/schemas/CommandState'
+        issued_by:
+          type: string
+          title: Issued By
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        finished_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Finished At
+      type: object
+      required:
+      - cmd_id
+      - cmd
+      - state
+      - issued_by
+      - created_at
+      title: ReplayCommand
+    ReplayMeta:
+      properties:
+        voyage_id:
+          type: string
+          title: Voyage Id
+        device_id:
+          type: string
+          title: Device Id
+        status:
+          $ref: '#/components/schemas/VoyageStatus'
+        source_modes:
+          items:
+            type: string
+          type: array
+          title: Source Modes
+        total_samples:
+          type: integer
+          title: Total Samples
+        window_samples:
+          type: integer
+          title: Window Samples
+        boots:
+          type: integer
+          title: Boots
+        first_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: First Sample At
+        last_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sample At
+        duration_wall_s:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Duration Wall S
+        t_sim_min_s:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: T Sim Min S
+        t_sim_max_s:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: T Sim Max S
+        t_sim_monotonic:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: T Sim Monotonic
+        timewarps:
+          items:
+            type: integer
+          type: array
+          title: Timewarps
+      type: object
+      required:
+      - voyage_id
+      - device_id
+      - status
+      - source_modes
+      - total_samples
+      - window_samples
+      - boots
+      - timewarps
+      title: ReplayMeta
+    ReplayResponse:
+      properties:
+        meta:
+          $ref: '#/components/schemas/ReplayMeta'
+        telemetry:
+          items:
+            $ref: '#/components/schemas/ReplayTelemetry'
+          type: array
+          title: Telemetry
+        alarm_events:
+          items:
+            $ref: '#/components/schemas/ReplayAlarmEvent'
+          type: array
+          title: Alarm Events
+        alarms:
+          items:
+            $ref: '#/components/schemas/AlarmOut'
+          type: array
+          title: Alarms
+        commands:
+          items:
+            $ref: '#/components/schemas/ReplayCommand'
+          type: array
+          title: Commands
+        limit:
+          type: integer
+          title: Limit
+        truncated:
+          type: boolean
+          title: Truncated
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - meta
+      - telemetry
+      - alarm_events
+      - alarms
+      - commands
+      - limit
+      - truncated
+      title: ReplayResponse
+    ReplayTelemetry:
+      properties:
+        boot_id:
+          type: string
+          title: Boot Id
+        seq:
+          type: integer
+          title: Seq
+        t_sim_s:
+          type: number
+          title: T Sim S
+        timewarp:
+          type: integer
+          title: Timewarp
+        server_rx_time:
+          type: string
+          format: date-time
+          title: Server Rx Time
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+        sensor_ok:
+          type: boolean
+          title: Sensor Ok
+        scenario_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scenario Id
+        roll_deg:
+          type: number
+          title: Roll Deg
+        pitch_deg:
+          type: number
+          title: Pitch Deg
+        rms_roll_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rms Roll Deg
+        heel_offset_deg:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Heel Offset Deg
+        trend_rms_deg_per_min:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Trend Rms Deg Per Min
+        class_rf:
+          $ref: '#/components/schemas/MotionClass'
+        class_baseline_b:
+          anyOf:
+          - $ref: '#/components/schemas/MotionClass'
+          - type: 'null'
+        mai:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Mai
+        alarm_level:
+          $ref: '#/components/schemas/AlarmLevel'
+        model_version:
+          type: string
+          title: Model Version
+        config_version:
+          type: integer
+          title: Config Version
+      type: object
+      required:
+      - boot_id
+      - seq
+      - t_sim_s
+      - timewarp
+      - server_rx_time
+      - source_mode
+      - sensor_ok
+      - roll_deg
+      - pitch_deg
+      - class_rf
+      - alarm_level
+      - model_version
+      - config_version
+      title: ReplayTelemetry
     ReportSummary:
       properties:
         voyage:
