@@ -1,0 +1,42 @@
+paths:
+  feature_root: ml/data/features
+  label_root: ml/data/labels
+  report_root: ml/reports/labeling
+  notebook_root: ml/notebooks
+
+labeling:
+  mode: feasibility
+  external_annotations_path: null
+  rule_version: candidate_rules_v1
+  endpoint_convention: "(t-W,t]"
+  labeling_window_seconds: 180
+  minimum_valid_fraction: 0.95
+  review_queue_per_session: 4
+  review_borderline_relative_margin: null
+  primary_class_policy: REVIEW_REQUIRED
+  primary_class_priority: [HIGH_ROLL, PERSISTENT_OFFSET, AMPLITUDE_GROWTH]
+  rules:
+    HIGH_ROLL:
+      enabled: false
+      by_dataset:
+        seafar: {roll_std_60_deg: null, evidence_reference: null}
+        hohai: {roll_std_60_deg: null, evidence_reference: null}
+        southampton: {roll_std_60_deg: null, evidence_reference: null}
+    PERSISTENT_OFFSET:
+      enabled: false
+      by_dataset:
+        seafar: {abs_roll_mean_180_deg: null, dominant_sign_ratio_min: null, evidence_reference: null}
+        hohai: {abs_roll_mean_180_deg: null, dominant_sign_ratio_min: null, evidence_reference: null}
+        southampton: {abs_roll_mean_180_deg: null, dominant_sign_ratio_min: null, evidence_reference: null}
+    AMPLITUDE_GROWTH:
+      enabled: false
+      by_dataset:
+        seafar: {roll_rms_slope_180_deg_per_min: null, trend_r2_min: null, evidence_reference: null}
+        hohai: {roll_rms_slope_180_deg_per_min: null, trend_r2_min: null, evidence_reference: null}
+        southampton: {roll_rms_slope_180_deg_per_min: null, trend_r2_min: null, evidence_reference: null}
+    NORMAL:
+      enabled: false
+      by_dataset:
+        seafar: {roll_std_60_max_deg: null, abs_roll_mean_180_max_deg: null, evidence_reference: null}
+        hohai: {roll_std_60_max_deg: null, abs_roll_mean_180_max_deg: null, evidence_reference: null}
+        southampton: {roll_std_60_max_deg: null, abs_roll_mean_180_max_deg: null, evidence_reference: null}

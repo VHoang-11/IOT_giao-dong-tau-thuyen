@@ -48,3 +48,4 @@ Thumbs.db
 /ml/data/raw/
 /ml/data/processed/
 /ml/data/features/
+/ml/data/labels/
