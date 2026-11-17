@@ -1,0 +1,261 @@
+{
+ "contract_id": "svmg-angle23",
+ "version": "0.1.0-proposal",
+ "status": "PROPOSAL_PENDING_M1_REVIEW",
+ "supersedes": null,
+ "legacy_contract_untouched": [
+  "contracts/features.md",
+  "core/include/svmg_core.h",
+  "core/include/svmg_features.h"
+ ],
+ "source_of_truth_formulas": "ml/docs/feature_specification_30.md + ml/features/extractor.py (feature_extractor_version 0.1.0)",
+ "sampling_hz": 10.0,
+ "endpoint_convention": "(t-W, t]",
+ "update_stride_seconds": 10.0,
+ "window_seconds": [
+  60,
+  180
+ ],
+ "blocks_180": "3 block 60 s không chồng lấn, cũ -> mới, (lower, upper]",
+ "minimum_valid_fraction": 0.95,
+ "maximum_gap_factor": 1.5,
+ "dtype": "float32 trên ESP32; tham chiếu float64 Python",
+ "invalid_policy": "Không thay bằng 0; mỗi feature có cờ validity; vector thiếu -> ABSTAIN/UNKNOWN, không NORMAL",
+ "features": [
+  {
+   "index": 0,
+   "name": "roll_rms_60",
+   "spec_id": 0,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "sqrt(mean(x^2)) trên (t-60,t]",
+   "embedded_strategy": "O(1) tổng bình phương trượt"
+  },
+  {
+   "index": 1,
+   "name": "roll_std_60",
+   "spec_id": 1,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "độ lệch chuẩn quần thể (mẫu số n)",
+   "embedded_strategy": "O(1) moment trượt ổn định"
+  },
+  {
+   "index": 2,
+   "name": "roll_mean_60",
+   "spec_id": 2,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "mean(x)",
+   "embedded_strategy": "O(1) tổng trượt"
+  },
+  {
+   "index": 3,
+   "name": "roll_peak_to_peak_60",
+   "spec_id": 3,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "max(x)-min(x)",
+   "embedded_strategy": "O(1) khấu hao bằng deque đơn điệu"
+  },
+  {
+   "index": 4,
+   "name": "roll_abs_p95_60",
+   "spec_id": 4,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "phân vị Type-7 0.95 của |x|",
+   "embedded_strategy": "sắp xếp 600 phần tử/lần cập nhật"
+  },
+  {
+   "index": 5,
+   "name": "roll_abs_max_60",
+   "spec_id": 5,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "max(|x|)",
+   "embedded_strategy": "O(1) khấu hao bằng deque"
+  },
+  {
+   "index": 6,
+   "name": "roll_iqr_60",
+   "spec_id": 6,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "Q0.75-Q0.25 Type-7",
+   "embedded_strategy": "sắp xếp 600 phần tử"
+  },
+  {
+   "index": 7,
+   "name": "roll_diff_rms_60",
+   "spec_id": 7,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg/sample @10 Hz",
+   "definition": "RMS sai phân bậc 1 giữa mẫu kề đúng chu kỳ 0.1 s",
+   "embedded_strategy": "O(1); PHỤ THUỘC tần số lấy mẫu"
+  },
+  {
+   "index": 8,
+   "name": "roll_mean_180",
+   "spec_id": 11,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "mean(x)",
+   "embedded_strategy": "O(1) tổng trượt"
+  },
+  {
+   "index": 9,
+   "name": "roll_median_180",
+   "spec_id": 12,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "Q0.50 Type-7",
+   "embedded_strategy": "sắp xếp 1800 phần tử"
+  },
+  {
+   "index": 10,
+   "name": "roll_mean_abs_180",
+   "spec_id": 13,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "mean(|x|)",
+   "embedded_strategy": "O(1) tổng trượt"
+  },
+  {
+   "index": 11,
+   "name": "roll_dominant_sign_ratio_180",
+   "spec_id": 14,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "1",
+   "definition": "max(n+,n-)/(n++n-), bỏ số 0 tuyệt đối",
+   "embedded_strategy": "O(1) bộ đếm dấu"
+  },
+  {
+   "index": 12,
+   "name": "roll_segment_mean_std_180",
+   "spec_id": 15,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "std quần thể của 3 mean block 60 s",
+   "embedded_strategy": "O(1) sau tổng block"
+  },
+  {
+   "index": 13,
+   "name": "roll_mean_shift_180",
+   "spec_id": 16,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "mean(block 3) - mean(block 1)",
+   "embedded_strategy": "O(1) sau tổng block"
+  },
+  {
+   "index": 14,
+   "name": "roll_rms_early_60",
+   "spec_id": 17,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "RMS block 60 s cũ nhất",
+   "embedded_strategy": "O(1) sau tổng block"
+  },
+  {
+   "index": 15,
+   "name": "roll_rms_late_60",
+   "spec_id": 18,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "RMS block 60 s mới nhất (trùng số học với roll_rms_60)",
+   "embedded_strategy": "O(1)"
+  },
+  {
+   "index": 16,
+   "name": "roll_rms_ratio_180",
+   "spec_id": 19,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "1",
+   "definition": "rms_late/rms_early; không xác định nếu rms_early <= 1e-9",
+   "embedded_strategy": "O(1)"
+  },
+  {
+   "index": 17,
+   "name": "roll_rms_slope_180",
+   "spec_id": 20,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg/min",
+   "definition": "độ dốc OLS của 3 RMS block theo tâm [30,90,150] s, x60",
+   "embedded_strategy": "O(1)"
+  },
+  {
+   "index": 18,
+   "name": "roll_rms_trend_r2_180",
+   "spec_id": 21,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "1",
+   "definition": "R^2 của hồi quy 3 điểm; không xác định nếu SST=0",
+   "embedded_strategy": "O(1)"
+  },
+  {
+   "index": 19,
+   "name": "roll_p95_trend_slope_180",
+   "spec_id": 22,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg/min",
+   "definition": "độ dốc OLS của P95|x| 3 block, x60",
+   "embedded_strategy": "sắp xếp 3x600 phần tử"
+  },
+  {
+   "index": 20,
+   "name": "pitch_rms_60",
+   "spec_id": 26,
+   "signal": "pitch",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "sqrt(mean(p^2))",
+   "embedded_strategy": "O(1)"
+  },
+  {
+   "index": 21,
+   "name": "pitch_std_60",
+   "spec_id": 27,
+   "signal": "pitch",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "độ lệch chuẩn quần thể",
+   "embedded_strategy": "O(1)"
+  },
+  {
+   "index": 22,
+   "name": "pitch_peak_to_peak_60",
+   "spec_id": 28,
+   "signal": "pitch",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "max(p)-min(p)",
+   "embedded_strategy": "O(1) deque"
+  }
+ ],
+ "parity_tolerance_proposal": {
+  "absolute_deg": 0.001,
+  "relative": 0.0001,
+  "note": "Đề xuất ban đầu cho float32 vs float64; cần M1/M2 chốt sau khi chạy golden vectors."
+ }
+}
