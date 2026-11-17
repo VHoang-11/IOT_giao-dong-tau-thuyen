@@ -1,0 +1,131 @@
+{
+ "classes": {
+  "count_ratio": {
+   "abs_floor": 1e-06,
+   "rationale": "Đếm dấu trên giá trị float32 chính xác; chỉ sai số chia.",
+   "rel": 0.0,
+   "scale_rel": 0.0
+  },
+  "difference_rms": {
+   "abs_floor": 1e-07,
+   "rationale": "Hiệu hai mẫu float32 kề nhau rồi RMS.",
+   "rel": 2e-05,
+   "scale_rel": 2e-06
+  },
+  "dispersion": {
+   "abs_floor": 1e-07,
+   "rationale": "Phương sai có triệt tiêu khi |mean| >> std; hạng tỷ lệ theo biên độ đầu vào. Vẫn đủ chặt để phân biệt std quần thể/mẫu (lệch 8.3e-4 tương đối) ở tín hiệu mean 0.",
+   "rel": 2e-05,
+   "scale_rel": 5e-05
+  },
+  "extremum": {
+   "abs_floor": 1e-09,
+   "rationale": "Chọn đúng một giá trị float32 đầu vào (abs_max) hoặc một phép trừ (peak-to-peak): gần như chính xác.",
+   "rel": 2e-07,
+   "scale_rel": 2e-07
+  },
+  "mean": {
+   "abs_floor": 1e-07,
+   "rationale": "Tổng N <= 1800 phần tử float32: sai số điển hình ~sqrt(N)·u ≈ 2.5e-6, chặn xấu N·u ≈ 1.1e-4 nếu cộng tuần tự; đề xuất C cộng dồn compensated/double.",
+   "rel": 0.0,
+   "scale_rel": 2e-05
+  },
+  "mean_difference": {
+   "abs_floor": 1e-07,
+   "rationale": "Hiệu hai mean block: cộng dồn sai số hai tổng.",
+   "rel": 0.0,
+   "scale_rel": 4e-05
+  },
+  "quantile": {
+   "abs_floor": 1e-09,
+   "rationale": "Sắp xếp chính xác + một phép nội suy Type-7 (IQR thêm một phép trừ). Đủ chặt để bắt sai quy ước phân vị.",
+   "rel": 1e-06,
+   "scale_rel": 4e-06
+  },
+  "r_squared": {
+   "abs_floor": 0.002,
+   "rationale": "Chỉ áp dụng khi SST/mean(r)^2 >= 1e-6; dưới mức đó R² ill-conditioned -> REVIEW.",
+   "rel": 0.0,
+   "scale_rel": 0.0
+  },
+  "ratio": {
+   "abs_floor": 1e-09,
+   "rationale": "Tỷ số hai RMS: sai số tương đối cộng dồn của tử và mẫu.",
+   "rel": 5e-05,
+   "scale_rel": 0.0
+  },
+  "rms": {
+   "abs_floor": 1e-07,
+   "rationale": "Tổng bình phương dương, không triệt tiêu; sai số tương đối theo giá trị.",
+   "rel": 2e-05,
+   "scale_rel": 2e-06
+  },
+  "slope": {
+   "abs_floor": 1e-07,
+   "rationale": "OLS 3 điểm cách đều = (r3 - r1)/2 deg/phút; sai số theo biên độ đầu vào.",
+   "rel": 1e-05,
+   "scale_rel": 2e-05
+  }
+ },
+ "feature_class": {
+  "pitch_peak_to_peak_60": "extremum",
+  "pitch_rms_60": "rms",
+  "pitch_std_60": "dispersion",
+  "roll_abs_max_60": "extremum",
+  "roll_abs_p95_60": "quantile",
+  "roll_diff_rms_60": "difference_rms",
+  "roll_dominant_sign_ratio_180": "count_ratio",
+  "roll_iqr_60": "quantile",
+  "roll_mean_180": "mean",
+  "roll_mean_60": "mean",
+  "roll_mean_abs_180": "mean",
+  "roll_mean_shift_180": "mean_difference",
+  "roll_median_180": "quantile",
+  "roll_p95_trend_slope_180": "slope",
+  "roll_peak_to_peak_60": "extremum",
+  "roll_rms_60": "rms",
+  "roll_rms_early_60": "rms",
+  "roll_rms_late_60": "rms",
+  "roll_rms_ratio_180": "ratio",
+  "roll_rms_slope_180": "slope",
+  "roll_rms_trend_r2_180": "r_squared",
+  "roll_segment_mean_std_180": "dispersion",
+  "roll_std_60": "dispersion"
+ },
+ "feature_scale": {
+  "pitch_peak_to_peak_60": "pitch_scale_60",
+  "pitch_rms_60": "pitch_scale_60",
+  "pitch_std_60": "pitch_scale_60",
+  "roll_abs_max_60": "roll_scale_60",
+  "roll_abs_p95_60": "roll_scale_60",
+  "roll_diff_rms_60": "roll_scale_60",
+  "roll_dominant_sign_ratio_180": "roll_scale_180",
+  "roll_iqr_60": "roll_scale_60",
+  "roll_mean_180": "roll_scale_180",
+  "roll_mean_60": "roll_scale_60",
+  "roll_mean_abs_180": "roll_scale_180",
+  "roll_mean_shift_180": "roll_scale_180",
+  "roll_median_180": "roll_scale_180",
+  "roll_p95_trend_slope_180": "roll_scale_180",
+  "roll_peak_to_peak_60": "roll_scale_60",
+  "roll_rms_60": "roll_scale_60",
+  "roll_rms_early_60": "roll_scale_180",
+  "roll_rms_late_60": "roll_scale_180",
+  "roll_rms_ratio_180": "roll_scale_180",
+  "roll_rms_slope_180": "roll_scale_180",
+  "roll_rms_trend_r2_180": "roll_scale_180",
+  "roll_segment_mean_std_180": "roll_scale_180",
+  "roll_std_60": "roll_scale_60"
+ },
+ "formula": "abs(actual - expected) <= abs_floor + rel*abs(expected) + scale_rel*S",
+ "note": "Giá trị dung sai là đề xuất kỹ thuật dựa trên phân tích làm tròn float32; cần M1/M2 xác nhận sau khi có đầu ra C thật.",
+ "review_conditions": {
+  "roll_rms_ratio_180": "rms block đầu trong [eps/10, eps*10] -> REVIEW_ILL_CONDITIONED",
+  "roll_rms_trend_r2_180": "SST/mean(block_rms)^2 < 1e-06 -> REVIEW_ILL_CONDITIONED (giá trị và validity)"
+ },
+ "scale_definition": "S = max |x| trên các mẫu hữu hạn của tín hiệu/cửa sổ tương ứng (cột tolerance_scale trong golden)",
+ "status": "ENGINEERING_PROPOSAL_NOT_DEVICE_MEASURED",
+ "status_rule": "Trạng thái phải trùng chính xác; feature không VALID phải có value rỗng/null; VALID mà NaN là FAIL.",
+ "tolerance_version": "svmg-angle23-tolerance-0.1.0-proposal",
+ "u32": 5.960464477539063e-08
+}
