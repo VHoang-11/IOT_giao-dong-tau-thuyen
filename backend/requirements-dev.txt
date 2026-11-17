@@ -1,0 +1,3 @@
+-r requirements.txt
+# Chi dung cho test: doc nguoc chu tu PDF de kiem tra tieng Viet hien thi dung (test tu bo qua neu thieu)
+pdfplumber>=0.11
