@@ -42,3 +42,28 @@ Output đầy đủ nằm trong `ml/data/labels/` (Parquet tách riêng cho prox
 ## Phòng tránh circular validation
 
 Nếu proxy dùng `roll_std_60`, `roll_mean_180` hay RMS slope, các feature tương ứng trực tiếp/gián tiếp định nghĩa nhãn. Độ chính xác mô hình trên những proxy label như vậy chỉ đo tái tạo rule. Cần nhãn sự kiện/tham chiếu độc lập, split theo session và kiểm định vật lý riêng trước khi diễn giải kết quả là nhận diện nguy hiểm.
+
+## Label Evidence & Annotation Pilot
+
+Pilot mới dùng lại review queue 92 mẫu của pipeline feasibility và dữ liệu processed/provenance hiện có. Chạy từ repository root:
+
+```bash
+python -m ml.labeling.pilot_run --repo-root .
+```
+
+Lệnh tạo form `ml/data/labels/annotation_pilot/annotation_pilot.csv`, decision ledger `review_decisions.csv`, 92 hình Roll/Pitch cùng biểu đồ tổng hợp trong `ml/data/labels/annotation_pilot/figures/`. Dữ liệu và hình được loại khỏi Git theo `.gitignore`. Các báo cáo nhỏ được ghi tại `ml/reports/labeling/label_evidence_report.md`, `annotation_pilot_report.md` và `training_readiness_assessment.md`.
+
+Form rỗng có schema tại `ml/labeling/templates/annotation_pilot_template.csv`. Mỗi record phải giữ nguyên `review_sample_id` và khóa dataset/session/segment/window. Reviewer cần điền bằng chứng, quyết định, phenotype flags, ghi chú, ID và thời điểm thực tế. `HUMAN_REVIEWED` chỉ dành cho phenotype được reviewer ACCEPTED; `VERIFIED` cần nguồn external cho hazard vận hành hoặc operating envelope NORMAL. Không được suy hazard từ wave metadata. Nhiều phenotype đồng thời phải giữ mọi cờ và ghi `ambiguity_reason`.
+
+`ml/data/labels/annotation_pilot/review_decisions.csv` hỗ trợ nhiều reviewer trên cùng mẫu (mỗi reviewer một dòng). Các revision thủ công cần ghi event JSONL append-only bằng `append_annotation_revision` trong `ml.labeling.pilot_decisions`; event giữ snapshot trước/sau, người sửa và thời gian, không ghi đè lịch sử. Không nhập quyết định giả định hoặc tự tạo nhãn từ `queue_suggested_label`.
+
+Chạy notebook sau khi tạo artifact:
+
+```bash
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/13_label_evidence_seafar.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/14_label_evidence_hohai.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/15_label_evidence_southampton.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/16_annotation_pilot_comparison.ipynb
+```
+
+Các notebook hiển thị output mẫu, session, provenance, quality flags và tín hiệu đã xử lý; không nhúng toàn bộ dataset. Agreement chỉ tính khi có ít nhất hai reviewer ACCEPTED trên cùng sample. Mọi cửa sổ chồng lấn vẫn phải được nhóm theo session/run khi phân tích hoặc chia tập.
