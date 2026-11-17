@@ -124,4 +124,6 @@ def write_pilot_reports(repo_root: Path, evidence_summary: dict, forms: pd.DataF
                   "3. **Proxy-label proof of concept (chỉ nếu cần minh họa kỹ thuật):** rule/threshold phải có version và nguồn, split theo session, báo kết quả là agreement với proxy và nêu circularity; không dùng làm bằng chứng an toàn.", "",
                   "## Giải thích kỹ thuật phục vụ vấn đáp", "",
                   "**Vì sao chưa train?** Không có nhãn operational hazard hoặc NORMAL independently verified. **Vì sao không dùng 92 hàng như 92 mẫu độc lập?** Chúng chồng lấn thời gian và tập trung trong 23 session nguồn. **Có thể làm gì thay thế?** Mở rộng thu thập có event reference; hoặc giới hạn bài toán thành quan sát phenotype có reviewer và không tuyên bố hazard. **Giới hạn?** Mọi kết luận chỉ thuộc các nguồn và session hiện có; chưa kiểm chứng tính đại diện vận hành.", ""]
-    (report_root / "training_readiness_assessment.md").write_text("\n".join(readiness), encoding="utf-8")
+    readiness_path = report_root / "training_readiness_assessment.md"
+    if not (report_root / "human_review_execution_guide.md").exists():
+        readiness_path.write_text("\n".join(readiness), encoding="utf-8")

@@ -60,15 +60,21 @@ def _metadata_reference(dataset: str, provenance: dict) -> str | None:
     return provenance.get("raw_reference")
 
 
+def select_review_signal(frame: pd.DataFrame, start: float, end: float,
+                         context_seconds: float) -> pd.DataFrame:
+    """Lấy context quá khứ cùng cửa sổ, không đưa quan sát sau endpoint vào hình review."""
+    segment_first = float(frame["time_seconds"].iloc[0])
+    plot_lower = max(start - context_seconds, segment_first)
+    return frame.loc[(frame.time_seconds > plot_lower) & (frame.time_seconds <= end),
+                     ["time_seconds", "roll_deg", "pitch_deg"]].copy()
+
+
 def _plot_sample(frame: pd.DataFrame, record: dict, output: Path, context_seconds: float, dpi: int) -> tuple[float, float, float]:
     start = float(record["window_start_seconds"])
     end = float(record["window_end_seconds"])
     target_context_start = start - context_seconds
-    segment_first = float(frame["time_seconds"].iloc[0])
-    segment_last = float(frame["time_seconds"].iloc[-1])
-    plot_lower = max(target_context_start, segment_first)
-    data = frame.loc[(frame.time_seconds > plot_lower) & (frame.time_seconds <= end),
-                     ["time_seconds", "roll_deg", "pitch_deg"]].copy()
+    plot_lower = max(target_context_start, float(frame["time_seconds"].iloc[0]))
+    data = select_review_signal(frame, start, end, context_seconds)
     if data.empty or not ((data.time_seconds > start) & (data.time_seconds <= end)).any():
         raise ValueError(f"Không tìm thấy tín hiệu trong cửa sổ review: {record['review_sample_id']}")
     fs = float(record.get("target_sampling_hz_effective", 10.0) or 10.0)
@@ -86,7 +92,7 @@ def _plot_sample(frame: pd.DataFrame, record: dict, output: Path, context_second
                   label=title)
         axis.axvspan(0.0, end - start, color="#dbeafe", alpha=.45, label="Cửa sổ review 180 giây")
         axis.axvline(0.0, color="black", linestyle="--", linewidth=.8, label="Bắt đầu cửa sổ")
-        axis.axvline(end - start, color="green", linestyle=":", linewidth=.8, label="Endpoint")
+        axis.axvline(end - start, color="green", linestyle=":", linewidth=.8, label="Kết thúc cửa sổ")
         axis.set_ylabel(f"{title.split()[-1]} (độ)")
         axis.grid(alpha=.2)
         axis.legend(loc="upper right", fontsize=7)
