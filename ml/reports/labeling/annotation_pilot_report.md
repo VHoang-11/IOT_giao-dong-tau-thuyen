@@ -89,7 +89,7 @@ Không diễn giải đồng thuận của reviewer thành độ chính xác haz
 
 ## Kiểm thử và kiểm chứng
 
-Bài kiểm thử tự động gần nhất: **70 passed in 2.69s**; exit code `0`. Lệnh: `python -m pytest ml/labeling/tests ml/features/tests ml/preprocessing/tests ml/audit -q`. Kiểm thử kiểm tra schema, chống thăng cấp nhãn chưa review, provenance, identity/window matching, ranh giới session, revision audit và tính tái lập; fixture tổng hợp chỉ dùng trong unit test.
+Bài kiểm thử tự động gần nhất: **76 passed in 2.14s**; exit code `0`. Lệnh: `python -m pytest ml/labeling/tests ml/features/tests ml/preprocessing/tests ml/audit -q`. Kiểm thử kiểm tra schema, chống thăng cấp nhãn chưa review, provenance, identity/window matching, ranh giới session, revision audit và tính tái lập; fixture tổng hợp chỉ dùng trong unit test.
 
 ## Chống bias và leakage
 

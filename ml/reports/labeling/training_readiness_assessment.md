@@ -1,43 +1,25 @@
-# Đánh giá sẵn sàng cho supervised training
+# Đánh giá mức sẵn sàng huấn luyện
 
-## Kết luận
+## Quyết định hiện tại
 
-**Chưa đủ nhãn độc lập để huấn luyện supervised bốn lớp.** Hiện có 0 nhãn hazard VERIFIED, 0 quan sát HUMAN_REVIEWED và 0 quyết định reviewer thực tế trong pilot.
+**Chưa đủ điều kiện huấn luyện Machine Learning có giám sát cho bốn lớp hazard.** Hiện chưa có quyết định review của con người hoặc nhãn tham chiếu external. 92 cửa sổ review không phải 92 quan sát độc lập; queue phủ 23 session.
 
-| Lớp | VERIFIED evidence | HUMAN_REVIEWED phenotype | Proxy | Session có reference vận hành độc lập |
-|---|---:|---:|---:|---:|
-| `NORMAL` | 0 | 0 | 0 | 0 |
-| `HIGH_ROLL` | 0 | 0 | 0 | 0 |
-| `PERSISTENT_OFFSET` | 0 | 0 | 0 | 0 |
-| `AMPLITUDE_GROWTH` | 0 | 0 | 0 | 0 |
+| Lựa chọn | Trạng thái | Bằng chứng hiện có | Bằng chứng còn thiếu / rủi ro |
+|---|---|---|---|
+| Huấn luyện có giám sát bốn lớp hazard đã xác minh | CHƯA ĐỦ | 2.864 cửa sổ đủ 23 đặc trưng; 23 session trong pilot | 0 nhãn VERIFIED; cần tham chiếu sự kiện/điều kiện vận hành và miền NORMAL; chưa đo độ phủ lớp; có nguy cơ rò rỉ do cửa sổ chồng lấn và khác biệt quy mô vật lý |
+| Nghiên cứu phân loại phenotype chuyển động quan sát được | CHƯA SẴN SÀNG HUẤN LUYỆN | Có chuỗi thời gian Roll/Pitch; pilot 29 hồ sơ phủ 23 session | 0 quyết định reviewer; cần ít nhất hai reviewer đánh giá chồng lặp để đo mức nhất trí; phenotype không đồng nghĩa hazard |
+| Thử nghiệm kỹ thuật bằng proxy rule (nhãn suy ra theo quy tắc) | CHỈ CÓ THỂ LÀM SAU KHI DUYỆT RULE | Có cửa sổ feature và provenance | Ngưỡng mô phỏng chưa phải giới hạn hazard; nhãn vòng lặp nếu mô hình dùng cùng đặc trưng; chỉ báo cáo mức khớp với proxy, không tuyên bố an toàn |
+| Thu thập thêm dữ liệu có nhãn độc lập | KHUYẾN NGHỊ | Nguồn hiện tại chưa có nhãn tham chiếu external | Cần nhật ký vận hành/sự kiện có timestamp, miền NORMAL, scale/ngữ cảnh và xác minh chuyên gia |
 
-Human-reviewed phenotype là evidence về chuyển động quan sát được; không tự xác nhận tình trạng nguy hiểm. Các class count không chứng minh lớp vật lý vắng mặt.
+## Điều kiện trước huấn luyện có giám sát
 
-## Rủi ro phương pháp
+1. Đánh giá 29 mẫu pilot; lưu reviewer ID, bằng chứng, ghi chú, thời điểm và audit trail.
+2. Có ít nhất hai reviewer độc lập cùng đánh giá tập con, sau đó báo mức nhất trí và trường hợp bất đồng.
+3. Xác minh hazard bằng tham chiếu vận hành độc lập; định nghĩa NORMAL bằng miền hoạt động dương tính đã được chấp thuận.
+4. Xử lý phenotype chồng lấn và cửa sổ NEEDS_DISCUSSION trước khi tạo nhãn huấn luyện.
+5. Chia tập theo session/run/vessel, không chia ngẫu nhiên các cửa sổ chồng lấn.
+6. Giữ tập kiểm thử độc lập với rule/feature đã định nghĩa proxy; phân tích riêng theo quy mô và nguồn dữ liệu.
 
-1. **Ít phiên độc lập:** Seafar 1 session, Hohai 21 session mô hình, Southampton 1 run 180 giây. 92 mẫu là cửa sổ chọn review, không phải 92 điều kiện độc lập.
-2. **Overlap leakage:** stride 10 giây trên cửa sổ 180 giây tương đương khoảng 94,4% overlap giữa cửa sổ kề. Split ngẫu nhiên sẽ rò rỉ gần như cùng tín hiệu giữa train/test.
-3. **Circular labeling:** nếu proxy dựa trên roll std/mean/RMS slope rồi model học các feature đó, kết quả chỉ cho thấy model tái tạo rule.
-4. **Khác scale:** Hohai/Southampton là mô hình thử nghiệm; không gộp chung với tàu thật như một ngưỡng hazard phổ quát.
-5. **NORMAL chưa có envelope:** thiếu baseline/operating envelope được chấp nhận; không suy NORMAL từ không phát hiện bất thường.
-6. **Reliability:** chưa có hai reviewer đánh giá cùng sample; không báo agreement/kappa giả.
+## Giải thích kỹ thuật phục vụ vấn đáp cá nhân
 
-## Điều kiện trước khi training
-
-- Thu thập external event/hazard annotations với timestamp, vessel/scale, operating state và nguồn xác minh.
-- Xây dựng operating envelope dương tính cho NORMAL theo từng nguồn/phạm vi tàu; có người phụ trách phê duyệt.
-- Đánh giá pilot mù tối thiểu bởi hai reviewer trên một tập con chồng lặp; báo agreement riêng cho primary decision và phenotype flags.
-- Chốt cách phân biệt observed phenotype với verified operational hazard; xử lý các trường hợp nhiều cờ bằng `REVIEW_REQUIRED` hoặc chính sách đã được duyệt.
-- Định nghĩa split theo session/run/vessel; không chia cửa sổ overlap ngẫu nhiên.
-- Đánh giá subgroup và source-scale riêng; không đưa dataset/session identity vào feature vector.
-- Giữ test độc lập với rule/feature đã dùng để gán proxy; không trình bày rule agreement là safety validation.
-
-## Lựa chọn bước tiếp theo
-
-1. **Khuyến nghị chính — additional data acquisition:** thu thập tàu thật có operational event logs và được chuyên gia xác nhận; đồng thời thu thập các giai đoạn hoạt động bình thường có envelope rõ.
-2. **Reduced-scope study:** đánh giá chất lượng quan sát phenotype Roll/Pitch trên pilot, chưa gọi hazard classification và chưa khái quát giữa scale.
-3. **Proxy-label proof of concept (chỉ nếu cần minh họa kỹ thuật):** rule/threshold phải có version và nguồn, split theo session, báo kết quả là agreement với proxy và nêu circularity; không dùng làm bằng chứng an toàn.
-
-## Giải thích kỹ thuật phục vụ vấn đáp
-
-**Vì sao chưa train?** Không có nhãn operational hazard hoặc NORMAL independently verified. **Vì sao không dùng 92 hàng như 92 mẫu độc lập?** Chúng chồng lấn thời gian và tập trung trong 23 session nguồn. **Có thể làm gì thay thế?** Mở rộng thu thập có event reference; hoặc giới hạn bài toán thành quan sát phenotype có reviewer và không tuyên bố hazard. **Giới hạn?** Mọi kết luận chỉ thuộc các nguồn và session hiện có; chưa kiểm chứng tính đại diện vận hành.
+Không thể suy mức sẵn sàng từ số cửa sổ đơn thuần: các cửa sổ chồng lấn mạnh và tập trung trong số session hữu hạn. Human review có thể xác nhận phenotype chuyển động quan sát được nhưng không thay thế nhãn tham chiếu vận hành độc lập. Bước phù hợp hiện nay là hoàn thành pilot, đo mức nhất trí giữa reviewer và thu thập nhãn sự kiện/điều kiện vận hành. Sau đó mới quyết định nghiên cứu phenotype, thử nghiệm proxy có giới hạn hay huấn luyện nhận diện hazard.
