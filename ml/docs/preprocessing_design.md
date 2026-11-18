@@ -1,5 +1,8 @@
 # SVMG Candidate Preprocessing Contract — Design Proposal
 
+> **Integration update (18/11/2026):** M1 now implements the [versioned 23-feature contract](../../contracts/features.md). The 30-feature research pipeline and proposal history below remain reference material; they do not mean all 30 inputs are deployed.
+
+
 > Design only. This document does not implement preprocessing or feature extraction. The active feature contract remains the 14 fields in [`contracts/features.md`](../../contracts/features.md) and [`core/include/svmg_core.h`](../../core/include/svmg_core.h). The proposed 30 candidates are specified in [`feature_specification_30.md`](feature_specification_30.md); availability evidence is in [`feature_availability_matrix.md`](feature_availability_matrix.md) and the [Real Dataset Audit](../audit/real_dataset_audit_report.md).
 
 All choices below are proposals requiring team approval before dataset conversion, model training or C implementation.

@@ -1,5 +1,8 @@
 # 🚢 Smart Vessel Motion Guard (SVMG)
 
+> **Cập nhật M1 18/11/2026:** firmware 1.1.0 đã triển khai [contract 23 đặc trưng góc](contracts/features.md), 10 Hz, cập nhật 10 giây. [Kết quả kiểm chứng](tests/firmware/TEST_LOG.md); model RF thật và chạy Wokwi/ESP32 vẫn chưa hoàn tất.
+
+
 > **Hệ thống IoT giám sát, cảnh báo và quản lý sự kiện dao động tàu thuyền chở container**
 >
 
@@ -53,7 +56,7 @@ ESP32 thu nhận dữ liệu từ cảm biến **MPU6050** (hoặc bộ phát t�
 
 ### Luồng xử lý
 
-- **Uplink**: `SENSOR/SIMULATION MODE` → `acquireMotionSample()` → lọc bù → giảm mẫu 20→2 Hz → cửa sổ (60s/180s) → RF + Baseline B + ngưỡng cứng → máy trạng thái cảnh báo → LCD/LED/buzzer + MQTT → Backend → DB → Dashboard
+- **Uplink**: `SENSOR/SIMULATION MODE` → `acquireMotionSample()` → lọc bù → giảm mẫu 20→10 Hz → cửa sổ (60s/180s) → RF + Baseline B + ngưỡng cứng → máy trạng thái cảnh báo → LCD/LED/buzzer + MQTT → Backend → DB → Dashboard
 - **Downlink**: Dashboard → Backend (kiểm quyền) → MQTT cmd → ESP32 (kiểm an toàn) → APPLIED/REJECTED → cmd/ack → Backend cập nhật
 
 ---
@@ -404,7 +407,7 @@ ESP32 thu nhận dữ liệu từ cảm biến **MPU6050** (hoặc bộ phát t�
 
 ### Luồng xử lý
 
-- **Uplink**: `SENSOR/SIMULATION MODE` → `acquireMotionSample()` → lọc bù → giảm mẫu 20→2 Hz → cửa sổ (60s/180s) → RF + Baseline B + ngưỡng cứng → máy trạng thái cảnh báo → LCD/LED/buzzer + MQTT → Backend → DB → Dashboard
+- **Uplink**: `SENSOR/SIMULATION MODE` → `acquireMotionSample()` → lọc bù → giảm mẫu 20→10 Hz → cửa sổ (60s/180s) → RF + Baseline B + ngưỡng cứng → máy trạng thái cảnh báo → LCD/LED/buzzer + MQTT → Backend → DB → Dashboard
 - **Downlink**: Dashboard → Backend (kiểm quyền) → MQTT cmd → ESP32 (kiểm an toàn) → APPLIED/REJECTED → cmd/ack → Backend cập nhật
 
 ---

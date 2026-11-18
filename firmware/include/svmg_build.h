@@ -1,7 +1,7 @@
 // Cấu hình biên dịch của firmware. Giá trị nhạy cảm đặt trong include/secrets.h (KHÔNG commit; xem secrets.example.h).
 #pragma once
 
-#define SVMG_FW_VERSION "1.0.0"
+#define SVMG_FW_VERSION "1.1.0"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -41,6 +41,11 @@
 #ifndef SVMG_TELEMETRY_EXTRAS
 #define SVMG_TELEMETRY_EXTRAS 0
 #endif
+
+// ---- Cờ mở rộng NGOÀI contract (mặc định TẮT; bật bằng -D ở env debug). Xem firmware/docs/CONTRACT_PROPOSALS.md.
+//  SVMG_EXT_COMMANDS : set_mode / set_scenario / set_timewarp / request_snapshot / set_model qua MQTT (backend không gửi các lệnh này)
+//  SVMG_EXT_EVENTS   : sự kiện hệ thống (MODE_CHANGE, FAULT, BOOT, ...) trên topic event (schema event.json chỉ cho ALARM_STATE)
+//  SVMG_EXT_TRACE    : topic trace + request_snapshot (ACL Mosquitto và backend không có topic này)
 
 // Tần số xử lý
 #define SVMG_TICK_MS 50          // 20 Hz

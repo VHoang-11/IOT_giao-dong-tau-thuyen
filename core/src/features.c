@@ -1,217 +1,303 @@
-/* features.c - M1-03. Xem svmg_features.h. */
 #include "svmg_features.h"
 #include <math.h>
 #include <string.h>
-
+#define NAME(name) #name,
 const char *const SVMG_FEATURE_NAMES[SVMG_N_FEATURES] = {
-  "rms_roll", "p2p", "p95_abs", "rms_gyro_x", "rms_gyro_y",
-  "mean_roll", "same_sign_ratio", "trend", "rms_ratio", "zero_cross_period"
-};
-
+    SVMG_FEATURE_FIELDS(NAME)};
+#undef NAME
 void svmg_window_clear(svmg_window_t *w) { memset(w, 0, sizeof *w); }
-
-int svmg_window_push(svmg_window_t *w, float roll_deg, float gx_dps, float gy_dps, uint8_t valid) {
+int svmg_window_push(svmg_window_t *w, float r, float p, uint8_t nr,
+                     uint8_t valid) {
   uint32_t i = w->total % SVMG_WIN_LONG;
-  uint32_t j = w->total % SVMG_WIN_SHORT;
-  valid = (valid && isfinite(roll_deg) && isfinite(gx_dps) && isfinite(gy_dps)) ? 1 : 0;
-  w->roll_deg[i] = valid ? roll_deg : 0.0f;
-  w->valid[i] = valid;
-  w->gx_dps[j] = valid ? gx_dps : 0.0f;
-  w->gy_dps[j] = valid ? gy_dps : 0.0f;
+  w->valid[i] = valid && nr == SVMG_RAW_PER_SAMPLE;
+  w->roll_deg[i] = w->valid[i] && isfinite(r) ? r : NAN;
+  w->pitch_deg[i] = w->valid[i] && isfinite(p) ? p : NAN;
+  w->nraw[i] = nr > SVMG_RAW_PER_SAMPLE ? SVMG_RAW_PER_SAMPLE : nr;
+  if (!valid || !isfinite(r) || !isfinite(p))
+    w->nraw[i] = 0;
   w->total++;
-  if (valid) w->consec_invalid = 0;
-  else if (w->consec_invalid < 0xFFFF) w->consec_invalid++;
-  if (++w->since_update >= SVMG_UPDATE_SAMPLES) { w->since_update = 0; return 1; }
+  if (isfinite(w->roll_deg[i]) && isfinite(w->pitch_deg[i]))
+    w->consec_invalid = 0;
+  else if (w->consec_invalid < UINT16_MAX)
+    w->consec_invalid++;
+  if (++w->since_update == SVMG_UPDATE_SAMPLES) {
+    w->since_update = 0;
+    return 1;
+  }
   return 0;
 }
-
-void svmg_window_shift_roll(svmg_window_t *w, float delta_deg) {
-  for (int i = 0; i < SVMG_WIN_LONG; i++) if (w->valid[i]) w->roll_deg[i] += delta_deg;
-}
-
-/* k = 0 là mẫu mới nhất. */
-static inline uint32_t slot_long(const svmg_window_t *w, uint32_t k) { return (w->total - 1u - k) % SVMG_WIN_LONG; }
-static inline uint32_t slot_short(const svmg_window_t *w, uint32_t k) { return (w->total - 1u - k) % SVMG_WIN_SHORT; }
-
-/* Thống kê roll trên các mẫu k = k0 .. k0+n-1 (chỉ mẫu hợp lệ). */
-typedef struct { uint16_t nv; float mean, rms_abs, rms_dyn; } roll_stat_t;
-
-static roll_stat_t roll_stat(const svmg_window_t *w, uint32_t k0, uint32_t n) {
-  roll_stat_t r = {0, 0, 0, 0};
-  float s = 0, s2 = 0;
-  for (uint32_t k = k0; k < k0 + n; k++) {
-    uint32_t i = slot_long(w, k);
-    if (!w->valid[i]) continue;
-    float x = w->roll_deg[i];
-    s += x; s2 += x * x; r.nv++;
+void svmg_window_shift(svmg_window_t *w, float dr, float dp) {
+  for (int i = 0; i < SVMG_WIN_LONG; i++) {
+    if (isfinite(w->roll_deg[i]))
+      w->roll_deg[i] += dr;
+    if (isfinite(w->pitch_deg[i]))
+      w->pitch_deg[i] += dp;
   }
-  if (r.nv == 0) return r;
-  r.mean = s / r.nv;
-  r.rms_abs = sqrtf(s2 / r.nv);
-  float v = 0;
-  for (uint32_t k = k0; k < k0 + n; k++) {
-    uint32_t i = slot_long(w, k);
-    if (!w->valid[i]) continue;
-    float d = w->roll_deg[i] - r.mean;
-    v += d * d;
-  }
-  r.rms_dyn = sqrtf(v / r.nv);
-  return r;
 }
-
-static inline float pick_rms(const roll_stat_t *r) { return SVMG_FEAT_RMS_ABOUT_MEAN ? r->rms_dyn : r->rms_abs; }
-
-static float gyro_rms(const float *buf, const svmg_window_t *w, uint32_t n) {
-  float s2 = 0; int nv = 0;
-  for (uint32_t k = 0; k < n; k++) {
-    if (!w->valid[slot_long(w, k)]) continue;
-    float x = buf[slot_short(w, k)];
-    s2 += x * x; nv++;
-  }
-  return nv ? sqrtf(s2 / nv) : 0.0f;
+static uint32_t slot(const svmg_window_t *w, uint32_t age) {
+  return (w->total - 1u - age) % SVMG_WIN_LONG;
 }
-
-void svmg_features_compute(const svmg_window_t *w, svmg_features_t *f) {
+/* In-place heapsort: bounded O(N log N), no allocator or recursive sort stack.
+ */
+static void sift(float *a, int root, int n) {
+  for (;;) {
+    int child = root * 2 + 1;
+    if (child >= n)
+      return;
+    if (child + 1 < n && a[child] < a[child + 1])
+      child++;
+    if (a[root] >= a[child])
+      return;
+    float t = a[root];
+    a[root] = a[child];
+    a[child] = t;
+    root = child;
+  }
+}
+static void sort(float *a, int n) {
+  for (int i = n / 2; i > 0; i--)
+    sift(a, i - 1, n);
+  for (int end = n - 1; end > 0; end--) {
+    float t = a[0];
+    a[0] = a[end];
+    a[end] = t;
+    sift(a, 0, end);
+  }
+}
+static float quantile(const float *z, int n, double p) {
+  if (!n)
+    return NAN;
+  double h = (n - 1) * p;
+  int j = (int)h;
+  return (float)((double)z[j] +
+                 (h - j) * ((double)z[j + (j + 1 < n)] - (double)z[j]));
+}
+typedef struct {
+  int n, pos, neg;
+  double mean, rms, sd, mean_abs;
+  float min, max, median, iqr, p95;
+} stats_t;
+static stats_t stats(svmg_window_t *w, int pitch, int oldest_age, int count) {
+  stats_t s = {0};
+  double sum = 0, sq = 0, abs_sum = 0, var = 0;
+  s.min = INFINITY;
+  s.max = -INFINITY;
+  for (int k = oldest_age - count + 1; k <= oldest_age; k++) {
+    uint32_t i = slot(w, (uint32_t)k);
+    float v = pitch ? w->pitch_deg[i] : w->roll_deg[i];
+    if (!isfinite(v))
+      continue;
+    w->scratch[s.n++] = v;
+    sum += (double)v;
+    sq += (double)v * (double)v;
+    abs_sum += fabs((double)v);
+    if (v < s.min)
+      s.min = v;
+    if (v > s.max)
+      s.max = v;
+    s.pos += v > 0;
+    s.neg += v < 0;
+  }
+  if (!s.n) {
+    s.mean = s.rms = s.sd = s.mean_abs = NAN;
+    s.median = s.iqr = s.p95 = NAN;
+    return s;
+  }
+  s.mean = sum / s.n;
+  s.rms = sqrt(sq / s.n);
+  s.mean_abs = abs_sum / s.n;
+  for (int j = 0; j < s.n; j++) {
+    double d = (double)w->scratch[j] - s.mean;
+    var += d * d;
+  }
+  s.sd = sqrt(var / s.n);
+  sort(w->scratch, s.n);
+  s.median = quantile(w->scratch, s.n, .5);
+  s.iqr = quantile(w->scratch, s.n, .75) - quantile(w->scratch, s.n, .25);
+  for (int j = 0; j < s.n; j++)
+    w->scratch[j] = fabsf(w->scratch[j]);
+  sort(w->scratch, s.n);
+  s.p95 = quantile(w->scratch, s.n, .95);
+  return s;
+}
+static void assign(svmg_features_t *f, int id, float *dst, double value,
+                   int valid) {
+  *dst = valid && isfinite(value) ? (float)value : NAN;
+  if (isfinite(*dst))
+    f->valid_mask |= 1u << id;
+}
+#define SET(name, value, ok) assign(f, SVMG_F_##name, &f->name, (value), (ok))
+void svmg_features_compute(svmg_window_t *w, svmg_features_t *f) {
   memset(f, 0, sizeof *f);
-  f->rms_ratio = 1.0f;
+#define INIT(name) f->name = NAN;
+  SVMG_FEATURE_FIELDS(INIT)
+#undef INIT
+  f->sensor_ok = 1;
   f->consec_invalid = w->consec_invalid;
-  f->ready_short = (w->total >= SVMG_WIN_SHORT);
-  f->ready_long = (w->total >= SVMG_WIN_LONG);
-
-  uint32_t n60 = w->total < SVMG_WIN_SHORT ? w->total : SVMG_WIN_SHORT;
-  uint32_t n180 = w->total < SVMG_WIN_LONG ? w->total : SVMG_WIN_LONG;
-  if (n60 == 0) { f->missing_ratio_60 = f->missing_ratio_180 = 1.0f; return; }
-
-  /* --- 60 s --- */
-  roll_stat_t s60 = roll_stat(w, 0, n60);
-  f->n_valid_60 = s60.nv;
-  f->missing_ratio_60 = 1.0f - (float)s60.nv / (float)n60;
-  f->rms_roll_abs_deg = s60.rms_abs;
-  f->rms_roll_deg = pick_rms(&s60);
-  f->rms_gyro_x_dps = gyro_rms(w->gx_dps, w, n60);
-  f->rms_gyro_y_dps = gyro_rms(w->gy_dps, w, n60);
-
-  float tmp[SVMG_WIN_SHORT];     /* |roll| của mẫu hợp lệ, dùng cho P95 */
-  float mn = 0, mx = 0; int m = 0;
-  for (uint32_t k = 0; k < n60; k++) {
-    uint32_t i = slot_long(w, k);
-    if (!w->valid[i]) continue;
-    float x = w->roll_deg[i];
-    if (m == 0 || x < mn) mn = x;
-    if (m == 0 || x > mx) mx = x;
-    float a = fabsf(x);
-    int p = m++;                       /* chèn có thứ tự (insertion sort) */
-    while (p > 0 && tmp[p - 1] > a) { tmp[p] = tmp[p - 1]; p--; }
-    tmp[p] = a;
+  f->ready_short = w->total >= SVMG_WIN_SHORT;
+  f->ready_long = w->total >= SVMG_WIN_LONG;
+  int n60 = w->total < SVMG_WIN_SHORT ? (int)w->total : SVMG_WIN_SHORT;
+  int n180 = w->total < SVMG_WIN_LONG ? (int)w->total : SVMG_WIN_LONG;
+  if (!n180)
+    return;
+  stats_t r = stats(w, 0, n60 - 1, n60), p = stats(w, 1, n60 - 1, n60),
+          l = stats(w, 0, n180 - 1, n180);
+  f->n_valid_60 = (uint16_t)(r.n < p.n ? r.n : p.n);
+  int both = 0;
+  unsigned nr = 0;
+  for (int k = 0; k < n180; k++) {
+    uint32_t i = slot(w, (uint32_t)k);
+    nr += w->nraw[i];
+    both += isfinite(w->roll_deg[i]) && isfinite(w->pitch_deg[i]);
   }
-  if (m > 0) {
-    f->p2p_deg = mx - mn;
-    int idx = (int)ceilf(0.95f * (float)m) - 1;
-    if (idx < 0) idx = 0;
-    if (idx >= m) idx = m - 1;
-    f->p95_abs_deg = tmp[idx];
-  }
-
-  /* Nhịp: số lần cắt không có trễ (hysteresis 0.15 deg), trên 60 s đã trừ trung bình. */
-  {
-    const float hyst = 0.15f;
-    int last_sign = 0, ncross = 0;
-    long first_k = -1, last_k = -1;
-    for (int k = (int)n60 - 1; k >= 0; k--) {          /* từ cũ đến mới */
-      uint32_t i = slot_long(w, (uint32_t)k);
-      if (!w->valid[i]) continue;
-      float x = w->roll_deg[i] - s60.mean;
-      int sg = (x > hyst) ? 1 : (x < -hyst) ? -1 : 0;
-      if (sg == 0) continue;
-      if (last_sign != 0 && sg != last_sign) {
-        if (first_k < 0) first_k = k;
-        last_k = k;
-        ncross++;
-      }
-      last_sign = sg;
-    }
-    if (ncross >= 2) {
-      float half = (float)(first_k - last_k) / (float)(ncross - 1) / 2.0f;   /* nửa chu kỳ [s] (2 mẫu/s) */
-      f->zero_cross_period_s = 2.0f * half;
+  f->n_valid_180 = (uint16_t)both;
+  f->data_quality_pct =
+      100.0f * (float)nr / (float)(n180 * SVMG_RAW_PER_SAMPLE);
+  int rok = f->ready_short && r.n >= 570, pok = f->ready_short && p.n >= 570,
+      lok = f->ready_long && l.n >= 1710;
+  SET(roll_rms_60, r.rms, rok);
+  SET(roll_std_60, r.sd, rok);
+  SET(roll_mean_60, r.mean, rok);
+  SET(roll_peak_to_peak_60, (double)r.max - (double)r.min, rok);
+  SET(roll_abs_p95_60, r.p95, rok);
+  SET(roll_abs_max_60, fmax(fabs(r.min), fabs(r.max)), rok);
+  SET(roll_iqr_60, r.iqr, rok);
+  double dsq = 0;
+  int pairs = 0;
+  for (int k = 1; k < n60; k++) {
+    float a = w->roll_deg[slot(w, (uint32_t)k)],
+          b = w->roll_deg[slot(w, (uint32_t)(k - 1))];
+    if (isfinite(a) && isfinite(b)) {
+      double d = (double)b - (double)a;
+      dsq += d * d;
+      pairs++;
     }
   }
-
-  /* Nhiễu nền: sai phân bậc 2 trên ba mẫu hợp lệ liên tiếp (var = 6 sigma^2 với nhiễu trắng). */
-  {
-    float acc = 0; int cnt = 0;
-    for (uint32_t k = 0; k + 2 < n60; k++) {
-      uint32_t i0 = slot_long(w, k), i1 = slot_long(w, k + 1), i2 = slot_long(w, k + 2);
-      if (!(w->valid[i0] && w->valid[i1] && w->valid[i2])) continue;
-      float d2 = w->roll_deg[i0] - 2.0f * w->roll_deg[i1] + w->roll_deg[i2];
-      acc += d2 * d2; cnt++;
-    }
-    f->noise_floor_deg = cnt ? sqrtf(acc / (6.0f * cnt)) : 0.0f;
-  }
-
-  /* --- 180 s --- */
-  roll_stat_t s180 = roll_stat(w, 0, n180);
-  f->n_valid_180 = s180.nv;
-  f->missing_ratio_180 = 1.0f - (float)s180.nv / (float)n180;
-  f->mean_roll_deg = s180.mean;
-  {
-    int npos = 0, nneg = 0;
-    for (uint32_t k = 0; k < n180; k++) {
-      uint32_t i = slot_long(w, k);
-      if (!w->valid[i]) continue;
-      if (w->roll_deg[i] > 0.01f) npos++; else if (w->roll_deg[i] < -0.01f) nneg++;   /* vùng chết 0.01 deg */
-    }
-    int nv = npos + nneg;
-    f->same_sign_ratio = nv ? (float)(npos > nneg ? npos : nneg) / (float)nv : 0.5f;
-  }
-
+  SET(roll_diff_rms_60, pairs ? sqrt(dsq / pairs) : (double)NAN,
+      f->ready_short && pairs >= 570);
+  SET(roll_mean_180, l.mean, lok);
+  SET(roll_median_180, l.median, lok);
+  SET(roll_mean_abs_180, l.mean_abs, lok);
+  SET(roll_dominant_sign_ratio_180,
+      l.pos + l.neg ? (double)(l.pos > l.neg ? l.pos : l.neg) / (l.pos + l.neg)
+                    : (double)NAN,
+      lok);
+  SET(pitch_rms_60, p.rms, pok);
+  SET(pitch_std_60, p.sd, pok);
+  SET(pitch_peak_to_peak_60, (double)p.max - (double)p.min, pok);
   if (f->ready_long) {
-    /* 6 đoạn 30 s (60 mẫu), từ cũ (s = 0) đến mới (s = 5). */
-    float xs[6], ys[6]; int ns = 0;
-    for (int s = 0; s < 6; s++) {
-      uint32_t k0 = (uint32_t)(SVMG_WIN_LONG - 60 * (s + 1));
-      roll_stat_t sg = roll_stat(w, k0, 60);
-      if (sg.nv < 20) continue;
-      xs[ns] = (float)s; ys[ns] = pick_rms(&sg); ns++;
+    stats_t b[3];
+    int bok = 1;
+    for (int j = 0; j < 3; j++) {
+      b[j] = stats(w, 0, SVMG_WIN_LONG - j * SVMG_SEG_SAMPLES - 1,
+                   SVMG_SEG_SAMPLES);
+      bok &= b[j].n >= 570;
     }
-    if (ns >= 3) {
-      float mx_ = 0, my_ = 0;
-      for (int i = 0; i < ns; i++) { mx_ += xs[i]; my_ += ys[i]; }
-      mx_ /= ns; my_ /= ns;
-      float num = 0, den = 0;
-      for (int i = 0; i < ns; i++) { num += (xs[i] - mx_) * (ys[i] - my_); den += (xs[i] - mx_) * (xs[i] - mx_); }
-      f->trend_rms_deg_per_min = (den > 0 ? num / den : 0.0f) * 2.0f;     /* deg / 30 s -> deg / min */
+    double mean = (b[0].mean + b[1].mean + b[2].mean) / 3, var = 0;
+    for (int j = 0; j < 3; j++) {
+      double d = b[j].mean - mean;
+      var += d * d;
     }
-    roll_stat_t first = roll_stat(w, SVMG_WIN_LONG - SVMG_WIN_SHORT, SVMG_WIN_SHORT);
-    if (first.nv >= 20 && s60.nv >= 20) {
-      float den = pick_rms(&first), num = f->rms_roll_deg;
-      if (den < 0.5f) den = 0.5f;          /* sàn 0.5 deg cho cả hai vế: tín hiệu im lặng cho tỉ số 1 */
-      if (num < 0.5f) num = 0.5f;
-      f->rms_ratio = num / den;
+    SET(roll_segment_mean_std_180, sqrt(var / 3), bok);
+    SET(roll_mean_shift_180, b[2].mean - b[0].mean, bok);
+    SET(roll_rms_early_60, b[0].rms, bok);
+    SET(roll_rms_late_60, b[2].rms, bok);
+    SET(roll_rms_ratio_180,
+        b[0].rms > SVMG_RMS_EPSILON_DEG ? b[2].rms / b[0].rms : (double)NAN,
+        bok);
+    /* OLS at centers [30,90,150] seconds, converted to degrees/minute. */
+    double slope = (b[2].rms - b[0].rms) / 2;
+    SET(roll_rms_slope_180, slope, bok);
+    SET(roll_p95_trend_slope_180, ((double)b[2].p95 - (double)b[0].p95) / 2,
+        bok);
+    double rm = (b[0].rms + b[1].rms + b[2].rms) / 3, sst = 0, sse = 0;
+    for (int j = 0; j < 3; j++) {
+      double d = b[j].rms - rm, e = b[j].rms - (rm + slope * (j - 1));
+      sst += d * d;
+      sse += e * e;
     }
+    SET(roll_rms_trend_r2_180,
+        sst > SVMG_R2_ZERO_TOLERANCE ? fmax(0, fmin(1, 1 - sse / sst))
+                                     : (double)NAN,
+        bok);
   }
+  f->rms_roll = f->roll_rms_60;
+  f->p95_roll = f->roll_abs_p95_60;
+  f->rms_pitch = f->pitch_rms_60;
+  f->p95_pitch = p.p95;
+  f->max_abs_roll = f->roll_abs_max_60;
+  f->energy_roll = (float)(r.rms * r.rms);
+  f->mean_roll = f->roll_mean_180;
+  stats_t lp = stats(w, 1, n180 - 1, n180);
+  f->mean_pitch = (float)lp.mean;
+  f->std_roll = (float)l.sd;
+  f->trend_rms_slope = f->roll_rms_slope_180;
 }
-
-void svmg_features_to_vector(const svmg_features_t *f, float out[SVMG_N_FEATURES]) {
-  out[0] = f->rms_roll_deg;   out[1] = f->p2p_deg;           out[2] = f->p95_abs_deg;
-  out[3] = f->rms_gyro_x_dps; out[4] = f->rms_gyro_y_dps;    out[5] = f->mean_roll_deg;
-  out[6] = f->same_sign_ratio; out[7] = f->trend_rms_deg_per_min; out[8] = f->rms_ratio;
-  out[9] = f->zero_cross_period_s;
+#undef SET
+void svmg_features_to_vector(const svmg_features_t *f,
+                             float out[SVMG_N_FEATURES]) {
+  int i = 0;
+#define COPY(name) out[i++] = f->name;
+  SVMG_FEATURE_FIELDS(COPY)
+#undef COPY
 }
-
+int svmg_features_vector_valid(const svmg_features_t *f) {
+  return f->valid_mask == SVMG_FEATURE_ALL_VALID;
+}
 void svmg_quality_default(svmg_quality_cfg_t *q) {
-  q->unknown_missing_ratio = 0.20f;
-  q->fault_missing_ratio = 0.50f;
-  q->fault_consec_invalid = 20;
+  q->unknown_quality_pct = 95;
+  q->fault_quality_pct = 50;
+  q->fault_consec_invalid = 100;
 }
-
-svmg_status_t svmg_features_status(const svmg_features_t *f, const svmg_quality_cfg_t *q, uint8_t *reason) {
+svmg_status_t svmg_features_status(const svmg_features_t *f,
+                                   const svmg_quality_cfg_t *q,
+                                   uint8_t *reason) {
   uint8_t r = 0;
-  if (f->consec_invalid >= q->fault_consec_invalid) r |= SVMG_Q_FAULT_RUN;
-  if (f->missing_ratio_60 > q->fault_missing_ratio) r |= SVMG_Q_FAULT_RATIO;
-  if (!f->ready_long) r |= SVMG_Q_COLD;
-  if (f->missing_ratio_60 > q->unknown_missing_ratio || f->missing_ratio_180 > q->unknown_missing_ratio) r |= SVMG_Q_MISSING;
-  if (reason) *reason = r;
-  if (r & (SVMG_Q_FAULT_RUN | SVMG_Q_FAULT_RATIO)) return SVMG_ST_FAULT;
-  if (r & (SVMG_Q_COLD | SVMG_Q_MISSING)) return SVMG_ST_UNKNOWN;
-  return SVMG_ST_OK;
+  if (f->consec_invalid >= q->fault_consec_invalid)
+    r |= SVMG_Q_FAULT_RUN;
+  if (f->data_quality_pct < q->fault_quality_pct)
+    r |= SVMG_Q_FAULT_PCT;
+  if (!f->ready_long)
+    r |= SVMG_Q_COLD;
+  if (f->data_quality_pct < q->unknown_quality_pct ||
+      (f->ready_long && f->n_valid_180 < 1710) ||
+      (f->ready_short && f->n_valid_60 < 570))
+    r |= SVMG_Q_LOWQUALITY;
+  if (reason)
+    *reason = r;
+  return r & (SVMG_Q_FAULT_RUN | SVMG_Q_FAULT_PCT) ? SVMG_ST_FAULT
+         : r                                       ? SVMG_ST_UNKNOWN
+                                                   : SVMG_ST_OK;
+}
+int svmg_features_from_series(const float *r, const float *p, const uint8_t *nr,
+                              int n, float out[SVMG_N_FEATURES]) {
+  if (!out)
+    return SVMG_ST_FAULT;
+  if (!r || !p || n <= 0) {
+    for (int j = 0; j < SVMG_N_FEATURES; j++)
+      out[j] = NAN;
+    return SVMG_ST_UNKNOWN;
+  }
+  svmg_window_t w;
+  svmg_window_clear(&w);
+  if (n > SVMG_WIN_LONG) {
+    int skip = n - SVMG_WIN_LONG;
+    r += skip;
+    p += skip;
+    if (nr)
+      nr += skip;
+    n = SVMG_WIN_LONG;
+  }
+  for (int i = 0; i < n; i++) {
+    uint8_t c = nr ? nr[i] : SVMG_RAW_PER_SAMPLE;
+    svmg_window_push(&w, r[i], p[i], c, c == SVMG_RAW_PER_SAMPLE);
+  }
+  svmg_features_t f;
+  svmg_features_compute(&w, &f);
+  svmg_features_to_vector(&f, out);
+  svmg_quality_cfg_t q;
+  svmg_quality_default(&q);
+  svmg_status_t st = svmg_features_status(&f, &q, NULL);
+  return st == SVMG_ST_OK && !svmg_features_vector_valid(&f) ? SVMG_ST_UNKNOWN
+                                                             : st;
 }

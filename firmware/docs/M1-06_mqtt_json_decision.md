@@ -1,14 +1,14 @@
 # Quyết định thư viện MQTT và JSON (M1-06)
 
-Yêu cầu của nhóm: so sánh theo RAM/flash, đối chiếu với `contracts/schemas/*.json`, rồi đề xuất. `contracts/` chưa có trong
-repo nên phần đối chiếu schema dựa trên **Phụ lục A đề cương** (đã có test khớp từng trường: `tests/firmware/test/test_msg`);
-sẽ đối chiếu lại khi có schema thật.
+Kết luận lựa chọn thư viện vẫn được giữ. Các số đo chi tiết trong tài liệu này là số đo lịch sử của firmware cũ;
+xem [bảng tài nguyên hiện hành](M1-08_resource_table.md) cho bản 23 đặc trưng. Schema thật đã được đối chiếu bằng
+`tests/firmware/tools/validate_messages.py` (46 bản tin hợp lệ, 0 vi phạm ngày 18/11/2026).
 
 ## 1. MQTT: `esp-mqtt` có sẵn trong framework (không thêm thư viện)
 
 | Tiêu chí | `esp-mqtt` (ESP-IDF, đã nằm trong arduino-esp32 3.x) | PubSubClient |
 |---|---|---|
-| **QoS 1 khi xuất bản + PUBACK** (bắt buộc cho `event`, `cmd/ack`, `status`) | Có: `esp_mqtt_client_publish(qos=1)` trả `msg_id`, sự kiện `MQTT_EVENT_PUBLISHED` báo PUBACK | **Không**: chỉ publish QoS 0 |
+| **QoS 1 khi xuất bản + PUBACK** (bắt buộc cho `event`, `cmd/ack`, `status`) | Có: `esp_mqtt_client_enqueue(qos=1)` trả `msg_id`, sự kiện `MQTT_EVENT_PUBLISHED` báo PUBACK | **Không**: chỉ publish QoS 0 |
 | Last Will QoS 1 retained | Có (`session.last_will`) | Có QoS 0/1 |
 | Retained / subscribe QoS 1 | Có | Subscribe QoS 0/1 |
 | Tự nối lại | Có (chạy trong task riêng, không chặn `loop()`) | Phải tự viết |

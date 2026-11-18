@@ -2,7 +2,7 @@
 //   Ghép nối: nếu tìm thấy ml/export/model.h (đường dẫn -I ../ml/export) thì dùng nó, nếu không dùng stubs/model_stub.h.
 //   Giả định về model.h (cần M2 xác nhận trong contracts): hàm `int model_predict(const float *f, int n)` trả chỉ số lớp
 //   theo thứ tự svmg_class_t 0..3 (NORMAL, HIGH_ROLL, PERSISTENT_OFFSET, AMPLITUDE_GROWTH), và macro SVMG_MODEL_VERSION.
-//   Tùy chọn (nếu M2 cung cấp): SVMG_MODEL_HAS_RANGE (+ SVMG_MODEL_FEAT_MIN/MAX[10]) -> UNKNOWN khi đặc trưng ngoài miền
+//   Tùy chọn (nếu M2 cung cấp): SVMG_MODEL_HAS_RANGE (+ SVMG_MODEL_FEAT_MIN/MAX[23]) -> UNKNOWN khi đặc trưng ngoài miền
 //   huấn luyện (biên 1 %); SVMG_MODEL_HAS_PROBA (+ model_predict_conf) -> UNKNOWN khi tỉ lệ phiếu < τ_conf.
 #pragma once
 #include <Arduino.h>

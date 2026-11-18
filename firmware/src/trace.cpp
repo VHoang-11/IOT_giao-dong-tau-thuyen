@@ -16,7 +16,7 @@ void trace_push(float roll, float pitch) { R[total % TRACE_CAP] = cdeg(roll); P[
 void trace_clear() { total = 0; }
 
 int trace_copy(uint16_t window_s, int16_t *r, int16_t *p, int cap) {
-  int want = (int)window_s * 2;
+  int want = (int)window_s * 10;
   if (want > TRACE_CAP) want = TRACE_CAP;
   if (want > (int)total) want = (int)total;
   if (want > cap) want = cap;

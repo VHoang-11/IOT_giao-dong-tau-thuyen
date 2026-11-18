@@ -1,5 +1,8 @@
 # Candidate Feature Availability Matrix
 
+> **Integration update (18/11/2026):** M1 now implements the [versioned 23-feature contract](../../contracts/features.md). The 30-feature research pipeline and proposal history below remain reference material; they do not mean all 30 inputs are deployed.
+
+
 > This matrix evaluates the exact 30 candidate names in [`feature_specification_30.md`](feature_specification_30.md). It does not change the current 14-feature contract. Signal availability is separated from approval of a feature formula; formulas remain proposals.
 
 Dataset evidence is from the [Real Dataset Audit report](../audit/real_dataset_audit_report.md) and [inventory](../audit/dataset_inventory.json).

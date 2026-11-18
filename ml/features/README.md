@@ -1,5 +1,8 @@
 # Pipeline trích xuất 30 candidate feature
 
+> **Integration update (18/11/2026):** M1 now implements the [versioned 23-feature contract](../../contracts/features.md). The 30-feature research pipeline and proposal history below remain reference material; they do not mean all 30 inputs are deployed.
+
+
 Module này tính 30 candidate feature theo đúng thứ tự trong [`ml/docs/feature_specification_30.md`](../docs/feature_specification_30.md). Đây là các định nghĩa vận hành để kiểm thử, **chưa được nhóm phê duyệt** và không thay đổi contract 14 feature hiện hành tại [`contracts/features.md`](../../contracts/features.md) hoặc [`core/include/svmg_core.h`](../../core/include/svmg_core.h).
 
 ## Kiến trúc

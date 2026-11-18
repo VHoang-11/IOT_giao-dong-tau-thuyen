@@ -62,6 +62,13 @@ typedef struct {
   uint8_t valid;        /* 0 = đọc lỗi/thiếu mẫu */
 } svmg_motion_sample_t;
 
+/* Đổi mẫu từ hệ trục FRD của bộ mô phỏng M2 (X mũi, Y mạn phải, Z xuống; mức nằm ngang cho az = -g, xem
+ * simulation/generator/imu_simulator.py) sang hệ trục cảm biến M1 (MPU6050 nằm ngang: Z lên, az = +g, roll = atan2(ay, az)).
+ * Đó là phép quay 180 deg quanh X: giữ ax, gx; đổi dấu ay, az, gy, gz. Roll dương và tốc độ roll gx giữ nguyên dấu. */
+static inline void svmg_sample_frd_to_sensor(svmg_motion_sample_t *s) {
+  s->ay = -s->ay; s->az = -s->az; s->gy = -s->gy; s->gz = -s->gz;
+}
+
 /* Loại sự kiện đẩy lên MQTT topic "event" (QoS 1) và vào bộ đệm offline. */
 typedef enum {
   SVMG_EV_NONE = 0,

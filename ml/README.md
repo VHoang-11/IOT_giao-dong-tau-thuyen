@@ -2,6 +2,14 @@
 
 Pipeline học máy cho phân loại chuyển động tàu thuyền, từ huấn luyện đến triển khai trên ESP32.
 
+## Tài liệu tích hợp M2 → M1
+
+1. [Danh sách 23 đặc trưng cho ESP32](docs/M2_23_Features_ESP32_Integration.md) — phạm vi triển khai đã chọn, đọc trước.
+2. [Đặc tả 30 ứng viên](docs/feature_specification_30.md) — tra công thức của 23 mục được chọn; không triển khai cả 30.
+
+M1 đã triển khai [contract 23 đặc trưng](../contracts/features.md) ở 10 Hz, cập nhật mỗi 10 giây; parity với extractor Python hiện tại đã kiểm chứng.
+M2 cần xuất model/metadata cùng schema `svmg-angle-23-v1`, xác nhận preprocessing và hiệu chỉnh Baseline trên validation.
+
 ## 4 lớp phân loại
 
 | Lớp | Mã | Mô tả |
@@ -15,7 +23,7 @@ Pipeline học máy cho phân loại chuyển động tàu thuyền, từ huấn
 
 ```
 Dataset (CSV/Parquet)
-    → Feature Engineering (14 đặc trưng)
+    → Feature Engineering (23 đặc trưng góc cho ESP32; 30 ứng viên phục vụ nghiên cứu)
     → Train/Val Split (GroupKFold theo session)
     → Random Forest Training
     → Evaluation (macro-F1, false alarm, latency)

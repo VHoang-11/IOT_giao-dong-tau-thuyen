@@ -214,7 +214,7 @@ void test_fault_threshold_10_seconds(void) {
 void test_dropped_samples_make_unknown_not_normal(void) {
   new_engine(SVMG_MODEL_BASELINE_B); drive(300, sea);
   DROP_PCT = 40; drive(120, sea);                                               /* mất 40% mẫu 20 Hz: mẫu 2 Hz vẫn đủ >=5/10 nhưng thiếu nhiều */
-  say("status=%.0f (0 OK,1 UNKNOWN,2 FAULT) missing60=%.2f", (double)E.dec.status, (double)E.dec.feat.missing_ratio_60);
+  say("status=%.0f (0 OK,1 UNKNOWN,2 FAULT) data_quality=%.1f%%", (double)E.dec.status, (double)E.dec.feat.data_quality_pct);
   svmg_alarm_out_t o = outs();
   if (E.dec.status != SVMG_ST_OK) TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_OFF, o.led_g);
   TEST_ASSERT_TRUE(E.alarm.level < SVMG_LVL_WARNING);                           /* mất mẫu không được gây báo động giả */
@@ -230,7 +230,7 @@ void test_nan_samples_do_not_poison_state(void) {
   for (int i = 0; i < 40; i++) { svmg_motion_sample_t s = st_sample(TS, 0, 0, 0, 0); s.ax = NAN; svmg_engine_push(&E, &s, now_ms(), &OUT); TS += 0.05; }
   drive(300, sea);
   TEST_ASSERT_EQUAL_INT(SVMG_ST_OK, E.dec.status);
-  TEST_ASSERT_TRUE(isfinite(E.dec.feat.rms_roll_deg));
+  TEST_ASSERT_TRUE(isfinite(E.dec.feat.rms_roll));
   TEST_ASSERT_EQUAL_INT(SVMG_LVL_NORMAL, E.alarm.level);
 }
 
@@ -281,7 +281,7 @@ void test_calibration_flow(void) {
   TEST_ASSERT_EQUAL_INT(SVMG_R_OK, CAL_RES);
   TEST_ASSERT_FLOAT_WITHIN(0.05f, 3.0f, E.cfg.zero_roll_deg);
   drive(300, tilt3);
-  TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, E.dec.feat.mean_roll_deg);                // đã trừ độ lệch lắp đặt
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f, E.dec.feat.mean_roll);                // đã trừ độ lệch lắp đặt
   TEST_ASSERT_EQUAL_INT(0, count_ev(SVMG_EV_ALARM_STATE, SVMG_LVL_WARNING));
 }
 void test_calibration_refused_while_alarm_active(void) {
@@ -304,7 +304,7 @@ static svmg_class_t rf_probe(void *c, const float *f, int n) { (void)c; RF_CALLS
 void test_rf_called_with_feature_vector_and_shadow_agreement(void) {
   new_engine(SVMG_MODEL_RF); RF_CALLS = 0; svmg_engine_set_rf(&E, rf_probe, NULL);
   drive(600, sea);
-  TEST_ASSERT_TRUE(RF_CALLS > 50);
+  TEST_ASSERT_TRUE(RF_CALLS >= 42);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, svmg_engine_agreement(&E));            /* cùng quy tắc ngưỡng 6 deg trên cùng đặc trưng */
   TEST_ASSERT_EQUAL_UINT8(0, E.dec.model_fallback);
 }
@@ -337,11 +337,33 @@ void test_sizeof_engine(void) {
   char m[160]; snprintf(m, sizeof m, "sizeof(svmg_engine_t)=%u  window=%u pipeline=%u alarm=%u", (unsigned)sizeof(svmg_engine_t),
                         (unsigned)sizeof(svmg_window_t), (unsigned)sizeof(svmg_pipeline_t), (unsigned)sizeof(svmg_alarm_t));
   TEST_MESSAGE(m);
-  TEST_ASSERT_TRUE(sizeof(svmg_engine_t) < 8192);
+  TEST_ASSERT_TRUE(sizeof(svmg_engine_t) < 32768);
 }
 
+static svmg_class_t rf_bad_label(void *c,const float *f,int n){(void)c;(void)f;(void)n;return SVMG_FAULT;}
+void test_rf_invalid_vector_never_called(void){
+ new_engine(SVMG_MODEL_RF);RF_CALLS=0;svmg_engine_set_rf(&E,rf_probe,0);drive(400,calm);
+ TEST_ASSERT_EQUAL_INT(0,RF_CALLS);TEST_ASSERT_TRUE(isnan(svmg_engine_agreement(&E)));TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN,E.dec.status);
+ TEST_ASSERT_BITS_HIGH(SVMG_Q_VECTOR_INVALID,E.dec.status_reason);TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_OFF,outs().led_g);
+}
+void test_rf_bad_label_is_unknown(void){
+ new_engine(SVMG_MODEL_RF);svmg_engine_set_rf(&E,rf_bad_label,0);drive(400,sea);
+ TEST_ASSERT_EQUAL_INT(SVMG_UNKNOWN,E.dec.cls_rf);TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN,E.dec.status);
+}
+void test_sensor_loss_immediate_unknown_and_fault_after_10s(void){
+ new_engine(SVMG_MODEL_BASELINE_B);drive(300,sea);INVALID_ALL=1;drive(.2,sea);
+ TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN,E.dec.status);TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_OFF,outs().led_g);
+ drive(9.9,sea);TEST_ASSERT_EQUAL_INT(SVMG_ST_FAULT,E.dec.status);
+ TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_BLINK_FAST,outs().led_r);
+}
+void test_10hz_calibration_and_clear_cadence(void){
+ new_engine(SVMG_MODEL_BASELINE_B);TEST_ASSERT_EQUAL_INT(300,SVMG_CALIB_SAMPLES);
+ TEST_ASSERT_EQUAL_UINT8(3,E.alarm.cfg.clear_updates);TEST_ASSERT_EQUAL_INT(2,E.pipe.cfg.decim);
+}
 int main(void) {
   UNITY_BEGIN();
+  RUN_TEST(test_rf_invalid_vector_never_called); RUN_TEST(test_rf_bad_label_is_unknown);
+  RUN_TEST(test_sensor_loss_immediate_unknown_and_fault_after_10s); RUN_TEST(test_10hz_calibration_and_clear_cadence);
   RUN_TEST(test_cold_start_is_never_shown_as_normal);
   RUN_TEST(test_normal_sea_one_hour_no_warning); RUN_TEST(test_temporary_heel_S0b_no_warning);
   RUN_TEST(test_detect_high_roll_S1); RUN_TEST(test_detect_persistent_offset_S2); RUN_TEST(test_detect_amplitude_growth_S3);

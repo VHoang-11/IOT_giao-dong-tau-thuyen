@@ -3,28 +3,31 @@
 
 Định dạng JSON (ĐỀ XUẤT, cần M2 xác nhận trong contracts):
 {
-  "baseline_b": {"hi_rms_deg": 6.0, "off_mean_deg": 2.5, "off_same_sign": 0.85,
-                 "grow_trend": 1.0, "grow_ratio": 1.5, "grow_min_rms": 1.5},
+  "baseline_b": {"hi_dyn_rms_deg": 6.0, "grow_slope": 1.0, "grow_min_rms": 1.5, "grow_max_heel_s": 0.0,
+                 "off_mean_deg": 1.5, "off_heel_s": 120.0},
   "mai":        {"a_ref_deg": 8.0, "b_ref_deg": 5.0, "g_ref_deg_per_min": 2.0},
   "generator_version": "...", "data_hash": "..."
 }
 Chạy: python tools/gen_baseline_header.py ../ml/baselines/baseline_params.json include/baseline_params.h
 """
+import math
 import json
 import sys
 
-B_KEYS = ["hi_rms_deg", "off_mean_deg", "off_same_sign", "grow_trend", "grow_ratio", "grow_min_rms"]
+B_KEYS = ["hi_dyn_rms_deg", "grow_slope", "grow_min_rms", "grow_max_heel_s", "off_mean_deg", "off_heel_s"]
 M_KEYS = ["a_ref_deg", "b_ref_deg", "g_ref_deg_per_min"]
 
 
 def main(src, dst):
     d = json.load(open(src, encoding="utf-8"))
+    if d.get("feature_schema_version") != "svmg-angle-23-v1" or d.get("preprocessing_version") != "imu-cf-bw4-20to10-v1":
+        sys.exit("baseline parameters require current feature_schema_version and preprocessing_version")
     for grp, keys in (("baseline_b", B_KEYS), ("mai", M_KEYS)):
         if grp not in d:
             sys.exit("thieu nhom '%s' trong %s" % (grp, src))
         for k in keys:
             v = d[grp].get(k)
-            if not isinstance(v, (int, float)) or v != v or v <= 0:
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 or (v == 0 and k != "grow_max_heel_s"):
                 sys.exit("gia tri '%s.%s' khong hop le: %r" % (grp, k, v))
     f = lambda v: repr(float(v)) + "f"
     out = ["// SINH TU DONG boi tools/gen_baseline_header.py - KHONG SUA TAY.",

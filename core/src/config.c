@@ -1,7 +1,6 @@
 /* config.c - M1-07. Xem svmg_config.h. */
 #include "svmg_config.h"
 #include "svmg_decision.h"
-#include <stdio.h>
 #include <string.h>
 #include <math.h>
 
@@ -18,17 +17,17 @@ void svmg_config_default(svmg_config_t *c, svmg_model_t primary) {
   memset(c, 0, sizeof *c);
   c->config_version = 1;
   svmg_config_apply_profile(c, SVMG_PROFILE_STANDARD);
-  c->phi_hard_deg = (uint8_t)SVMG_PHI_HARD_DEFAULT_DEG;
+  c->phi_hard_deg = SVMG_PHI_HARD_DEFAULT_DEG;
   c->report_interval_s = 5;
   c->primary_model = (uint8_t)primary;
 }
 
 svmg_reason_t svmg_config_validate(const svmg_config_t *c) {
   if (c->profile > SVMG_PROFILE_SENSITIVE) return SVMG_R_BAD_PARAM;
-  if (c->debounce_n < 1 || c->debounce_n > 6) return SVMG_R_BAD_PARAM;
-  if (c->phi_hard_deg < (uint8_t)SVMG_PHI_HARD_MIN_DEG || c->phi_hard_deg > (uint8_t)SVMG_PHI_HARD_MAX_DEG) return SVMG_R_BAD_PARAM;
-  if (c->mai_caution < 30 || c->mai_caution > 95) return SVMG_R_BAD_PARAM;
-  if (c->report_interval_s < 5 || c->report_interval_s > 60 || (c->report_interval_s % 5) != 0) return SVMG_R_BAD_PARAM;
+  if (c->debounce_n < SVMG_CFG_N_MIN || c->debounce_n > SVMG_CFG_N_MAX) return SVMG_R_BAD_PARAM;
+  if (!isfinite(c->phi_hard_deg) || c->phi_hard_deg < SVMG_PHI_HARD_MIN_DEG || c->phi_hard_deg > SVMG_PHI_HARD_MAX_DEG) return SVMG_R_BAD_PARAM;
+  if (c->mai_caution < SVMG_CFG_MAI_MIN || c->mai_caution > SVMG_CFG_MAI_MAX) return SVMG_R_BAD_PARAM;
+  if (c->report_interval_s < SVMG_CFG_REPORT_MIN || c->report_interval_s > SVMG_CFG_REPORT_MAX) return SVMG_R_BAD_PARAM;
   if (c->primary_model > SVMG_MODEL_BASELINE_B) return SVMG_R_BAD_PARAM;
   if (!isfinite(c->zero_roll_deg) || !isfinite(c->zero_pitch_deg) ||
       fabsf(c->zero_roll_deg) > SVMG_ZERO_LIMIT_DEG || fabsf(c->zero_pitch_deg) > SVMG_ZERO_LIMIT_DEG) return SVMG_R_BAD_PARAM;
@@ -75,34 +74,39 @@ uint16_t svmg_crc16_ccitt(const void *data, size_t len) {
   return crc;
 }
 
-size_t svmg_config_canonical(const svmg_config_t *c, char *buf, size_t cap) {
-  int n = snprintf(buf, cap, "v=%lu;p=%s;n=%u;phi=%u;mai=%u;rep=%u;m=%s",
-                   (unsigned long)c->config_version, svmg_profile_name(c->profile), (unsigned)c->debounce_n,
-                   (unsigned)c->phi_hard_deg, (unsigned)c->mai_caution, (unsigned)c->report_interval_s,
-                   svmg_model_name(c->primary_model));
-  return n < 0 ? 0 : (size_t)n;
-}
-
-uint16_t svmg_config_crc(const svmg_config_t *c) {
-  char buf[96];
-  size_t n = svmg_config_canonical(c, buf, sizeof buf);
-  if (n >= sizeof buf) n = sizeof buf - 1;
-  return svmg_crc16_ccitt(buf, n);
-}
-
-svmg_cfg_verdict_t svmg_config_check_update(const svmg_config_t *cur, const svmg_config_t *in, uint16_t crc_in, svmg_reason_t *reason) {
-  svmg_config_t cand = *in;
-  cand.zero_roll_deg = cur->zero_roll_deg;      /* hiệu chuẩn là dữ liệu cục bộ, không bị bản tin ghi đè */
-  cand.zero_pitch_deg = cur->zero_pitch_deg;
-  if (reason) *reason = SVMG_R_OK;
-  if (svmg_config_crc(&cand) != crc_in) { if (reason) *reason = SVMG_R_BAD_PARAM; return SVMG_CFG_REJECT; }
-  svmg_reason_t v = svmg_config_validate(&cand);
-  if (v != SVMG_R_OK) { if (reason) *reason = v; return SVMG_CFG_REJECT; }
-  if (cand.config_version == cur->config_version) {
-    if (svmg_config_crc(cur) == crc_in) return SVMG_CFG_DUPLICATE;     /* retained gửi lại sau khi nối lại */
-    if (reason) *reason = SVMG_R_BAD_PARAM;                              /* cùng phiên bản nhưng khác nội dung */
-    return SVMG_CFG_REJECT;
+svmg_reason_t svmg_config_apply_patch(const svmg_config_t *cur, const svmg_config_patch_t *p, svmg_config_t *out) {
+  *out = *cur;                                   /* giữ hiệu chuẩn cục bộ và mọi trường vắng */
+  out->config_version = p->config_version;
+  if (p->has & SVMG_CFGP_PROFILE) {
+    if (p->profile > SVMG_PROFILE_SENSITIVE) return SVMG_R_BAD_PARAM;
+    svmg_config_apply_profile(out, (svmg_profile_t)p->profile);       /* mặc định của hồ sơ trước, rồi trường tường minh chồng lên */
   }
-  if (cand.config_version < cur->config_version) { if (reason) *reason = SVMG_R_BAD_PARAM; return SVMG_CFG_REJECT; }
+  if (p->has & SVMG_CFGP_DEBOUNCE) out->debounce_n = p->debounce_n;
+  if (p->has & SVMG_CFGP_MAI) out->mai_caution = p->mai_caution;
+  if (p->has & SVMG_CFGP_PHI) out->phi_hard_deg = p->phi_hard_deg;
+  if (p->has & SVMG_CFGP_REPORT) out->report_interval_s = p->report_interval_s;
+  if (p->has & SVMG_CFGP_MODEL) out->primary_model = p->primary_model;
+  return svmg_config_validate(out);
+}
+
+static int same_content(const svmg_config_t *a, const svmg_config_t *b) {
+  return a->profile == b->profile && a->debounce_n == b->debounce_n && a->mai_caution == b->mai_caution &&
+         a->primary_model == b->primary_model && a->report_interval_s == b->report_interval_s && a->phi_hard_deg == b->phi_hard_deg;
+}
+
+svmg_cfg_verdict_t svmg_config_check_patch(const svmg_config_t *cur, const svmg_config_patch_t *p, svmg_config_t *out, svmg_reason_t *reason) {
+  svmg_reason_t dummy; if (!reason) reason = &dummy;
+  *reason = SVMG_R_OK;
+  if (p->crc_state == SVMG_CRC_BAD) { *reason = SVMG_R_BAD_PARAM; return SVMG_CFG_REJECT; }
+  if (!(p->has & SVMG_CFGP_PROFILE)) { *reason = SVMG_R_BAD_PARAM; return SVMG_CFG_REJECT; }      /* schema: profile bắt buộc */
+  svmg_config_t cand;
+  svmg_reason_t v = svmg_config_apply_patch(cur, p, &cand);
+  if (v != SVMG_R_OK) { *reason = v; return SVMG_CFG_REJECT; }
+  if (p->config_version < cur->config_version) { *reason = SVMG_R_BAD_PARAM; return SVMG_CFG_REJECT; }   /* chỉ áp version lớn hơn */
+  if (p->config_version == cur->config_version) {
+    if (same_content(&cand, cur)) return SVMG_CFG_DUPLICATE;                 /* retained gửi lại sau khi nối lại */
+    *reason = SVMG_R_BAD_PARAM; return SVMG_CFG_REJECT;                      /* cùng phiên bản nhưng khác nội dung */
+  }
+  if (out) *out = cand;
   return SVMG_CFG_APPLY;
 }

@@ -1,5 +1,5 @@
 /* svmg_calib.h - M1-07: hiệu chuẩn độ lệch 0 (calibrate_zero, FR18, đề cương 8.5).
- * Đo trung bình roll/pitch trong 30 s (60 mẫu 2 Hz) khi tín hiệu tĩnh. Không tĩnh -> NOT_STATIC (từ chối),
+ * Đo trung bình roll/pitch trong 30 s (300 mẫu 10 Hz) khi tín hiệu tĩnh. Không tĩnh -> NOT_STATIC (từ chối),
  * thiếu dữ liệu -> FORBIDDEN_STATE, độ lệch quá lớn (> SVMG_ZERO_LIMIT_DEG) -> FORBIDDEN_STATE
  * (để lệnh này không bị dùng để che một góc nghiêng thật).
  */
@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define SVMG_CALIB_SAMPLES 60            /* 30 s x 2 Hz */
+#define SVMG_CALIB_SAMPLES 300            /* 30 s x 10 Hz */
 #define SVMG_CALIB_STD_MAX_DEG 0.5f      /* ngưỡng "tĩnh": độ lệch chuẩn roll/pitch */
 
 typedef struct {
@@ -27,7 +27,7 @@ typedef struct {
 void svmg_calib_init(svmg_calib_t *c);
 void svmg_calib_start(svmg_calib_t *c);
 void svmg_calib_abort(svmg_calib_t *c);
-/* Đẩy mẫu 2 Hz (roll/pitch CHƯA trừ hiệu chuẩn, đơn vị độ). Trả 0 = đang chạy/không hoạt động, 1 = xong (xem ->result). */
+/* Đẩy mẫu 10 Hz (roll/pitch CHƯA trừ hiệu chuẩn, đơn vị độ). Trả 0 = đang chạy/không hoạt động, 1 = xong (xem ->result). */
 int  svmg_calib_push(svmg_calib_t *c, float roll_deg, float pitch_deg, uint8_t valid);
 
 #ifdef __cplusplus

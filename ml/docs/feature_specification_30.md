@@ -1,6 +1,12 @@
 # SVMG 30 Candidate Feature Specification
 
-> **Status: design proposal only.** The repository's current production-facing feature definition remains the 14-field contract in [`contracts/features.md`](../../contracts/features.md) and `FeatureVector` in [`core/include/svmg_core.h`](../../core/include/svmg_core.h). This document records the exact 30 candidate names supplied for evaluation; it does not approve, implement, or replace the existing contract.
+> **ESP32 integration scope:** M2 has selected the 23 angle features in
+> [M2_23_Features_ESP32_Integration.md](M2_23_Features_ESP32_Integration.md), in that document's order:
+> original candidate IDs 0–7, 11–22 and 26–28. Do not deploy all 30 candidates or reuse their original IDs as
+> contiguous 23-vector indexes. The selection supersedes the subset-selection question below; unresolved formula,
+> preprocessing and validity conventions still require a versioned agreement. The M1 implementation now uses the [versioned 23-field contract](../../contracts/features.md).
+
+> **Status: reference formulas for 30 candidates.** The current M1 implementation is the 23-field contract in [`contracts/features.md`](../../contracts/features.md) and `FeatureVector` in [`core/include/svmg_core.h`](../../core/include/svmg_core.h). This document records the exact 30 candidate names supplied for evaluation; the other seven candidates are not ESP32 model inputs. For operational 23-feature conventions, use the versioned contract.
 
 The data limitations referenced below are recorded in the [Real Dataset Audit](../audit/real_dataset_audit_report.md) and its [inventory](../audit/dataset_inventory.json). Every proposed formula and every unresolved convention is `PENDING_TEAM_APPROVAL`.
 

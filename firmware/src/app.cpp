@@ -4,6 +4,8 @@
 #include <Wire.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
+#include <esp_task_wdt.h>
 #include "app.h"
 #include "svmg_build.h"
 #include "pins.h"
@@ -37,6 +39,7 @@ uint8_t         TIMEWARP = 1;
 uint32_t        SEQ = 0;                 // dùng chung cho telemetry/event/health/trace (đề cương Phụ lục A: telemetry và event cùng chuỗi seq)
 uint32_t        UPDATES = 0;
 uint32_t        loop_overruns = 0;
+uint32_t        feature_update_us_last=0,feature_update_us_max=0;
 uint32_t        next_tick_ms = 0;
 bool            pot_override = false;
 uint32_t        diag_until_ms = 0;
@@ -45,8 +48,13 @@ uint32_t        boot_count = 0;
 char            CUR_CMD_ID[SVMG_CMD_ID_LEN];
 bool            cal_pending = false;
 char            cal_cmd_id[SVMG_CMD_ID_LEN];
+double          next_tel_abs = 0.0;      // telemetry theo report_interval_s bằng đồng hồ mô phỏng (không còn bội của 5 s)
+bool            restart_pending = false;
+uint32_t        restart_at_ms = 0;
+#ifdef SVMG_EXT_TRACE
 uint16_t        snap_window = 0;
 uint32_t        snap_deadline_ms = 0;
+#endif
 
 // ---------------------------------------------------------------- tiện ích
 double t_now_abs() { return MODE == SVMG_SRC_SIMULATION ? motion_sim_time_abs() : (double)millis() / 1000.0; }
@@ -72,8 +80,10 @@ const char *level_short(svmg_level_t l) {
 
 void push_event(svmg_event_t ev) {
   ev.t_sim_s = (float)t_now_abs();                       // nhãn thời gian tuyệt đối (lõi dùng t đã quấn vòng)
-  svmg_evbuf_push(&BUF, &ev, ++SEQ);
-  Serial.printf("[EV] seq=%lu type=%u level=%s prev=%s alarm=%lu val=%u\n", (unsigned long)SEQ, ev.type,
+  // Topic event chỉ nhận ALARM_STATE (schema). Sự kiện hệ thống chỉ ghi Serial (đã suy ra được từ telemetry/status/cmd-ack).
+  bool publish = msg_event_publishable(ev.type);
+  if (publish) svmg_evbuf_push(&BUF, &ev, ++SEQ);
+  Serial.printf("[EV] %s seq=%lu type=%u level=%s prev=%s alarm=%lu val=%u\n", publish ? "->mqtt" : "local ", (unsigned long)(publish ? SEQ : 0), ev.type,
                 svmg_level_name((svmg_level_t)ev.level), svmg_level_name((svmg_level_t)ev.prev_level), (unsigned long)ev.alarm_id, ev.val);
 }
 
@@ -97,7 +107,7 @@ void publish_ack(const svmg_cmd_ack_t &a, bool with_zero) {
 }
 
 void publish_status() {
-  char js[200];
+  char js[400];
   size_t n = msg_build_status_online(js, sizeof js, ID, E.cfg.config_version);
   publish_json("status", n, js, 1, true);
 }
@@ -109,15 +119,9 @@ bool sensor_ok() {
 
 void send_telemetry() {
   if (!net_connected()) return;
-  MsgTelemetry t; memset(&t, 0, sizeof t);
-  const svmg_decision_state_t &d = E.dec;
-  t.t_sim_s = (float)t_now_abs(); t.uptime_ms = millis(); t.timewarp = TIMEWARP; t.source_mode = MODE;
-  t.scenario = MODE == SVMG_SRC_SIMULATION ? (int)sim_scenario() : -1;
-  t.roll_deg = d.roll_deg; t.pitch_deg = d.pitch_deg; t.rms_roll_deg = d.feat.rms_roll_deg;
-  t.heel_offset_deg = d.feat.mean_roll_deg; t.trend_rms_deg_per_min = d.feat.trend_rms_deg_per_min;
-  t.cls_rf = d.cls_rf; t.cls_b = d.cls_b; t.mai = d.mai.value; t.alarm_level = E.alarm.level;
-  t.config_version = E.cfg.config_version; t.sensor_ok = sensor_ok();
-  t.acked = E.alarm.acked; t.data_status = d.status; t.sea_state = sim_sea_state();
+  MsgTelemetry t;
+  msg_fill_telemetry(&t, &E, (uint64_t)(esp_timer_get_time() / 1000), t_now_abs(), TIMEWARP, MODE,
+                     MODE == SVMG_SRC_SIMULATION ? (int)sim_scenario() : -1, sensor_ok(), sim_sea_state());
   char js[640];
   size_t n = msg_build_telemetry(js, sizeof js, ID, SEQ + 1, t);
   if (n && net_publish("telemetry", js, (int)n, 0, false) >= 0) SEQ++;   // seq chỉ tiêu thụ khi thật sự giao cho MQTT
@@ -125,20 +129,23 @@ void send_telemetry() {
 
 void send_health() {
   MsgHealth h; memset(&h, 0, sizeof h);
-  h.uptime_ms = millis(); h.heap_free = ESP.getFreeHeap(); h.heap_min = ESP.getMinFreeHeap(); h.rssi = net_rssi();
+  h.uptime_ms = (uint64_t)(esp_timer_get_time() / 1000); h.heap_free = ESP.getFreeHeap(); h.heap_min = ESP.getMinFreeHeap(); h.rssi = net_rssi();
   h.reconnects = net_reconnects(); h.i2c_errors = mpu_error_count(); h.samples_invalid = E.pipe.cnt_invalid; h.gaps = E.pipe.cnt_gap;
+  h.feature_update_us_last=feature_update_us_last;h.feature_update_us_max=feature_update_us_max;
+  h.feature_valid_mask=E.dec.feat.valid_mask; h.data_status=(uint8_t)E.dec.status;
   h.loop_overruns = loop_overruns; h.infer_us_avg = infer_stats().avg_us(); h.infer_us_max = infer_stats().max_us;
   h.evbuf_depth = svmg_evbuf_depth(&BUF); h.evbuf_dropped = BUF.n_dropped_other + BUF.n_dropped_alarm;
   Serial.printf("[HEALTH] heap=%lu min=%lu stack_hwm=%u evbuf=%d\n", (unsigned long)h.heap_free, (unsigned long)h.heap_min, (unsigned)uxTaskGetStackHighWaterMark(nullptr), svmg_evbuf_depth(&BUF));
   h.cmd_exec = CMDC.n_exec; h.cmd_rejected = CMDC.n_rejected; h.rx_dropped = net_rx_dropped(); h.sensor_ok = sensor_ok();
   if (!net_connected()) return;                                   // vẫn in Serial ở trên khi mất mạng
-  char js[620];
+  char js[1024];
   size_t n = msg_build_health(js, sizeof js, ID, SEQ + 1, h);
   if (n && net_publish("health", js, (int)n, 0, false) >= 0) SEQ++;
 }
 
+#ifdef SVMG_EXT_TRACE
 void send_snapshot(uint16_t window_s) {
-  int16_t r[TRACE_CAP], p[TRACE_CAP];
+  static int16_t r[TRACE_CAP], p[TRACE_CAP];
   int n = trace_copy(window_s, r, p, TRACE_CAP);
   const int CH = 40;
   int chunks = (n + CH - 1) / CH;
@@ -150,6 +157,7 @@ void send_snapshot(uint16_t window_s) {
   }
   send_telemetry();                                               // kèm đặc trưng hiện tại (đề cương 8.2: request_snapshot)
 }
+#endif
 
 // ---------------------------------------------------------------- xử lý đầu ra của engine
 void commit_config(const svmg_config_t &c) {
@@ -170,7 +178,7 @@ void finish_calibration(svmg_reason_t result) {
 void log_update(uint32_t now) {
   const svmg_decision_state_t &d = E.dec;
   Serial.printf("T,%.1f,%s,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%s,%s,%u,%s,%u,%lu\n", t_now_abs(), MODE == SVMG_SRC_SIMULATION ? "SIM" : "SENSOR",
-                d.roll_deg, d.pitch_deg, d.feat.rms_roll_deg, d.feat.mean_roll_deg, d.feat.trend_rms_deg_per_min,
+                d.roll_deg, d.pitch_deg, d.feat.rms_roll, d.feat.mean_roll, d.feat.trend_rms_slope,
                 class_short(d.cls_rf), class_short(d.cls_b), class_short(d.cls_primary), d.mai.value,
                 svmg_level_name(E.alarm.level), E.alarm.acked, (unsigned long)now);
 }
@@ -179,16 +187,17 @@ void handle_out(const svmg_engine_out_t &o, uint32_t now) {
   for (int i = 0; i < o.n_ev; i++) push_event(o.ev[i]);
   if (o.calib_done) finish_calibration(o.calib_result);
   else if (cal_pending && !E.calib.active) finish_calibration(SVMG_R_FORBIDDEN_STATE);   // bị hủy giữa chừng (đổi chế độ/khoảng trống): đừng để lệnh treo
-  if (o.got_2hz) {
+  if (o.got_10hz) {
     trace_push(E.dec.roll_deg, E.dec.pitch_deg);
-    if (MODE == SVMG_SRC_SENSOR)                            // T01: giá trị thật đọc từ MPU6050 (2 Hz) và tình trạng cảm biến
+    double ta = t_now_abs();
+    if (ta >= next_tel_abs) { send_telemetry(); next_tel_abs = ta + (double)E.cfg.report_interval_s; }   // 1..3600 s theo cấu hình
+    if (MODE == SVMG_SRC_SENSOR)                            // T01: giá trị thật đọc từ MPU6050 (10 Hz) và tình trạng cảm biến
       Serial.printf("R,%.1f,%.2f,%.2f,i2c_err=%lu,sat=%lu,valid=%u\n", t_now_abs(), E.dec.roll_deg, E.dec.pitch_deg,
                     (unsigned long)mpu_error_count(), (unsigned long)motion_saturation_count(), (unsigned)(E.pipe.cnt_invalid == 0));
   }
   if (o.got_update) {
     UPDATES++;
     log_update(now);
-    if (((UPDATES * 5u) % E.cfg.report_interval_s) == 0) send_telemetry();
   }
 }
 
@@ -196,6 +205,7 @@ void handle_out(const svmg_engine_out_t &o, uint32_t now) {
 void change_mode(svmg_source_t m) {
   if (m == MODE) return;
   MODE = m;
+  next_tel_abs = 0.0;                   // đồng hồ nguồn đổi: gửi telemetry ngay
   if (m == SVMG_SRC_SENSOR) TIMEWARP = 1;
   if (m == SVMG_SRC_SIMULATION) motion_sim_clock_reset();
   svmg_engine_restart_signal(&E);       // đổi chế độ xóa bộ đệm cửa sổ (đề cương 8.2); KHÔNG xóa trạng thái cảnh báo
@@ -212,19 +222,29 @@ void change_scenario(uint8_t scn, int sea /*-1: giữ*/) {
   Serial.printf("[SCN] %s sea=%u\n", svmg_scenario_name(scn), s);
 }
 
-// ---------------------------------------------------------------- hook của kênh lệnh
-svmg_reason_t hk_ack(void *, uint32_t alarm_id, int has) {
+// ---------------------------------------------------------------- hook của kênh lệnh (bộ lệnh = contracts/schemas/command.json)
+svmg_reason_t hk_ack_alarm(void *, uint32_t alarm_id, int has) {
   if (has && E.alarm.alarm_id != 0 && E.alarm.alarm_id != alarm_id) return SVMG_R_OK;   // ack của cảnh báo cũ: vô hại, không ack nhầm cảnh báo mới
   svmg_engine_out_t o; svmg_engine_ack(&E, SVMG_ACKBY_REMOTE, millis(), &o); handle_out(o, millis());
   return SVMG_R_OK;
 }
-svmg_reason_t hk_mute(void *, uint16_t d) {
+svmg_reason_t hk_mute_alarm(void *, uint16_t d) {
   svmg_engine_out_t o; svmg_reason_t r = SVMG_R_OK; svmg_engine_mute(&E, d, millis(), &o, &r); handle_out(o, millis());
-  return r;
+  return r;                                  // CRITICAL / đã ACK / không có WARNING -> FORBIDDEN_STATE (do máy trạng thái)
 }
 svmg_reason_t hk_profile(void *, uint8_t p) {
   svmg_config_t c = E.cfg; svmg_config_apply_profile(&c, (svmg_profile_t)p); c.config_version++;
   if (svmg_config_validate(&c) != SVMG_R_OK) return SVMG_R_BAD_PARAM;
+  commit_config(c);
+  return SVMG_R_OK;
+}
+svmg_reason_t hk_threshold(void *, const svmg_cmd_t *m) {
+  svmg_config_t c = E.cfg; c.config_version++;                      // áp NGUYÊN TỬ: hoặc tất cả tham số hợp lệ, hoặc không đổi gì
+  if (m->has & SVMG_CP_PHI) c.phi_hard_deg = m->phi_hard_deg;
+  if (m->has & SVMG_CP_MAI) c.mai_caution = m->mai_caution;
+  if (m->has & SVMG_CP_DEBOUNCE) c.debounce_n = m->debounce_n;
+  if (m->has & SVMG_CP_REPORT) c.report_interval_s = m->report_interval_s;
+  if (svmg_config_validate(&c) != SVMG_R_OK) return SVMG_R_BAD_PARAM;   // kiểm lần cuối ở thiết bị (phi_hard luôn 15..25)
   commit_config(c);
   return SVMG_R_OK;
 }
@@ -233,6 +253,13 @@ svmg_reason_t hk_calibrate(void *) {
   if (r == SVMG_R_PENDING) { cal_pending = true; strncpy(cal_cmd_id, CUR_CMD_ID, sizeof cal_cmd_id - 1); }
   return r;
 }
+svmg_reason_t hk_restart(void *) {
+  // Không để lệnh từ xa làm mất cảnh báo cục bộ đang hoạt động (khởi động lại xóa bộ đệm RAM và trạng thái cảnh báo).
+  if (E.alarm.level >= SVMG_LVL_WARNING || E.calib.active || cal_pending) return SVMG_R_FORBIDDEN_STATE;
+  restart_pending = true; restart_at_ms = millis() + 1500;          // chừa thời gian gửi ack + status offline rồi mới khởi động lại
+  return SVMG_R_OK;
+}
+#ifdef SVMG_EXT_COMMANDS
 svmg_reason_t hk_scenario(void *, uint8_t scn, int sea) {
   if (MODE != SVMG_SRC_SIMULATION) return SVMG_R_FORBIDDEN_STATE;
   change_scenario(scn, sea);
@@ -244,16 +271,29 @@ svmg_reason_t hk_timewarp(void *, uint8_t tw) {
   TIMEWARP = tw;                          // chỉ đổi đồng hồ ảo; hẹn giờ ACK 60 s dùng millis() nên không bị ảnh hưởng
   return SVMG_R_OK;
 }
+#ifdef SVMG_EXT_TRACE
 svmg_reason_t hk_snapshot(void *, uint16_t w) { snap_window = w; snap_deadline_ms = millis() + 10000; return SVMG_R_OK; }
+#else
+svmg_reason_t hk_snapshot(void *, uint16_t) { return SVMG_R_UNSUPPORTED; }   // topic trace không có trong ACL/backend
+#endif
 svmg_reason_t hk_model(void *, uint8_t m) {
   if (m == SVMG_MODEL_RF && !infer_available()) return SVMG_R_UNSUPPORTED;   // chưa có model.h thật
   svmg_config_t c = E.cfg; c.primary_model = m; c.config_version++;
   commit_config(c);
   return SVMG_R_OK;
 }
+#endif
 uint32_t hk_version(void *) { return E.cfg.config_version; }
 
-const svmg_cmd_hooks_t HOOKS = { nullptr, hk_ack, hk_mute, hk_profile, hk_calibrate, hk_scenario, hk_mode, hk_timewarp, hk_snapshot, hk_model, hk_version };
+// start_voyage / stop_voyage: backend quản lý chuyến đi, không gửi xuống thiết bị (backend/app/routers/voyages.py) -> không có hook = UNSUPPORTED.
+const svmg_cmd_hooks_t HOOKS = {
+  nullptr, hk_ack_alarm, hk_mute_alarm, hk_profile, hk_threshold, hk_calibrate, hk_restart, nullptr, nullptr,
+#ifdef SVMG_EXT_COMMANDS
+  hk_scenario, hk_mode, hk_timewarp, hk_snapshot, hk_model,
+#else
+  nullptr, nullptr, nullptr, nullptr, nullptr,
+#endif
+  hk_version };
 
 void handle_cmd(const RxItem &it, uint32_t now) {
   svmg_cmd_t c;
@@ -263,22 +303,22 @@ void handle_cmd(const RxItem &it, uint32_t now) {
   if (svmg_cmd_exec(&CMDC, &HOOKS, &c, now - it.rx_ms, &ack)) publish_ack(ack, false);
 }
 
+// Cấu hình từ backend là BẢN VÁ (xem svmg_config.h): trường vắng giữ nguyên, CRC tính trên JSON chuẩn tắc như backend.
 void handle_config(const RxItem &it) {
-  svmg_config_t in; uint16_t crc; svmg_cmd_ack_t ack; memset(&ack, 0, sizeof ack);
-  if (!msg_parse_config(it.payload, it.len, &in, &crc)) {
+  svmg_config_patch_t patch; svmg_cmd_ack_t ack; memset(&ack, 0, sizeof ack);
+  if (!msg_parse_config(it.payload, it.len, &patch)) {
     strcpy(ack.cmd_id, "cfg-invalid"); ack.applied = 0; ack.reason = SVMG_R_BAD_PARAM; ack.config_version = E.cfg.config_version;
     publish_ack(ack, false); return;
   }
-  snprintf(ack.cmd_id, sizeof ack.cmd_id, "cfg-%lu", (unsigned long)in.config_version);
-  svmg_reason_t why = SVMG_R_OK;
-  svmg_cfg_verdict_t v = svmg_config_check_update(&E.cfg, &in, crc, &why);
+  snprintf(ack.cmd_id, sizeof ack.cmd_id, "cfg-%lu", (unsigned long)patch.config_version);
+  svmg_reason_t why = SVMG_R_OK; svmg_config_t next;
+  svmg_cfg_verdict_t v = svmg_config_check_patch(&E.cfg, &patch, &next, &why);
   if (v == SVMG_CFG_DUPLICATE) return;                              // retained gửi lại sau khi nối lại: im lặng
   if (v == SVMG_CFG_REJECT) {                                       // giữ cấu hình cũ
     ack.applied = 0; ack.reason = why; ack.config_version = E.cfg.config_version;
     publish_ack(ack, false); return;
   }
-  svmg_config_t c = in; c.zero_roll_deg = E.cfg.zero_roll_deg; c.zero_pitch_deg = E.cfg.zero_pitch_deg;
-  commit_config(c);
+  commit_config(next);
   ack.applied = 1; ack.reason = SVMG_R_OK; ack.config_version = E.cfg.config_version;
   publish_ack(ack, false);
 }
@@ -322,11 +362,12 @@ void handle_serial_inject() {
 void app_setup() {
   Serial.begin(115200);
   delay(100);
-  Wire.begin(PIN_SDA, PIN_SCL);
-  Wire.setClock(400000);
+  i2c_begin();
   io_init();
   io_all_leds(true); io_beep(120); delay(250); io_all_leds(false);        // thử đèn/còi lúc khởi động
 
+  bool found_mpu = false, found_lcd = false;
+  i2c_scan_report(&found_mpu, &found_lcd);                                     // chẩn đoán mạch: 0x68 (MPU6050) và 0x27 (LCD)
   bool lcd_ok = lcd_begin();
   lcd_line(0, "SVMG " SVMG_FW_VERSION); lcd_line(1, "khoi dong...");
 
@@ -339,9 +380,9 @@ void app_setup() {
   svmg_config_t cfg;
   bool loaded = store_load(&cfg, infer_available() ? SVMG_MODEL_RF : SVMG_MODEL_BASELINE_B);
   boot_count = store_next_boot_count();
-  Serial.printf("[CFG] %s version=%lu profile=%s n=%u phi=%u mai=%u rep=%u model=%s zero=(%.2f,%.2f) boots=%lu\n", loaded ? "NVS" : "mac dinh",
-                (unsigned long)cfg.config_version, svmg_profile_name(cfg.profile), cfg.debounce_n, cfg.phi_hard_deg, cfg.mai_caution,
-                cfg.report_interval_s, svmg_model_name(cfg.primary_model), cfg.zero_roll_deg, cfg.zero_pitch_deg, (unsigned long)boot_count);
+  Serial.printf("[CFG] %s version=%lu profile=%s n=%u phi=%.1f mai=%u rep=%u model=%s zero=(%.2f,%.2f) boots=%lu\n", loaded ? "NVS" : "mac dinh",
+                (unsigned long)cfg.config_version, svmg_profile_name(cfg.profile), cfg.debounce_n, (double)cfg.phi_hard_deg, cfg.mai_caution,
+                (unsigned)cfg.report_interval_s, svmg_model_name(cfg.primary_model), (double)cfg.zero_roll_deg, (double)cfg.zero_pitch_deg, (unsigned long)boot_count);
 
   svmg_engine_init(&E, &cfg);
 #ifdef SVMG_HAVE_BASELINE_PARAMS
@@ -352,6 +393,7 @@ void app_setup() {
   Serial.println("[CFG] tham so Baseline B / MAI: MAC DINH cua M1 (chua co baseline_params.json cua M2)");
 #endif
   infer_begin(&E);
+  Serial.printf("[FEATURES] schema=%s preprocessing=%s count=%d input=%dHz update=%ds\n",SVMG_FEATURE_SCHEMA_VERSION,SVMG_PREPROCESSING_VERSION,SVMG_N_FEATURES,SVMG_FEATURE_HZ,SVMG_FEATURE_UPDATE_S);
   svmg_evbuf_init(&BUF);
   svmg_cmd_init(&CMDC);
 
@@ -362,10 +404,18 @@ void app_setup() {
 
   push_sys_event(SVMG_EV_BOOT, 0, (uint16_t)esp_reset_reason());
   net_begin(ID);
+  Serial.printf("[BOOT] reset_reason=%d i2c: mpu=%s lcd=%s\n", (int)esp_reset_reason(), found_mpu ? "ok" : "KHONG THAY 0x68", found_lcd ? "ok" : "KHONG THAY 0x27");
+
+  // Task watchdog 8 s cho vòng điều khiển: nếu loop() treo (I2C/mạng/lỗi logic) thiết bị tự khởi động lại thay vì im lặng
+  // mất cảnh báo. Lý do reset được ghi trong sự kiện BOOT/Serial để biết lần khởi động do WDT.
+  esp_task_wdt_config_t wc = { 8000, 0, true };
+  if (esp_task_wdt_init(&wc) == ESP_ERR_INVALID_STATE) esp_task_wdt_reconfigure(&wc);
+  esp_task_wdt_add(nullptr);
   next_tick_ms = millis();
 }
 
 void app_loop() {
+  esp_task_wdt_reset();
   uint32_t now = millis();
 #ifdef SVMG_FAULT_INJECT
   handle_serial_inject();
@@ -390,7 +440,9 @@ void app_loop() {
     for (int i = 0; i < n; i++) {
       svmg_motion_sample_t s = acquireMotionSample(MODE);
       svmg_engine_out_t o;
+      uint32_t update_started=micros();
       svmg_engine_push(&E, &s, now, &o);
+      if(o.got_update){feature_update_us_last=micros()-update_started;if(feature_update_us_last>feature_update_us_max)feature_update_us_max=feature_update_us_last;}
       handle_out(o, now);
     }
     { svmg_engine_out_t o; svmg_engine_tick(&E, now, &o); handle_out(o, now); }
@@ -414,14 +466,23 @@ void app_loop() {
   if (now - last_health >= 30000) { last_health = now; send_health(); }
 
   // ---- mạng
+  if (restart_pending && (int32_t)(now - restart_at_ms) >= 0) {
+    char js[40]; size_t n = msg_build_status_offline(js, sizeof js);
+    if (n) net_publish("status", js, (int)n, 1, true);              // khởi động lại có chủ đích: báo offline (LWT chỉ phát khi mất kết nối đột ngột)
+    Serial.println("[RESTART] theo lenh restart_device");
+    delay(200);
+    ESP.restart();
+  }
   net_service(now, &BUF, E.cfg.config_version);
   RxItem it;
   for (int k = 0; k < 2 && net_pop_rx(&it); k++) {
     if (it.kind == RX_CMD) handle_cmd(it, now); else handle_config(it);
   }
+#ifdef SVMG_EXT_TRACE
   if (snap_window) {
     if (net_connected()) { send_snapshot(snap_window); snap_window = 0; }
     else if ((int32_t)(now - snap_deadline_ms) > 0) snap_window = 0;       // hết hạn: bỏ
   }
+#endif
   delay(1);
 }
