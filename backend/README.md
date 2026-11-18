@@ -14,9 +14,9 @@ Backend của **Smart Vessel Motion Guard**: nhận bản tin MQTT từ thiết 
 | M3-04 | Command service (vòng đời lệnh, TTL, cấu hình có phiên bản, rollback) | Xong |
 | M3-05 | JWT + RBAC (3 vai trò) | Xong |
 | M3-06 | Voyage + báo cáo PDF/CSV | Phần lõi xong (chuyến đi, số liệu, CSV, PDF). **Chưa nối** với lệnh `start_voyage` xuống thiết bị (chờ M1) |
-| M3-07 | Replay, Health, Model monitor | Mới có **Health**; replay và model monitor chưa làm (chờ M2) |
+| M3-07 | Replay, Health, Model monitor | **Replay** và **Health** xong; **Model monitor chưa làm** (chờ M2: vector đặc trưng, model registry) |
 | M3-08 | Thông báo Telegram/email | Xong |
-| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong (205 test); **chưa chạy với broker thật** |
+| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong (264 test); **chưa chạy với broker thật** |
 
 ## Công nghệ
 
@@ -40,7 +40,8 @@ backend/
 ├── reports/                 # metrics (số liệu), csvexport, pdf, fonts/ (DejaVu, kèm license)
 ├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo, 0003 nhãn cảnh báo, 0004 chuyến đi)
 ├── scripts/                 # export_openapi.py, create_user.py
-└── (replay/ monitor/ — chưa làm)
+├── replay/                  # Replay API (service lấy dữ liệu theo trang)
+└── (monitor/ — chưa làm, chờ M2)
 ```
 
 ## Cài đặt & chạy
@@ -110,6 +111,7 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 | Cảnh báo | `GET /alarms` (lọc `state`, `label`, `unlabeled`), `/alarms/{id}`, `/alarms/stats`, `POST /alarms/{id}/ack`, `PUT /alarms/{id}/label`, WebSocket `/ws/alarms` |
 | Chuyến đi (Supervisor tạo/kết thúc) | `POST /voyages`, `GET /voyages`, `/voyages/{id}`, `POST /voyages/{id}/end` |
 | Báo cáo chuyến | `GET /voyages/{id}/summary`, `/telemetry.csv`, `/alarms.csv`, `/report.pdf` |
+| Replay | `GET /voyages/{id}/replay` (lọc `from_time/to_time` hoặc `from_t_sim/to_t_sim`, `limit`, `cursor`) |
 | Lệnh | `POST /devices/{id}/commands`, `GET /commands`, `/commands/{cmd_id}`, `/commands/stats` |
 | Cấu hình | `GET/PUT /devices/{id}/config`, `POST /devices/{id}/config/rollback` |
 | Kiểm toán | `GET /audit` |
@@ -175,6 +177,29 @@ Cảnh báo thuộc chuyến theo `voyage_id` của telemetry mới nhất lúc 
 
 **PDF** dùng ReportLab và font DejaVu Sans (có đủ dấu tiếng Việt) đặt trong `reports/fonts/` kèm `LICENSE_DEJAVU`; biểu đồ roll được lấy mẫu thưa tối đa 500 điểm và **không vẽ đường ngưỡng nào** vì ngưỡng chỉ là tham số demo.
 
+## Replay (xem lại chuyến đi)
+
+`GET /api/v1/voyages/{voyage_id}/replay` trả dữ liệu để giao diện **phát lại** chuyến đi. Tốc độ ×1–×60 do giao diện tự xử lý (đồng hồ chạy trên trình duyệt), backend không có tham số tốc độ.
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `from_time`, `to_time` | Lọc theo **giờ server** (ISO 8601, thiếu múi giờ thì coi là UTC), bao gồm cả hai đầu |
+| `from_t_sim`, `to_t_sim` | Lọc theo `t_sim_s` của thiết bị. **Không dùng chung** với `from_time/to_time` (chọn một trục) |
+| `limit` | Số mẫu telemetry mỗi trang (1–5000, mặc định 1000) |
+| `cursor` | `next_cursor` của trang trước; giữ nguyên các tham số lọc khi gọi trang tiếp |
+
+Kết quả gồm `meta` (tổng quan thanh thời gian), `telemetry`, `alarm_events` (từng lần đổi mức do thiết bị gửi), `alarms` (trạng thái hiện tại kèm nhãn đánh giá) và `commands`.
+
+- **Thứ tự:** tăng dần theo `(server_rx_time, id)`, **không** theo `t_sim_s`, vì hợp đồng chưa nói `t_sim_s` có đếm lại sau khi thiết bị khởi động lại hay không. `meta.t_sim_monotonic` cho biết trục `t_sim_s` có đáng tin trong chuyến đó không (`false` nếu có chỗ giảm).
+- **Không cắt dữ liệu âm thầm:** `truncated=true` nghĩa là còn trang sau. Nối tất cả các trang lại cho ra đúng chuỗi như `telemetry.csv` (đã có test; phục vụ T15 "replay khớp dữ liệu gốc").
+- `alarm_events` và `commands` chia theo khoảng thời gian của từng trang, nên mỗi mục xuất hiện **đúng một lần** qua các trang. `alarms` là các cảnh báo đang hoạt động trong khoảng đó, nên có thể lặp lại giữa các trang (giao diện gộp theo `id`).
+- Mỗi mẫu luôn có `source_mode` và `sensor_ok` (giao diện cần hiển thị mẫu `sensor_ok=false` khác đi).
+- `meta` có `duration_wall_s` (giờ server) và `timewarps`; backend **không** đoán thời lượng theo giờ mô phỏng.
+
+## Múi giờ
+
+Mọi mốc thời gian lưu và trả về là **UTC, có ký hiệu múi giờ** (`...Z`). SQLite không lưu múi giờ, nên backend dùng kiểu `UTCDateTime` để đọc ra luôn có múi giờ UTC (nếu không, JavaScript hiểu chuỗi thiếu `Z` là giờ địa phương và dashboard ở UTC+7 sẽ lệch 7 tiếng). Giao diện chỉ cần đổi sang giờ địa phương khi hiển thị.
+
 ## Thông báo Telegram / email
 
 1. Tạo bot qua BotFather, lấy token; lấy `chat_id` của nhóm/người nhận.
@@ -211,4 +236,5 @@ Test dùng SQLite trong bộ nhớ, publisher MQTT giả và mạng giả (`http
 2. **`set_profile` / `set_threshold` so với `PUT /config`.** Hiện là hai đường độc lập. Cần M1 xác nhận thiết bị xử lý thế nào.
 3. **`DELIVERED`** nghĩa là broker đã nhận (PUBACK), không phải thiết bị đã nhận; chỉ `cmd/ack` mới xác nhận thiết bị.
 4. **`voyage_id` trong lệnh `start_voyage`**: thiết bị nhận từ lệnh hay tự sinh rồi báo ngược lên? Hiện `POST /voyages` cho phép truyền sẵn `voyage_id` để khớp với giá trị thiết bị đang phát.
-5. **Tên giá trị nhãn cảnh báo** (`TRUE_ALARM`/`FALSE_ALARM`/`UNCLEAR`) và các trường `summary.json` do backend đặt, cần M4 xác nhận khi làm giao diện.
+5. **Ý nghĩa của `t_sim_s`**: có đếm lại sau mỗi lần khởi động không? Với dữ liệu thật (`SENSOR`) nó mang nghĩa gì? Replay hiện sắp xếp theo giờ server vì chưa chốt điều này.
+6. **Tên giá trị nhãn cảnh báo** (`TRUE_ALARM`/`FALSE_ALARM`/`UNCLEAR`) và các trường `summary.json` do backend đặt, cần M4 xác nhận khi làm giao diện.

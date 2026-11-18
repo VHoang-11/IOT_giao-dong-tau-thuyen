@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -13,6 +14,29 @@ from app.models.enums import (
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """Moi moc thoi gian trong he thong la UTC va LUON co mui gio khi doc ra.
+
+    Vi sao can: SQLite khong luu mui gio nen datetime doc len bi 'tran' (naive); JSON tra ve khong co 'Z' va
+    JavaScript `new Date("2026-01-01T12:00:00")` hieu la GIO DIA PHUONG -> dashboard o Viet Nam lech 7 tieng.
+    PostgreSQL (timestamptz) da dung san; lop nay dua SQLite ve cung hanh vi. Cot trong DB khong doi -> khong can migration.
+    """
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is None:  # coi gia tri khong mui gio la UTC (toan he thong chi dung UTC)
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _enum(e):
@@ -26,12 +50,12 @@ class Device(Base):
     name: Mapped[Optional[str]] = mapped_column(String(128))
     source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode), default=SourceMode.SIMULATION)
     state: Mapped[DeviceState] = mapped_column(_enum(DeviceState), default=DeviceState.offline)
-    last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_seen: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
     fw: Mapped[Optional[str]] = mapped_column(String(32))
     boot_id: Mapped[Optional[str]] = mapped_column(String(64))
     model_version: Mapped[Optional[str]] = mapped_column(String(32))
     config_version: Mapped[Optional[int]] = mapped_column(Integer)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Telemetry(Base):
@@ -63,7 +87,7 @@ class Telemetry(Base):
     model_version: Mapped[str] = mapped_column(String(32))
     config_version: Mapped[int] = mapped_column(Integer)
     sensor_ok: Mapped[bool] = mapped_column(Boolean)
-    server_rx_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    server_rx_time: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class AlarmEvent(Base):
@@ -80,7 +104,7 @@ class AlarmEvent(Base):
     motion_class: Mapped[Optional[MotionClass]] = mapped_column(_enum(MotionClass))
     t_sim_s: Mapped[float] = mapped_column(Float)
     acked_by: Mapped[Optional[str]] = mapped_column(String(64))
-    server_rx_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    server_rx_time: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Alarm(Base):
@@ -100,14 +124,14 @@ class Alarm(Base):
     max_level: Mapped[AlarmLevel] = mapped_column(_enum(AlarmLevel))
     motion_class: Mapped[Optional[MotionClass]] = mapped_column(_enum(MotionClass))
     source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode))
-    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    acked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    opened_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    acked_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
     acked_by: Mapped[Optional[str]] = mapped_column(String(64))
-    cleared_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    cleared_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
     escalated: Mapped[bool] = mapped_column(Boolean, default=False)
     label: Mapped[Optional[str]] = mapped_column(String(16))  # AlarmLabel: dung/sai/chua ro (G4)
     labeled_by: Mapped[Optional[str]] = mapped_column(String(64))
-    labeled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    labeled_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
 
 
 class Command(Base):
@@ -121,9 +145,9 @@ class Command(Base):
     issued_by: Mapped[str] = mapped_column(String(64))
     state: Mapped[CommandState] = mapped_column(_enum(CommandState), default=CommandState.SENT)
     reason: Mapped[Optional[str]] = mapped_column(String(256))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
+    finished_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
 
 
 class DeviceConfigVersion(Base):
@@ -134,7 +158,7 @@ class DeviceConfigVersion(Base):
     config_version: Mapped[int] = mapped_column(Integer)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_by: Mapped[str] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     applied: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -151,7 +175,7 @@ class DeviceHealth(Base):
     mqtt_reconnects: Mapped[Optional[int]] = mapped_column(Integer)
     buffer_used: Mapped[Optional[int]] = mapped_column(Integer)
     buffer_capacity: Mapped[Optional[int]] = mapped_column(Integer)
-    server_rx_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    server_rx_time: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class User(Base):
@@ -161,7 +185,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(128))
     role: Mapped[Role] = mapped_column(_enum(Role), default=Role.OPERATOR)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Voyage(Base):
@@ -177,8 +201,8 @@ class Voyage(Base):
     source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode))
     status: Mapped[VoyageStatus] = mapped_column(_enum(VoyageStatus), default=VoyageStatus.ACTIVE)
     started_by: Mapped[str] = mapped_column(String(64))
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
     ended_by: Mapped[Optional[str]] = mapped_column(String(64))
 
 
@@ -186,7 +210,7 @@ class AuditLog(Base):
     """Nhat ky kiem toan: ai lam gi luc nao. Chi them, khong sua/xoa."""
     __tablename__ = "audit_log"
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     actor: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(64))
     target: Mapped[Optional[str]] = mapped_column(String(128))
