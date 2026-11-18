@@ -1,0 +1,399 @@
+{
+  "evidence_audit_version": "0.1.0",
+  "queue_path": "ml/data/labels/review_queue.csv",
+  "candidate_samples": 92,
+  "reviewed_decisions": 0,
+  "reviewed_samples": 0,
+  "pending_or_unreviewed": 92,
+  "verified_operational_hazard_labels": 0,
+  "verified_normal_envelope_labels": 0,
+  "external_reference_labels": 0,
+  "human_reviewed_labels": 0,
+  "inter_reviewer_agreement": {
+    "status": "NOT_CALCULATED",
+    "reason_vi": "Chưa có ít nhất hai reviewer với quyết định chồng lặp thực tế."
+  },
+  "overlap_warning_vi": "Các cửa sổ 180 giây stride 10 giây chồng lấn xấp xỉ 94,4%; chúng không phải quan sát độc lập.",
+  "datasets": {
+    "seafar": {
+      "pilot_samples": 4,
+      "independent_sessions": 1,
+      "session_ids": [
+        "seafar_session_001"
+      ],
+      "samples_by_session": {
+        "seafar_session_001": 4
+      },
+      "reviewed_decisions": 0,
+      "reviewed_samples": 0,
+      "human_reviewed_labels": 0,
+      "verified_operational_hazard_labels": 0,
+      "verified_normal_envelope_labels": 0,
+      "external_reference_labels": 0,
+      "class_decision_counts": {
+        "NORMAL": 0,
+        "HIGH_ROLL": 0,
+        "PERSISTENT_OFFSET": 0,
+        "AMPLITUDE_GROWTH": 0,
+        "REVIEW_REQUIRED": 0,
+        "UNLABELED": 0
+      },
+      "ambiguous_samples": 0,
+      "overlapping_phenotype_samples": 0,
+      "sessions_with_experiment_context": 0,
+      "source_documentation": [
+        "ml/data/raw/seafar/cleaned_imu_gps_data.json",
+        "ml/audit/real_dataset_audit_report.md"
+      ],
+      "session_metadata": {
+        "seafar_session_001": {
+          "raw_reference": "ml/data/raw/seafar/cleaned_imu_gps_data.json",
+          "timestamp_source": "datetime Unix epoch milliseconds",
+          "original_sampling_hz": 10.000009536752259,
+          "warnings": [
+            "Các trường rate có tên đơn vị rad/min; chưa tìm thấy tài liệu cảm biến xác nhận nguồn phần cứng, trục và quy ước dấu.",
+            "Giữ nguyên dấu; ánh xạ roll/pitch rate sang trục x/y chỉ là ánh xạ theo tên trường."
+          ]
+        }
+      }
+    },
+    "hohai": {
+      "pilot_samples": 84,
+      "independent_sessions": 21,
+      "session_ids": [
+        "Berth_B_T7_Type_A",
+        "Berth_B_T8_Type_A",
+        "Berth_B_T9_Type_A",
+        "Berth_C_T7_Type_A",
+        "Berth_C_T8_Type_A",
+        "Berth_C_T9_Type_A",
+        "Berth_D_T1_Type_A",
+        "Berth_D_T2_Type_A",
+        "Berth_D_T3_Type_A",
+        "Berth_D_T3_Type_B",
+        "Berth_D_T3_Type_C",
+        "Berth_D_T4_Type_A",
+        "Berth_D_T5_Type_A",
+        "Berth_D_T6_Type_A",
+        "Berth_D_T6_Type_B",
+        "Berth_D_T6_Type_C",
+        "Berth_D_T7_Type_A",
+        "Berth_D_T8_Type_A",
+        "Berth_D_T8_Type_B",
+        "Berth_D_T8_Type_C",
+        "Berth_D_T9_Type_A"
+      ],
+      "samples_by_session": {
+        "Berth_B_T7_Type_A": 4,
+        "Berth_B_T8_Type_A": 4,
+        "Berth_B_T9_Type_A": 4,
+        "Berth_C_T7_Type_A": 4,
+        "Berth_C_T8_Type_A": 4,
+        "Berth_C_T9_Type_A": 4,
+        "Berth_D_T1_Type_A": 4,
+        "Berth_D_T2_Type_A": 4,
+        "Berth_D_T3_Type_A": 4,
+        "Berth_D_T3_Type_B": 4,
+        "Berth_D_T3_Type_C": 4,
+        "Berth_D_T4_Type_A": 4,
+        "Berth_D_T5_Type_A": 4,
+        "Berth_D_T6_Type_A": 4,
+        "Berth_D_T6_Type_B": 4,
+        "Berth_D_T6_Type_C": 4,
+        "Berth_D_T7_Type_A": 4,
+        "Berth_D_T8_Type_A": 4,
+        "Berth_D_T8_Type_B": 4,
+        "Berth_D_T8_Type_C": 4,
+        "Berth_D_T9_Type_A": 4
+      },
+      "reviewed_decisions": 0,
+      "reviewed_samples": 0,
+      "human_reviewed_labels": 0,
+      "verified_operational_hazard_labels": 0,
+      "verified_normal_envelope_labels": 0,
+      "external_reference_labels": 0,
+      "class_decision_counts": {
+        "NORMAL": 0,
+        "HIGH_ROLL": 0,
+        "PERSISTENT_OFFSET": 0,
+        "AMPLITUDE_GROWTH": 0,
+        "REVIEW_REQUIRED": 0,
+        "UNLABELED": 0
+      },
+      "ambiguous_samples": 0,
+      "overlapping_phenotype_samples": 0,
+      "sessions_with_experiment_context": 21,
+      "source_documentation": [
+        "ml/data/raw/hohai/6-DOF ship motions Data.xlsx",
+        "ml/data/raw/hohai/Data Description Example.pdf",
+        "ml/audit/real_dataset_audit_report.md"
+      ],
+      "session_metadata": {
+        "Berth_B_T7_Type_A": {
+          "raw_sheet": "Berth_B_T7_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_B_T8_Type_A": {
+          "raw_sheet": "Berth_B_T8_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_B_T9_Type_A": {
+          "raw_sheet": "Berth_B_T9_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_C_T7_Type_A": {
+          "raw_sheet": "Berth_C_T7_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_C_T8_Type_A": {
+          "raw_sheet": "Berth_C_T8_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_C_T9_Type_A": {
+          "raw_sheet": "Berth_C_T9_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T1_Type_A": {
+          "raw_sheet": "Berth D_T1_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T2_Type_A": {
+          "raw_sheet": "Berth D_T2_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T3_Type_A": {
+          "raw_sheet": "Berth D_T3_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T3_Type_B": {
+          "raw_sheet": "Berth_D_T3_Type B",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T3_Type_C": {
+          "raw_sheet": "Berth_D_T3_Type C",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T4_Type_A": {
+          "raw_sheet": "Berth D_T4_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T5_Type_A": {
+          "raw_sheet": "Berth D_T5_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T6_Type_A": {
+          "raw_sheet": "Berth D_T6_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T6_Type_B": {
+          "raw_sheet": "Berth_D_T6_Type B",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T6_Type_C": {
+          "raw_sheet": "Berth_D_T6_Type C",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T7_Type_A": {
+          "raw_sheet": "Berth D_T7_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T8_Type_A": {
+          "raw_sheet": "Berth D_T8_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T8_Type_B": {
+          "raw_sheet": "Berth_D_T8_Type B",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T8_Type_C": {
+          "raw_sheet": "Berth_D_T8_Type C",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        },
+        "Berth_D_T9_Type_A": {
+          "raw_sheet": "Berth D_T9_Type A",
+          "original_sampling_hz": 50.000000000045475,
+          "timestamp_source": "INFERRED_FROM_SAMPLE_INDEX",
+          "warnings": [
+            "Thời gian tương đối được suy ra từ chỉ số mẫu ở 50 Hz; không thể phát hiện dropout giữa các mẫu.",
+            "Không có gyroscope đo trực tiếp; trường gyro giữ missing."
+          ]
+        }
+      }
+    },
+    "southampton": {
+      "pilot_samples": 4,
+      "independent_sessions": 1,
+      "session_ids": [
+        "southampton_run_14"
+      ],
+      "samples_by_session": {
+        "southampton_run_14": 4
+      },
+      "reviewed_decisions": 0,
+      "reviewed_samples": 0,
+      "human_reviewed_labels": 0,
+      "verified_operational_hazard_labels": 0,
+      "verified_normal_envelope_labels": 0,
+      "external_reference_labels": 0,
+      "class_decision_counts": {
+        "NORMAL": 0,
+        "HIGH_ROLL": 0,
+        "PERSISTENT_OFFSET": 0,
+        "AMPLITUDE_GROWTH": 0,
+        "REVIEW_REQUIRED": 0,
+        "UNLABELED": 0
+      },
+      "ambiguous_samples": 0,
+      "overlapping_phenotype_samples": 0,
+      "sessions_with_experiment_context": 1,
+      "source_documentation": [
+        "ml/data/raw/southampton/Readme/README.txt",
+        "ml/data/raw/southampton/Readme/KCS Test Plan June 2023.xlsx",
+        "ml/audit/real_dataset_audit_report.md"
+      ],
+      "session_metadata": {
+        "southampton_run_14": {
+          "raw_run_id": 14,
+          "wave_condition_test_plan_provenance": [
+            {
+              "run_id": 14.1,
+              "test_type": "R1",
+              "wave_frequency_hz": 0.7975533050438891,
+              "wave_amplitude_m": 0.019268338220596794,
+              "provenance_only": true
+            }
+          ],
+          "metadata_is_provenance_only": true,
+          "metadata_reference": "ml/data/raw/southampton/Readme/KCS Test Plan June 2023.xlsx"
+        }
+      }
+    }
+  },
+  "evidence_conclusions": {
+    "seafar": {
+      "independent_operating_condition_annotations": 0,
+      "finding_vi": "JSON là telemetry theo thời gian; không thấy trường event/incident/operating-state độc lập. Một session tàu thật; offset gốc và lineage trục/rate cần lưu ý.",
+      "unsupported_claims_vi": [
+        "Không thể gọi Roll offset khác 0 là hazard hoặc NORMAL.",
+        "Không thể kết luận HIGH_ROLL/PERSISTENT_OFFSET/AMPLITUDE_GROWTH từ thống kê đơn lẻ."
+      ]
+    },
+    "hohai": {
+      "independent_operating_condition_annotations": 0,
+      "finding_vi": "Workbook có 21 sheet/session và tên sheet chứa thông tin berth/test/type; đây là định danh cấu hình thử nghiệm, không phải nhãn trạng thái an toàn. Nguồn là mô hình thử nghiệm, thời gian suy từ 50 Hz; không có timestamp/gyro đo trực tiếp.",
+      "unsupported_claims_vi": [
+        "Không diễn giải hậu tố Type_A/B/C thành phenotype/hazard.",
+        "Không tuyên bố dữ liệu mô hình đại diện trực tiếp cho tàu full-scale."
+      ]
+    },
+    "southampton": {
+      "independent_operating_condition_annotations": 0,
+      "finding_vi": "Test Plan mô tả điều kiện thử nghiệm theo Run ID; các giá trị wave frequency/amplitude chỉ là provenance. Run 14 có điều kiện trong metadata nhưng không kèm nhãn hazard hay event reference.",
+      "unsupported_claims_vi": [
+        "Không suy hazard từ wave amplitude/frequency.",
+        "Không coi Delta Angle là gyro canonical khi semantics/trục chưa xác nhận.",
+        "Chỉ Run 14 có cửa sổ 180 giây; 4 mẫu pilot trong run này không phải 4 session độc lập."
+      ]
+    }
+  }
+}
