@@ -67,3 +67,32 @@ python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/16_an
 ```
 
 Các notebook hiển thị output mẫu, session, provenance, quality flags và tín hiệu đã xử lý; không nhúng toàn bộ dataset. Agreement chỉ tính khi có ít nhất hai reviewer ACCEPTED trên cùng sample. Mọi cửa sổ chồng lấn vẫn phải được nhóm theo session/run khi phân tích hoặc chia tập.
+
+## Human Annotation Quality Assessment
+
+Tạo batch deterministic mà không sửa queue gốc:
+
+```bash
+python -m ml.labeling.human_review_workflow --prepare-batches
+```
+
+Từ repository root mở giao diện review local:
+
+```bash
+python -m streamlit run ml/labeling/review_app.py
+```
+
+Nhập reviewer ID cá nhân, chọn batch và record, kiểm tra plot Roll/Pitch (có context trước endpoint nhưng không có dữ liệu tương lai), quality flags, experiment metadata và 23 angle features với validity. Sau đó ghi observed motion flags, evidence category/reference, quyết định, ghi chú và ambiguity reason. Không xem nhãn gợi ý trước khi đánh giá. `NORMAL` cần ba phenotype được đánh giá rõ là không quan sát thấy cùng external normal-envelope reference; signal plot không thể làm external hazard evidence.
+
+Pilot batch `ml/data/labels/annotation_pilot/batches/pilot_29.csv` phủ Seafar 4 mẫu, mỗi 21 Hohai session một mẫu và Southampton 4 mẫu. Batch mở rộng `extended_63.csv` giữ các cửa sổ Hohai còn lại. Original queue 92 mẫu được giữ nguyên. Hai batch, decision ledger, audit JSONL và output review đều nằm trong `ml/data/labels/`, bị loại khỏi Git.
+
+Mỗi quyết định được ghi một lần theo cặp `(review_id, reviewer_id)` vào `review_decisions.csv`; gửi trùng bởi cùng reviewer bị từ chối. Nhiều reviewer có thể review cùng sample. Mỗi lần lưu nối sự kiện trước/sau vào `review_audit.jsonl`; CSV ledger có `decision_id`, `annotation_schema_version`, reviewer, decision/status, phenotype flags, evidence, ghi chú và timestamp UTC. Ledger có thể được khôi phục từ audit JSONL nếu bị mất. Không sửa tay hoặc xóa dòng ledger để thay một quyết định.
+
+Tạo lại báo cáo sau khi có review hoặc để kiểm tra hiện trạng:
+
+```bash
+python -m ml.labeling.human_review_workflow --refresh-reports
+python -m pytest ml/labeling/tests ml/features/tests ml/preprocessing/tests ml/audit -q
+```
+
+Hướng dẫn thao tác chi tiết ở `ml/reports/labeling/human_review_execution_guide.md`; kết quả chất lượng ở `human_annotation_quality_report.md`; cổng training ở `training_readiness_assessment.md`. Không cần thêm notebook vì giao diện Streamlit cho phép ghi quyết định thực tế và nhật ký có kiểm soát; notebook chỉ đọc không đáp ứng được thao tác lưu an toàn.

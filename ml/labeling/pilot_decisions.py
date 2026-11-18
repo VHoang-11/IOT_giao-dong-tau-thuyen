@@ -10,7 +10,9 @@ from .pilot_schema import (EVIDENCE_CATEGORIES, PHENOTYPE_FLAGS, PILOT_IDENTITY,
                            PILOT_LABELS, derive_pilot_status, validate_pilot_annotation)
 from .provenance import audit_event
 
-DECISION_COLUMNS = ("review_sample_id", "reviewer_id", "reviewer_decision", "phenotype_flags_json",
+ANNOTATION_SCHEMA_VERSION = "1.0.0"
+DECISION_COLUMNS = ("review_sample_id", "review_id", "decision_id", "annotation_schema_version",
+                    "reviewer_id", "reviewer_decision", "phenotype_flags_json",
                     "evidence_category", "evidence_reference", "reviewer_notes", "review_timestamp_utc",
                     "review_status", "ambiguity_reason")
 
@@ -22,6 +24,12 @@ def decision_template() -> pd.DataFrame:
 def validate_decision_ledger(decisions: pd.DataFrame, valid_sample_ids: set[str]) -> None:
     if missing := set(DECISION_COLUMNS) - set(decisions.columns):
         raise ValueError(f"Decision ledger thiếu cột: {sorted(missing)}")
+    if decisions.review_id.astype(str).ne(decisions.review_sample_id.astype(str)).any():
+        raise ValueError("review_id phải khớp mã mẫu review ổn định.")
+    if decisions.annotation_schema_version.astype(str).ne(ANNOTATION_SCHEMA_VERSION).any():
+        raise ValueError("annotation_schema_version không được hỗ trợ.")
+    if decisions.decision_id.astype(str).eq("").any() or decisions.decision_id.duplicated().any():
+        raise ValueError("decision_id phải có giá trị và duy nhất.")
     if decisions.duplicated(["review_sample_id", "reviewer_id"]).any():
         raise ValueError("Một reviewer chỉ được có một bản ghi cho mỗi review_sample_id.")
     unknown_ids = set(decisions.review_sample_id.astype(str)) - valid_sample_ids
@@ -58,14 +66,18 @@ def validate_decision_ledger(decisions: pd.DataFrame, valid_sample_ids: set[str]
         if status == "ACCEPTED":
             if category == "VERIFIED_NORMAL_ENVELOPE" and decision != "NORMAL":
                 raise ValueError("VERIFIED_NORMAL_ENVELOPE chỉ hỗ trợ quyết định NORMAL.")
+            if category == "VERIFIED_NORMAL_ENVELOPE" and any(value is not False for value in flags.values()):
+                raise ValueError("NORMAL cần đánh giá rõ cả ba phenotype là không quan sát thấy.")
             if category == "VERIFIED_OPERATIONAL_HAZARD" and decision not in {"HIGH_ROLL", "PERSISTENT_OFFSET", "AMPLITUDE_GROWTH"}:
                 raise ValueError("VERIFIED_OPERATIONAL_HAZARD cần một phenotype hazard được xác định.")
             if category == "OBSERVED_MOTION_PHENOTYPE" and decision not in PHENOTYPE_FLAGS:
                 raise ValueError("OBSERVED_MOTION_PHENOTYPE chỉ hỗ trợ các phenotype Roll đã định nghĩa.")
+            if category in {"OBSERVED_MOTION_PHENOTYPE", "VERIFIED_OPERATIONAL_HAZARD"} and flags.get(decision) is not True:
+                raise ValueError("Quyết định phenotype chính phải có cờ tương ứng được reviewer đánh dấu quan sát thấy.")
             if category == "UNVERIFIED" and decision not in {"REVIEW_REQUIRED", "UNLABELED"}:
                 raise ValueError("UNVERIFIED không đủ để xác nhận phenotype hoặc hazard.")
-            if category == "PROXY_RULE" and decision not in {"NORMAL", *PHENOTYPE_FLAGS}:
-                raise ValueError("PROXY_RULE cần decision thuộc một trong các class ứng viên.")
+            if category == "PROXY_RULE" and decision not in PHENOTYPE_FLAGS:
+                raise ValueError("PROXY_RULE chỉ hỗ trợ ba phenotype; NORMAL cần operating envelope verified.")
 
 
 def build_decision_summary(decisions: pd.DataFrame, valid_sample_ids: set[str]) -> dict:
@@ -92,12 +104,17 @@ def materialize_decisions(forms: pd.DataFrame, decisions: pd.DataFrame) -> pd.Da
                     "phenotype_flags_json", "reviewer_notes", "review_timestamp_utc", "review_status",
                     "ambiguity_reason"):
             record[key] = decision[key]
+        if record["evidence_category"] in {"VERIFIED_OPERATIONAL_HAZARD", "VERIFIED_NORMAL_ENVELOPE", "PROXY_RULE"}:
+            if not str(record["evidence_reference"]).strip() or str(record["evidence_reference"]).strip() == str(record.get("plot_path", "")):
+                raise ValueError("Evidence VERIFIED/PROXY phải trỏ ra nguồn độc lập; signal plot không đủ.")
         materialized.append(derive_pilot_status(record))
     return pd.DataFrame(materialized, columns=forms.columns)
 
 
 def load_decisions(path: Path, valid_sample_ids: set[str]) -> pd.DataFrame:
     frame = pd.read_csv(path, keep_default_na=False) if path.is_file() else decision_template()
+    if frame.empty and set(frame.columns) != set(DECISION_COLUMNS):
+        frame = decision_template()
     validate_decision_ledger(frame, valid_sample_ids)
     return frame
 

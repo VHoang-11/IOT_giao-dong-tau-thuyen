@@ -73,11 +73,17 @@ def validate_pilot_annotation(record: dict) -> None:
         raise ValueError("HUMAN_REVIEWED phải có label_source HUMAN_REVIEW.")
     if record["label_status"] == "HUMAN_REVIEWED" and record["evidence_category"] != "OBSERVED_MOTION_PHENOTYPE":
         raise ValueError("HUMAN_REVIEWED chỉ biểu thị phenotype đã được người xem xác nhận.")
+    if record["label_status"] == "HUMAN_REVIEWED" and flags.get(record["reviewer_decision"]) is not True:
+        raise ValueError("Phenotype HUMAN_REVIEWED phải được đánh dấu quan sát thấy.")
     if record["label_status"] == "VERIFIED":
         if record["evidence_category"] not in {"VERIFIED_OPERATIONAL_HAZARD", "VERIFIED_NORMAL_ENVELOPE"}:
             raise ValueError("VERIFIED cần evidence loại operational hazard hoặc normal envelope đã xác nhận.")
         if not str(record.get("evidence_reference") or "").strip() or record["label_source"] != "EXTERNAL_REFERENCE":
             raise ValueError("VERIFIED cần external evidence reference; nhận xét thị giác không đủ.")
+        if record["evidence_category"] == "VERIFIED_NORMAL_ENVELOPE" and any(value is not False for value in flags.values()):
+            raise ValueError("NORMAL cần đánh giá rõ cả ba phenotype là không quan sát thấy.")
+        if record["evidence_category"] == "VERIFIED_OPERATIONAL_HAZARD" and flags.get(record["reviewer_decision"]) is not True:
+            raise ValueError("Hazard verified cần phenotype chính được đánh dấu quan sát thấy.")
     if record["evidence_category"] == "OBSERVED_MOTION_PHENOTYPE" and record["label_status"] == "VERIFIED":
         raise ValueError("Quan sát chuyển động không tự xác nhận hazard vận hành.")
     if record["evidence_category"] == "PROXY_RULE":
@@ -90,6 +96,8 @@ def validate_pilot_annotation(record: dict) -> None:
     if record["reviewer_decision"] == "NORMAL" and record["label_status"] == "HUMAN_REVIEWED":
         if record["evidence_category"] != "VERIFIED_NORMAL_ENVELOPE":
             raise ValueError("NORMAL cần operating envelope dương tính được xác nhận, không chỉ quan sát không bất thường.")
+    if record["reviewer_decision"] == "NORMAL" and record["label_status"] == "PROXY":
+        raise ValueError("Không gán NORMAL theo proxy khi chưa có operating envelope được xác nhận.")
 
 
 def derive_pilot_status(record: dict) -> dict:

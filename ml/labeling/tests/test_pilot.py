@@ -6,8 +6,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from ml.labeling.pilot import prepare_annotation_pilot
-from ml.labeling.pilot_decisions import (append_annotation_revision, materialize_decisions,
+from ml.labeling.pilot import prepare_annotation_pilot, select_review_signal
+from ml.labeling.pilot_decisions import (ANNOTATION_SCHEMA_VERSION, DECISION_COLUMNS,
+                                         append_annotation_revision, materialize_decisions,
                                          validate_decision_ledger)
 from ml.labeling.agreement import inter_reviewer_agreement
 from ml.labeling.pilot_schema import (
@@ -140,6 +141,8 @@ def test_verified_normal_requires_positive_envelope_reference():
     candidate = make_record(
         evidence_category="VERIFIED_NORMAL_ENVELOPE",
         evidence_reference="operating-envelope-v1",
+        phenotype_flags_json=json.dumps({"HIGH_ROLL": False, "PERSISTENT_OFFSET": False,
+                                         "AMPLITUDE_GROWTH": False}),
         reviewer_id="reviewer-1",
         reviewer_decision="NORMAL",
         review_timestamp_utc="2026-11-17T10:00:00Z",
@@ -175,18 +178,20 @@ def test_revision_audit_is_append_only_and_keeps_sample_identity(tmp_path):
 
 
 def test_decision_ledger_rejects_unknown_samples_and_duplicate_reviewer_rows():
-    columns = ["review_sample_id", "reviewer_id", "reviewer_decision", "phenotype_flags_json",
-               "evidence_category", "evidence_reference", "reviewer_notes", "review_timestamp_utc",
-               "review_status", "ambiguity_reason"]
+    columns = list(DECISION_COLUMNS)
     row = {column: "" for column in columns}
-    row.update({"review_sample_id": "unknown", "reviewer_id": "r1", "reviewer_decision": "HIGH_ROLL",
+    row.update({"review_sample_id": "unknown", "review_id": "unknown", "decision_id": "DEC-test",
+                "annotation_schema_version": ANNOTATION_SCHEMA_VERSION,
+                "reviewer_id": "r1", "reviewer_decision": "HIGH_ROLL",
                 "phenotype_flags_json": empty_phenotype_flags(), "evidence_category": "UNVERIFIED",
                 "review_timestamp_utc": "2026-11-17T10:00:00Z", "review_status": "ACCEPTED"})
     with pytest.raises(ValueError, match="không thuộc pilot"):
         validate_decision_ledger(pd.DataFrame([row], columns=columns), {"valid"})
     row["review_sample_id"] = "valid"
+    row["review_id"] = "valid"
+    duplicate = {**row, "decision_id": "DEC-test-2"}
     with pytest.raises(ValueError, match="một bản ghi"):
-        validate_decision_ledger(pd.DataFrame([row, row], columns=columns), {"valid"})
+        validate_decision_ledger(pd.DataFrame([row, duplicate], columns=columns), {"valid"})
     with pytest.raises(ValueError, match="UNVERIFIED không đủ"):
         validate_decision_ledger(pd.DataFrame([row], columns=columns), {"valid"})
 
@@ -208,7 +213,9 @@ def test_proxy_and_unverified_decisions_keep_their_evidence_status():
 def test_real_decision_ledger_materializes_as_reviewed_phenotype():
     form = make_record()
     decision = {
-        "review_sample_id": form["review_sample_id"], "reviewer_id": "reviewer-1",
+        "review_sample_id": form["review_sample_id"], "review_id": form["review_sample_id"],
+        "decision_id": "DEC-test-materialized", "annotation_schema_version": ANNOTATION_SCHEMA_VERSION,
+        "reviewer_id": "reviewer-1",
         "reviewer_decision": "HIGH_ROLL", "phenotype_flags_json": json.dumps({
             "HIGH_ROLL": True, "PERSISTENT_OFFSET": False, "AMPLITUDE_GROWTH": False}),
         "evidence_category": "OBSERVED_MOTION_PHENOTYPE", "evidence_reference": "",
@@ -265,3 +272,13 @@ def test_queue_window_must_match_feature_metadata_exactly(tmp_path):
     rows.to_csv(queue, index=False)
     with pytest.raises(ValueError, match="không khớp duy nhất"):
         prepare_annotation_pilot(tmp_path, queue, tmp_path / "out2", dpi=30)
+
+
+def test_review_signal_plot_excludes_future_observations():
+    times = pd.Series(range(401), dtype="float64")
+    frame = pd.DataFrame({"time_seconds": times, "roll_deg": times, "pitch_deg": -times})
+    selected = select_review_signal(frame, start=180.0, end=360.0, context_seconds=180.0)
+    assert selected.time_seconds.max() == 360.0
+    assert not (selected.time_seconds > 360.0).any()
+    assert selected.time_seconds.min() > 0.0
+    assert (selected.time_seconds > 180.0).sum() == 180
