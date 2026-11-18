@@ -1,0 +1,57 @@
+# Đặc tả proxy-label có phiên bản cho Motion Phenotype Classification PoC (M2).
+# Proxy label KHÔNG phải ground truth và KHÔNG phải hazard vận hành đã xác minh.
+# Mọi ngưỡng dưới đây là tham số hiệu chuẩn TƯƠNG ĐỐI theo dữ liệu (experimental relative thresholds),
+# được fit chỉ trên các nhóm train; chúng không phải giới hạn vật lý hay giới hạn an toàn hàng hải.
+rule_version: proxy_rules_v1.0.0
+spec_document: ml/reports/ml/proxy_label_specification.md
+
+paths:
+  feature_root: ml/data/features
+  processed_root: ml/data/processed
+  output_root: ml/data/labels/proxy_v1
+
+window:
+  sampling_hz: 10.0
+  window_seconds: 180.0
+  short_window_seconds: 60.0
+  sub_block_seconds: 20.0
+  context_seconds: 180.0          # lịch sử nhân quả ngay trước cửa sổ, cùng segment
+  minimum_valid_fraction: 0.95
+  maximum_gap_factor: 1.5
+  near_segment_end_audit_seconds: 10.0   # chỉ là cờ kiểm toán offline, KHÔNG dùng trong rule
+
+targets: [RELATIVE_HIGH_ROLL, PERSISTENT_OFFSET, AMPLITUDE_GROWTH]
+
+# Miền hiệu chuẩn: không gộp model-scale với full-scale; mỗi nguồn là một miền riêng.
+calibration_domains:
+  hohai: {group_key: hohai_test_condition, calibrate: true}
+  seafar: {group_key: session, calibrate: false, reason: SINGLE_SESSION_NO_INDEPENDENT_CALIBRATION_DOMAIN}
+  southampton: {group_key: session, calibrate: false, reason: SINGLE_RUN_NO_INDEPENDENT_CALIBRATION_DOMAIN}
+
+rules:
+  RELATIVE_HIGH_ROLL:
+    statistic: roll_std_60          # độ lệch chuẩn quần thể quanh mean trong 60 s cuối (tách khỏi offset)
+    positive_quantile: 0.90         # POS nếu s60 >= Q_0.90 của các cửa sổ train cùng miền (trọng số đều theo session)
+    negative_quantile: 0.80         # NEG nếu s60 < Q_0.80; vùng [Q_0.80, Q_0.90) là ABSTAIN (biên)
+  PERSISTENT_OFFSET:
+    reference: SENSOR_DATUM_UNVERIFIED   # offset đo so với mốc 0 cảm biến, không phải heel vật lý
+    require_context_same_sign: true
+    calibration: none                    # tiêu chí cấu trúc về dấu, không có ngưỡng biên độ
+  AMPLITUDE_GROWTH:
+    statistic: log_centered_std_ratio    # log(std block 60 s muộn / std block 60 s sớm), đã trừ mean
+    positive_quantile: 0.95
+    negative_quantile: 0.90
+    require_monotonic_blocks: true
+    require_exceeds_context_max: true
+    minimum_context_fraction: 0.95
+
+sensitivity:
+  RELATIVE_HIGH_ROLL: [[0.80, 0.70], [0.85, 0.75], [0.90, 0.80], [0.95, 0.90]]
+  AMPLITUDE_GROWTH: [[0.90, 0.80], [0.95, 0.90], [0.975, 0.95]]
+
+readiness:
+  minimum_positive_groups: 3
+  minimum_negative_groups: 3
+  minimum_positive_sessions: 5
+  minimum_positive_windows: 20
+  minimum_domain_groups: 3
