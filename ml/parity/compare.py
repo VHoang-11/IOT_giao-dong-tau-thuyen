@@ -9,6 +9,10 @@ Harness KHÔNG tự tạo kết quả C. Nhãn kết luận phụ thuộc ``prod
 ``independent_c_implementation`` -> C_PARITY_*; ``python_float32_emulation`` -> FLOAT32_EMULATION_*;
 ``python_reference_self_consistency`` -> PYTHON_SELF_CONSISTENCY_*; không có metadata -> UNATTRIBUTED_*.
 Chỉ C_PARITY_PASS trên mọi suite mới được phép gọi là parity Python/C (Level 2). Level 2 không chứng minh Level 3.
+
+Producer có thể khai báo status ``NOT_EVALUABLE`` (kèm reason_code, value rỗng) cho bản ghi mà API của nó không
+biểu diễn trung thực được (ví dụ C không nhận timestamp). Bản ghi đó KHÔNG bao giờ là PASS: kết quả
+``NOT_EVALUABLE`` và verdict tối đa ``<prefix>_PARTIAL`` (không FAIL nhưng chưa phủ đủ golden).
 """
 from __future__ import annotations
 
@@ -33,6 +37,8 @@ FAIL_OUTCOMES = ("FAIL_VALUE_TOLERANCE", "FAIL_STATUS_MISMATCH", "FAIL_VALID_NOT
                  "MISSING", "EXTRA", "DUPLICATE")
 PASS_OUTCOMES = ("PASS_VALUE", "PASS_STATUS_ONLY")
 REVIEW_OUTCOMES = ("REVIEW_ILL_CONDITIONED",)
+NOT_EVALUABLE_STATUS = "NOT_EVALUABLE"  # khai báo của producer, không thuộc từ vựng status feature
+NOT_EVALUABLE_OUTCOMES = ("NOT_EVALUABLE",)
 VERDICT_PREFIX = {"independent_c_implementation": "C_PARITY", "python_float32_emulation": "FLOAT32_EMULATION",
                   "python_reference_self_consistency": "PYTHON_SELF_CONSISTENCY"}
 
@@ -78,7 +84,8 @@ def _classify(exp: pd.Series, cand: pd.Series | None, case_sha: str | None) -> d
          or abs(cand.endpoint_time_seconds - exp.endpoint_time_seconds) > ENDPOINT_TIME_TOLERANCE_S, "FAIL_ENDPOINT_TIME",
          f"endpoint_time {cand.endpoint_time_seconds} != {exp.endpoint_time_seconds}"),
         (cand.feature_name != exp.feature_name, "FAIL_FEATURE_NAME_ORDER", f"index {exp.feature_index} phải là {exp.feature_name}, nhận {cand.feature_name}"),
-        (cand.status not in STATUS_VOCABULARY, "FAIL_UNKNOWN_STATUS", f"status '{cand.status}' ngoài từ vựng"),
+        (cand.status not in STATUS_VOCABULARY and cand.status != NOT_EVALUABLE_STATUS, "FAIL_UNKNOWN_STATUS",
+         f"status '{cand.status}' ngoài từ vựng"),
         (cand.parse_problem == "UNPARSEABLE_VALUE", "FAIL_UNPARSEABLE_VALUE", f"value '{cand.value_text}' không đọc được"),
     ]
     for failed, outcome, detail in checks:
@@ -86,6 +93,14 @@ def _classify(exp: pd.Series, cand: pd.Series | None, case_sha: str | None) -> d
             out.update(outcome=outcome, detail=detail)
             return out
     actual = cand.value
+    if cand.status == NOT_EVALUABLE_STATUS:
+        if actual is not None or not cand.reason_code:
+            out.update(outcome="FAIL_INVALID_HAS_VALUE" if actual is not None else "FAIL_UNKNOWN_STATUS",
+                       detail="NOT_EVALUABLE phải có value rỗng và reason_code giải thích")
+        else:
+            out.update(outcome="NOT_EVALUABLE", reason_match=None,
+                       detail=f"Producer khai báo không biểu diễn được case: {cand.reason_code}")
+        return out
     if cand.status != "VALID" and actual is not None:
         out.update(outcome="FAIL_INVALID_HAS_VALUE",
                    detail=f"status {cand.status} nhưng value = {cand.value_text} (không được thay giá trị không hợp lệ bằng số/0)")
@@ -152,9 +167,11 @@ def summarize(frame: pd.DataFrame, expected: pd.DataFrame, candidate: pd.DataFra
     counts = {k: int(v) for k, v in frame.outcome.value_counts().sort_index().items()}
     fails = sum(counts.get(k, 0) for k in FAIL_OUTCOMES)
     reviews = sum(counts.get(k, 0) for k in REVIEW_OUTCOMES)
+    not_evaluable = sum(counts.get(k, 0) for k in NOT_EVALUABLE_OUTCOMES)
     kind = (metadata or {}).get("producer", {}).get("kind")
     prefix = VERDICT_PREFIX.get(kind, "UNATTRIBUTED")
-    verdict = f"{prefix}_FAIL" if fails else f"{prefix}_PASS_WITH_REVIEW" if reviews else f"{prefix}_PASS"
+    verdict = (f"{prefix}_FAIL" if fails else f"{prefix}_PARTIAL" if not_evaluable
+               else f"{prefix}_PASS_WITH_REVIEW" if reviews else f"{prefix}_PASS")
     per_feature = []
     for i, name in enumerate(FEATURE_ORDER):
         sub = frame.loc[frame.feature_name.eq(name) & frame.outcome.ne("EXTRA")]
@@ -164,6 +181,7 @@ def summarize(frame: pd.DataFrame, expected: pd.DataFrame, candidate: pd.DataFra
                             "pass": int(sub.outcome.isin(PASS_OUTCOMES).sum()),
                             "fail": int(sub.outcome.isin(FAIL_OUTCOMES).sum()),
                             "review": int(sub.outcome.isin(REVIEW_OUTCOMES).sum()),
+                            "not_evaluable": int(sub.outcome.isin(NOT_EVALUABLE_OUTCOMES).sum()),
                             "values_compared": int(len(valued)),
                             "max_abs_error": float(valued.abs_error.max()) if len(valued) else None,
                             "max_rel_error": float(valued.rel_error.dropna().max()) if len(valued) and valued.rel_error.notna().any() else None,
@@ -175,6 +193,7 @@ def summarize(frame: pd.DataFrame, expected: pd.DataFrame, candidate: pd.DataFra
             "is_c_parity_evidence": prefix == "C_PARITY", "schema_version": SCHEMA_VERSION,
             "expected_records": int(len(expected)), "candidate_records": int(len(candidate)),
             "outcome_counts": counts, "fail_records": fails, "review_records": reviews,
+            "not_evaluable_records": not_evaluable,
             "missing_cases": sorted(set(cases_expected) - set(cases_candidate)),
             "extra_cases": sorted(set(cases_candidate) - set(cases_expected)),
             "reason_code_mismatches_warning": reason_mismatch, "per_feature": per_feature,
@@ -205,19 +224,22 @@ def markdown_report(result: dict, title: str) -> str:
     lines = [f"# {title}", "", f"- Kết luận: **{s['verdict']}**",
              f"- Loại nguồn kết quả: `{s['producer_kind']}` — bằng chứng parity C: **{'có' if s['is_c_parity_evidence'] else 'không'}**",
              f"- Bản ghi golden: {s['expected_records']}; bản ghi ứng viên: {s['candidate_records']}",
-             f"- FAIL: {s['fail_records']}; REVIEW: {s['review_records']}; cảnh báo reason_code: {s['reason_code_mismatches_warning']}",
+             f"- FAIL: {s['fail_records']}; REVIEW: {s['review_records']}; NOT_EVALUABLE: {s.get('not_evaluable_records', 0)}; "
+             f"cảnh báo reason_code: {s['reason_code_mismatches_warning']}",
              f"- Case thiếu: {s['missing_cases'] or 'không'}; case thừa: {s['extra_cases'] or 'không'}",
              f"- {s['level_note']}", ""]
     if result.get("metadata_warnings"):
         lines += ["## Cảnh báo metadata", ""] + [f"- {w}" for w in result["metadata_warnings"]] + [""]
     lines += ["## Đếm kết quả", "", "| Kết quả | Số bản ghi |", "|---|---:|"]
     lines += [f"| {k} | {v} |" for k, v in s["outcome_counts"].items()]
-    lines += ["", "## Theo feature", "", "| # | Feature | Lớp dung sai | Pass | Fail | Review | Max |Δ| | Max |Δ|/cho phép |",
-              "|---:|---|---|---:|---:|---:|---:|---:|"]
+    lines += ["", "## Theo feature", "",
+              "| # | Feature | Lớp dung sai | Pass | Fail | Review | Not evaluable | Max |Δ| | Max |Δ|/cho phép |",
+              "|---:|---|---|---:|---:|---:|---:|---:|---:|"]
     for f in s["per_feature"]:
         mx = "—" if f["max_abs_error"] is None else f"{f['max_abs_error']:.3g}"
         rt = "—" if f["max_error_ratio"] is None else f"{f['max_error_ratio']:.3g}"
-        lines.append(f"| {f['feature_index']} | `{f['feature_name']}` | {f['tolerance_class']} | {f['pass']} | {f['fail']} | {f['review']} | {mx} | {rt} |")
+        lines.append(f"| {f['feature_index']} | `{f['feature_name']}` | {f['tolerance_class']} | {f['pass']} | {f['fail']} | "
+                     f"{f['review']} | {f.get('not_evaluable', 0)} | {mx} | {rt} |")
     bad = result["rows"].loc[result["rows"].outcome.isin(FAIL_OUTCOMES)]
     if len(bad):
         lines += ["", "## 20 lỗi đầu tiên", "", "| Case | Endpoint | Feature | Kết quả | Chi tiết |", "|---|---:|---|---|---|"]

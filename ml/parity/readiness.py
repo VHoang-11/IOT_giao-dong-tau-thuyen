@@ -82,7 +82,12 @@ def corruption_scenarios(records: list[dict], expected: pd.DataFrame) -> dict[st
 def _row_summary(result: dict) -> dict:
     s = result["summary"]
     return {"verdict": s["verdict"], "outcome_counts": s["outcome_counts"], "fail_records": s["fail_records"],
-            "review_records": s["review_records"]}
+            "review_records": s["review_records"], "not_evaluable_records": s.get("not_evaluable_records", 0)}
+
+
+def suite_passed(result: dict) -> bool:
+    """Suite chỉ đạt khi là bằng chứng C, không FAIL và không có NOT_EVALUABLE (verdict *_PARTIAL chưa phủ đủ golden)."""
+    return bool(result["is_c_parity_evidence"]) and result["fail_records"] == 0 and not result.get("not_evaluable_records")
 
 
 def find_c_results(repo_root: Path) -> list[dict]:
@@ -179,7 +184,7 @@ def run(repo_root: Path) -> dict:
         out["suites"][suite] = entry
     out["c03_evidence"] = c03_evidence(repo_root)
     c_results = find_c_results(repo_root)
-    c_pass = [r for r in c_results if r["is_c_parity_evidence"] and r["fail_records"] == 0]
+    c_pass = [r for r in c_results if suite_passed(r)]
     c_suites_passed = {r["suite"] for r in c_pass}
     available = {s for s, e in out["suites"].items() if e.get("available")}
     out["c_results_submitted"] = c_results
