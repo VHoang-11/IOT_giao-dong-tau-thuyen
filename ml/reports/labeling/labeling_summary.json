@@ -1,0 +1,1357 @@
+{
+  "labeling_version": "0.1.0",
+  "mode": "feasibility",
+  "configuration_path": "ml/labeling/config.yaml",
+  "run_timestamp_utc": "2026-11-17T08:07:29.740510+00:00",
+  "environment": {
+    "python": "3.14.6",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "pyarrow": "23.0.1",
+    "pyyaml": "6.0.3",
+    "matplotlib": "3.11.0",
+    "pytest": "9.0.3",
+    "jupyter": "1.1.1",
+    "nbconvert": "7.17.1",
+    "nbformat": "5.10.4",
+    "nbclient": "0.11.0",
+    "ipykernel": "6.31.0"
+  },
+  "endpoint_convention": "(t-W,t]",
+  "labeling_window_seconds": 180,
+  "angle_only_features": [
+    "roll_rms_60",
+    "roll_std_60",
+    "roll_mean_60",
+    "roll_peak_to_peak_60",
+    "roll_abs_p95_60",
+    "roll_abs_max_60",
+    "roll_iqr_60",
+    "roll_diff_rms_60",
+    "roll_mean_180",
+    "roll_median_180",
+    "roll_mean_abs_180",
+    "roll_dominant_sign_ratio_180",
+    "roll_segment_mean_std_180",
+    "roll_mean_shift_180",
+    "roll_rms_early_60",
+    "roll_rms_late_60",
+    "roll_rms_ratio_180",
+    "roll_rms_slope_180",
+    "roll_rms_trend_r2_180",
+    "roll_p95_trend_slope_180",
+    "pitch_rms_60",
+    "pitch_std_60",
+    "pitch_peak_to_peak_60"
+  ],
+  "classes": [
+    "NORMAL",
+    "HIGH_ROLL",
+    "PERSISTENT_OFFSET",
+    "AMPLITUDE_GROWTH"
+  ],
+  "candidate_rule_configuration": {
+    "HIGH_ROLL": {
+      "enabled": false,
+      "by_dataset": {
+        "seafar": {
+          "roll_std_60_deg": null,
+          "evidence_reference": null
+        },
+        "hohai": {
+          "roll_std_60_deg": null,
+          "evidence_reference": null
+        },
+        "southampton": {
+          "roll_std_60_deg": null,
+          "evidence_reference": null
+        }
+      }
+    },
+    "PERSISTENT_OFFSET": {
+      "enabled": false,
+      "by_dataset": {
+        "seafar": {
+          "abs_roll_mean_180_deg": null,
+          "dominant_sign_ratio_min": null,
+          "evidence_reference": null
+        },
+        "hohai": {
+          "abs_roll_mean_180_deg": null,
+          "dominant_sign_ratio_min": null,
+          "evidence_reference": null
+        },
+        "southampton": {
+          "abs_roll_mean_180_deg": null,
+          "dominant_sign_ratio_min": null,
+          "evidence_reference": null
+        }
+      }
+    },
+    "AMPLITUDE_GROWTH": {
+      "enabled": false,
+      "by_dataset": {
+        "seafar": {
+          "roll_rms_slope_180_deg_per_min": null,
+          "trend_r2_min": null,
+          "evidence_reference": null
+        },
+        "hohai": {
+          "roll_rms_slope_180_deg_per_min": null,
+          "trend_r2_min": null,
+          "evidence_reference": null
+        },
+        "southampton": {
+          "roll_rms_slope_180_deg_per_min": null,
+          "trend_r2_min": null,
+          "evidence_reference": null
+        }
+      }
+    },
+    "NORMAL": {
+      "enabled": false,
+      "by_dataset": {
+        "seafar": {
+          "roll_std_60_max_deg": null,
+          "abs_roll_mean_180_max_deg": null,
+          "evidence_reference": null
+        },
+        "hohai": {
+          "roll_std_60_max_deg": null,
+          "abs_roll_mean_180_max_deg": null,
+          "evidence_reference": null
+        },
+        "southampton": {
+          "roll_std_60_max_deg": null,
+          "abs_roll_mean_180_max_deg": null,
+          "evidence_reference": null
+        }
+      }
+    }
+  },
+  "source_evidence": {
+    "seafar": [
+      "Nguồn tàu thực; audit không ghi nhận event/ground-truth annotation.",
+      "Roll có offset trung bình dương; không lấy zero-centered làm NORMAL.",
+      "Chỉ một session, nhiều segment do timestamp trùng/gap; không có xác nhận sự kiện vận hành."
+    ],
+    "hohai": [
+      "21 sheet là 21 session thực nghiệm riêng; roll/pitch degree, sample rate 50 Hz theo tài liệu được cung cấp.",
+      "Không có gyro đo trực tiếp và workbook không có timestamp để kiểm tra dropout.",
+      "Tên loại/thử nghiệm không được coi là nhãn nguy hiểm; PDF nguồn đã được báo cáo là không parse được trong audit."
+    ],
+    "southampton": [
+      "Dữ liệu mô hình KCS quy mô phòng thí nghiệm; Test Plan là ngữ cảnh sóng/thử nghiệm, không phải hazard label.",
+      "47 IMU runs, chỉ Run 14 đủ 180 giây theo audit.",
+      "Điều kiện tần số/biên độ sóng không được chuyển trực tiếp thành nhãn; không ghép IMU với Lasso.",
+      "Không có human review hoặc reference label được cung cấp."
+    ]
+  },
+  "datasets": {
+    "seafar": {
+      "dataset_source": "seafar",
+      "feature_candidate_rows_60s": 1384,
+      "eligible_windows_180s_angle23": 1318,
+      "sessions_with_eligible_windows": 1,
+      "session_ids": [
+        "seafar_session_001"
+      ],
+      "segment_count": 4,
+      "overlapping_stride_seconds": 10,
+      "window_seconds": 180,
+      "feature_validity_values": [
+        "VALID",
+        "MISSING_SOURCE_SIGNAL",
+        "INSUFFICIENT_WINDOW",
+        "INVALID_INPUT",
+        "UNDEFINED_MATHEMATICALLY",
+        "UNVERIFIED_SIGNAL_MAPPING"
+      ],
+      "metrics": {
+        "roll_mean_180_deg": {
+          "mean": 3.3098177299139127,
+          "std_population": 0.16591668705144538,
+          "min": 2.886744432846705,
+          "p05": 3.0672499994503126,
+          "p50": 3.2906610816054873,
+          "p95": 3.5431400078866213,
+          "max": 3.869561117755042
+        },
+        "roll_rms_60_deg": {
+          "mean": 3.3150801873550675,
+          "std_population": 0.18482573500508756,
+          "min": 2.7908318070931957,
+          "p05": 3.043608051119997,
+          "p50": 3.299031061882963,
+          "p95": 3.583931944107821,
+          "max": 4.071555312819813
+        },
+        "roll_std_60_deg": {
+          "mean": 0.11455223811610474,
+          "std_population": 0.08230136274775383,
+          "min": 0.013974477321525826,
+          "p05": 0.023422034160116543,
+          "p50": 0.09526055389037916,
+          "p95": 0.2850947773175966,
+          "max": 0.46960281867741566
+        },
+        "roll_peak_to_peak_60_deg": {
+          "mean": 0.5082018248770777,
+          "std_population": 0.3434046278895667,
+          "min": 0.04999995231628418,
+          "p05": 0.09999990463256836,
+          "p50": 0.4200000762939453,
+          "p95": 1.2300000190734863,
+          "max": 1.5300002098083496
+        },
+        "roll_abs_p95_60_deg": {
+          "mean": 3.4985197289037053,
+          "std_population": 0.2594929923289813,
+          "min": 2.890000104904175,
+          "p05": 3.180000066757202,
+          "p50": 3.430000066757202,
+          "p95": 4.03000020980835,
+          "max": 4.430999827384948
+        },
+        "roll_rms_slope_180_deg_per_min": {
+          "mean": 0.002129990404725255,
+          "std_population": 0.0824496397315378,
+          "min": -0.4402665194522686,
+          "p05": -0.11754578997002467,
+          "p50": 0.0007486091560673369,
+          "p95": 0.10566098524861979,
+          "max": 0.5261051429739299
+        },
+        "roll_rms_trend_r2_180": {
+          "mean": 0.5669399434904275,
+          "std_population": 0.35341117680353734,
+          "min": 6.106788633331028e-06,
+          "p05": 0.01360396611115674,
+          "p50": 0.6358461761912483,
+          "p95": 0.9961111979835415,
+          "max": 0.9999999985054204
+        },
+        "pitch_rms_60_deg": {
+          "mean": 0.8405956986261002,
+          "std_population": 0.09921397856697486,
+          "min": 0.5814976367739785,
+          "p05": 0.6682956679299977,
+          "p50": 0.8569180702575012,
+          "p95": 0.9829485361339,
+          "max": 1.067064505694126
+        }
+      },
+      "per_session": [
+        {
+          "session_id": "seafar_session_001",
+          "eligible_windows": 1318,
+          "segments": 4,
+          "roll_std_60_p50_deg": 0.09526055389037916,
+          "abs_roll_mean_180_p50_deg": 3.2906610816054873,
+          "roll_rms_slope_180_p50_deg_per_min": 0.0007486091560673369
+        }
+      ],
+      "class_evidence": {
+        "NORMAL": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "HIGH_ROLL": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "PERSISTENT_OFFSET": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "AMPLITUDE_GROWTH": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        }
+      },
+      "ground_truth_annotations_found": 0,
+      "human_review_decisions": 0,
+      "note_vi": "Cửa sổ chồng lấn; số lượng cửa sổ không phải số quan sát độc lập. Không có ngưỡng được phê duyệt để biến thống kê mô tả thành nhãn.",
+      "feature_input_audit": {
+        "candidate_feature_count": 30,
+        "features_with_any_valid": 26,
+        "gyro_features_with_any_valid": 0,
+        "features_with_any_valid_names": [
+          "pitch_peak_to_peak_60",
+          "pitch_rms_60",
+          "pitch_std_60",
+          "roll_abs_max_60",
+          "roll_abs_p95_60",
+          "roll_diff_rms_60",
+          "roll_dominant_sign_ratio_180",
+          "roll_iqr_60",
+          "roll_mean_180",
+          "roll_mean_60",
+          "roll_mean_abs_180",
+          "roll_mean_shift_180",
+          "roll_median_180",
+          "roll_p95_trend_slope_180",
+          "roll_peak_to_peak_60",
+          "roll_period_cv_180",
+          "roll_period_est_180",
+          "roll_rms_60",
+          "roll_rms_early_60",
+          "roll_rms_late_60",
+          "roll_rms_ratio_180",
+          "roll_rms_slope_180",
+          "roll_rms_trend_r2_180",
+          "roll_segment_mean_std_180",
+          "roll_std_60",
+          "roll_zero_crossings_180"
+        ],
+        "valid_row_counts_by_feature": {
+          "pitch_peak_to_peak_60": 1384,
+          "pitch_rms_60": 1384,
+          "pitch_std_60": 1384,
+          "roll_abs_max_60": 1384,
+          "roll_abs_p95_60": 1384,
+          "roll_diff_rms_60": 1384,
+          "roll_iqr_60": 1384,
+          "roll_mean_60": 1384,
+          "roll_peak_to_peak_60": 1384,
+          "roll_rms_60": 1384,
+          "roll_std_60": 1384,
+          "roll_dominant_sign_ratio_180": 1318,
+          "roll_mean_180": 1318,
+          "roll_mean_abs_180": 1318,
+          "roll_mean_shift_180": 1318,
+          "roll_median_180": 1318,
+          "roll_p95_trend_slope_180": 1318,
+          "roll_period_cv_180": 1271,
+          "roll_period_est_180": 1285,
+          "roll_rms_early_60": 1318,
+          "roll_rms_late_60": 1318,
+          "roll_rms_ratio_180": 1318,
+          "roll_rms_slope_180": 1318,
+          "roll_rms_trend_r2_180": 1318,
+          "roll_segment_mean_std_180": 1318,
+          "roll_zero_crossings_180": 1318
+        }
+      },
+      "output_label_counts": {
+        "UNLABELED": 1318
+      },
+      "proxy_label_rows": 0,
+      "unlabeled_rows": 1318,
+      "review_required_rows": 0,
+      "verified_rows": 0,
+      "human_reviewed_rows": 0,
+      "overlapping_phenotype_windows": 0,
+      "per_session_label_counts": [
+        {
+          "session_id": "seafar_session_001",
+          "windows": 1318,
+          "unlabeled": 1318,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        }
+      ],
+      "output_path": "ml/data/labels/feasibility/seafar/candidate_labels.parquet",
+      "partition_paths": {
+        "candidate_labels": "ml/data/labels/feasibility/seafar/candidate_labels.parquet",
+        "unlabeled_windows": "ml/data/labels/feasibility/seafar/unlabeled_windows.parquet",
+        "review_required_windows": "ml/data/labels/feasibility/seafar/review_required_windows.parquet",
+        "verified_reviewed_annotations": "ml/data/labels/feasibility/seafar/verified_reviewed_annotations.parquet"
+      }
+    },
+    "hohai": {
+      "dataset_source": "hohai",
+      "feature_candidate_rows_60s": 1764,
+      "eligible_windows_180s_angle23": 1512,
+      "sessions_with_eligible_windows": 21,
+      "session_ids": [
+        "Berth_B_T7_Type_A",
+        "Berth_B_T8_Type_A",
+        "Berth_B_T9_Type_A",
+        "Berth_C_T7_Type_A",
+        "Berth_C_T8_Type_A",
+        "Berth_C_T9_Type_A",
+        "Berth_D_T1_Type_A",
+        "Berth_D_T2_Type_A",
+        "Berth_D_T3_Type_A",
+        "Berth_D_T3_Type_B",
+        "Berth_D_T3_Type_C",
+        "Berth_D_T4_Type_A",
+        "Berth_D_T5_Type_A",
+        "Berth_D_T6_Type_A",
+        "Berth_D_T6_Type_B",
+        "Berth_D_T6_Type_C",
+        "Berth_D_T7_Type_A",
+        "Berth_D_T8_Type_A",
+        "Berth_D_T8_Type_B",
+        "Berth_D_T8_Type_C",
+        "Berth_D_T9_Type_A"
+      ],
+      "segment_count": 1,
+      "overlapping_stride_seconds": 10,
+      "window_seconds": 180,
+      "feature_validity_values": [
+        "VALID",
+        "MISSING_SOURCE_SIGNAL",
+        "INSUFFICIENT_WINDOW",
+        "INVALID_INPUT",
+        "UNDEFINED_MATHEMATICALLY",
+        "UNVERIFIED_SIGNAL_MAPPING"
+      ],
+      "metrics": {
+        "roll_mean_180_deg": {
+          "mean": 0.015181463228009638,
+          "std_population": 0.06101136652937983,
+          "min": -0.09528286817121423,
+          "p05": -0.0638937044696027,
+          "p50": -0.0020993008187343144,
+          "p95": 0.10513185672974867,
+          "max": 0.23819953626250734
+        },
+        "roll_rms_60_deg": {
+          "mean": 0.36276426734555745,
+          "std_population": 0.0972376315534921,
+          "min": 0.1795223649157641,
+          "p05": 0.2353100637393775,
+          "p50": 0.347195647212871,
+          "p95": 0.5376289581261294,
+          "max": 0.869262491658584
+        },
+        "roll_std_60_deg": {
+          "mean": 0.3568152628916458,
+          "std_population": 0.09751064033029808,
+          "min": 0.17755627335855811,
+          "p05": 0.23381806186680731,
+          "p50": 0.3400947803473179,
+          "p95": 0.5330766275735076,
+          "max": 0.8663703858542716
+        },
+        "roll_peak_to_peak_60_deg": {
+          "mean": 1.993857166212466,
+          "std_population": 0.5811491992976655,
+          "min": 0.9613398313522339,
+          "p05": 1.2279816538095474,
+          "p50": 1.9197906851768494,
+          "p95": 3.0441688299179077,
+          "max": 4.4035325050354
+        },
+        "roll_abs_p95_60_deg": {
+          "mean": 0.7153627495237047,
+          "std_population": 0.19589155294932784,
+          "min": 0.35151244103908524,
+          "p05": 0.4555395084619521,
+          "p50": 0.6828480482101438,
+          "p95": 1.0724340909719459,
+          "max": 1.6587855517864218
+        },
+        "roll_rms_slope_180_deg_per_min": {
+          "mean": 0.006275025922005144,
+          "std_population": 0.046401112972706125,
+          "min": -0.18755661453879544,
+          "p05": -0.0688234237062353,
+          "p50": 0.004924451977652664,
+          "p95": 0.08408318229220813,
+          "max": 0.15529181602446146
+        },
+        "roll_rms_trend_r2_180": {
+          "mean": 0.5081454252114652,
+          "std_population": 0.35858894434972766,
+          "min": 1.3877497414993556e-05,
+          "p05": 0.008732085267522005,
+          "p50": 0.5273705523207163,
+          "p95": 0.9931032535853598,
+          "max": 0.99999992042591
+        },
+        "pitch_rms_60_deg": {
+          "mean": 0.08850758949918681,
+          "std_population": 0.02245299692891464,
+          "min": 0.044356922052215635,
+          "p05": 0.057775845473862004,
+          "p50": 0.08428429365235343,
+          "p95": 0.12796601040281852,
+          "max": 0.16473768760476581
+        }
+      },
+      "per_session": [
+        {
+          "session_id": "Berth_B_T7_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.3359780291609066,
+          "abs_roll_mean_180_p50_deg": 0.0935636633306462,
+          "roll_rms_slope_180_p50_deg_per_min": 0.005626088897270093
+        },
+        {
+          "session_id": "Berth_B_T8_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.36785431859602813,
+          "abs_roll_mean_180_p50_deg": 0.014535183950943695,
+          "roll_rms_slope_180_p50_deg_per_min": -0.0028681829095148353
+        },
+        {
+          "session_id": "Berth_B_T9_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.2930354363205522,
+          "abs_roll_mean_180_p50_deg": 0.20975406911643102,
+          "roll_rms_slope_180_p50_deg_per_min": -0.0032197427826362174
+        },
+        {
+          "session_id": "Berth_C_T7_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.3299924150380167,
+          "abs_roll_mean_180_p50_deg": 0.017034259048717408,
+          "roll_rms_slope_180_p50_deg_per_min": 0.0010085124694805964
+        },
+        {
+          "session_id": "Berth_C_T8_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.4120447392271974,
+          "abs_roll_mean_180_p50_deg": 0.06454231319118764,
+          "roll_rms_slope_180_p50_deg_per_min": 0.004603198308824455
+        },
+        {
+          "session_id": "Berth_C_T9_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.42069904908767797,
+          "abs_roll_mean_180_p50_deg": 0.03698583512271903,
+          "roll_rms_slope_180_p50_deg_per_min": 0.009318471320794344
+        },
+        {
+          "session_id": "Berth_D_T1_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.24701670618676447,
+          "abs_roll_mean_180_p50_deg": 0.030641733331325062,
+          "roll_rms_slope_180_p50_deg_per_min": -0.003909951028735134
+        },
+        {
+          "session_id": "Berth_D_T2_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.2738106779615307,
+          "abs_roll_mean_180_p50_deg": 0.004723504856524667,
+          "roll_rms_slope_180_p50_deg_per_min": 0.005567101093369304
+        },
+        {
+          "session_id": "Berth_D_T3_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.3146192512274264,
+          "abs_roll_mean_180_p50_deg": 0.02563629080884109,
+          "roll_rms_slope_180_p50_deg_per_min": 0.007118332867103103
+        },
+        {
+          "session_id": "Berth_D_T3_Type_B",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.28193741859840205,
+          "abs_roll_mean_180_p50_deg": 0.07042871329236934,
+          "roll_rms_slope_180_p50_deg_per_min": 0.00297748799039306
+        },
+        {
+          "session_id": "Berth_D_T3_Type_C",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.290205737217631,
+          "abs_roll_mean_180_p50_deg": 0.0192851262449565,
+          "roll_rms_slope_180_p50_deg_per_min": 0.005054052466410663
+        },
+        {
+          "session_id": "Berth_D_T4_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.2788496927182199,
+          "abs_roll_mean_180_p50_deg": 0.02453783540839936,
+          "roll_rms_slope_180_p50_deg_per_min": 0.0015768335157780385
+        },
+        {
+          "session_id": "Berth_D_T5_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.2889349408381231,
+          "abs_roll_mean_180_p50_deg": 0.008762893188167153,
+          "roll_rms_slope_180_p50_deg_per_min": 0.020380069772090295
+        },
+        {
+          "session_id": "Berth_D_T6_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.3069376626036498,
+          "abs_roll_mean_180_p50_deg": 0.023419666161446206,
+          "roll_rms_slope_180_p50_deg_per_min": 0.015243050282417694
+        },
+        {
+          "session_id": "Berth_D_T6_Type_B",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.3409782805271028,
+          "abs_roll_mean_180_p50_deg": 0.011891376258564464,
+          "roll_rms_slope_180_p50_deg_per_min": 0.002902535369931709
+        },
+        {
+          "session_id": "Berth_D_T6_Type_C",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.3528443937016275,
+          "abs_roll_mean_180_p50_deg": 0.00547220329646532,
+          "roll_rms_slope_180_p50_deg_per_min": 0.0036507554366110723
+        },
+        {
+          "session_id": "Berth_D_T7_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.44384139522165467,
+          "abs_roll_mean_180_p50_deg": 0.08954257990592951,
+          "roll_rms_slope_180_p50_deg_per_min": -0.009057081052050251
+        },
+        {
+          "session_id": "Berth_D_T8_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.441678942808299,
+          "abs_roll_mean_180_p50_deg": 0.019221322876843867,
+          "roll_rms_slope_180_p50_deg_per_min": 0.020532215242782814
+        },
+        {
+          "session_id": "Berth_D_T8_Type_B",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.4034398721435771,
+          "abs_roll_mean_180_p50_deg": 0.01701200112124853,
+          "roll_rms_slope_180_p50_deg_per_min": -0.0007566700945023652
+        },
+        {
+          "session_id": "Berth_D_T8_Type_C",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.48477959459602615,
+          "abs_roll_mean_180_p50_deg": 0.060017512951065125,
+          "roll_rms_slope_180_p50_deg_per_min": 0.016566212434734953
+        },
+        {
+          "session_id": "Berth_D_T9_Type_A",
+          "eligible_windows": 72,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.4930243779380701,
+          "abs_roll_mean_180_p50_deg": 0.05684541738840279,
+          "roll_rms_slope_180_p50_deg_per_min": 0.019949655067941108
+        }
+      ],
+      "class_evidence": {
+        "NORMAL": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "HIGH_ROLL": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "PERSISTENT_OFFSET": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "AMPLITUDE_GROWTH": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        }
+      },
+      "ground_truth_annotations_found": 0,
+      "human_review_decisions": 0,
+      "note_vi": "Cửa sổ chồng lấn; số lượng cửa sổ không phải số quan sát độc lập. Không có ngưỡng được phê duyệt để biến thống kê mô tả thành nhãn.",
+      "feature_input_audit": {
+        "candidate_feature_count": 30,
+        "features_with_any_valid": 26,
+        "gyro_features_with_any_valid": 0,
+        "features_with_any_valid_names": [
+          "pitch_peak_to_peak_60",
+          "pitch_rms_60",
+          "pitch_std_60",
+          "roll_abs_max_60",
+          "roll_abs_p95_60",
+          "roll_diff_rms_60",
+          "roll_dominant_sign_ratio_180",
+          "roll_iqr_60",
+          "roll_mean_180",
+          "roll_mean_60",
+          "roll_mean_abs_180",
+          "roll_mean_shift_180",
+          "roll_median_180",
+          "roll_p95_trend_slope_180",
+          "roll_peak_to_peak_60",
+          "roll_period_cv_180",
+          "roll_period_est_180",
+          "roll_rms_60",
+          "roll_rms_early_60",
+          "roll_rms_late_60",
+          "roll_rms_ratio_180",
+          "roll_rms_slope_180",
+          "roll_rms_trend_r2_180",
+          "roll_segment_mean_std_180",
+          "roll_std_60",
+          "roll_zero_crossings_180"
+        ],
+        "valid_row_counts_by_feature": {
+          "pitch_peak_to_peak_60": 1764,
+          "pitch_rms_60": 1764,
+          "pitch_std_60": 1764,
+          "roll_abs_max_60": 1764,
+          "roll_abs_p95_60": 1764,
+          "roll_diff_rms_60": 1764,
+          "roll_iqr_60": 1764,
+          "roll_mean_60": 1764,
+          "roll_peak_to_peak_60": 1764,
+          "roll_rms_60": 1764,
+          "roll_std_60": 1764,
+          "roll_dominant_sign_ratio_180": 1512,
+          "roll_mean_180": 1512,
+          "roll_mean_abs_180": 1512,
+          "roll_mean_shift_180": 1512,
+          "roll_median_180": 1512,
+          "roll_p95_trend_slope_180": 1512,
+          "roll_period_cv_180": 1512,
+          "roll_period_est_180": 1512,
+          "roll_rms_early_60": 1512,
+          "roll_rms_late_60": 1512,
+          "roll_rms_ratio_180": 1512,
+          "roll_rms_slope_180": 1512,
+          "roll_rms_trend_r2_180": 1512,
+          "roll_segment_mean_std_180": 1512,
+          "roll_zero_crossings_180": 1512
+        }
+      },
+      "output_label_counts": {
+        "UNLABELED": 1512
+      },
+      "proxy_label_rows": 0,
+      "unlabeled_rows": 1512,
+      "review_required_rows": 0,
+      "verified_rows": 0,
+      "human_reviewed_rows": 0,
+      "overlapping_phenotype_windows": 0,
+      "per_session_label_counts": [
+        {
+          "session_id": "Berth_B_T7_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_B_T8_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_B_T9_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_C_T7_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_C_T8_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_C_T9_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T1_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T2_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T3_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T3_Type_B",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T3_Type_C",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T4_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T5_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T6_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T6_Type_B",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T6_Type_C",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T7_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T8_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T8_Type_B",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T8_Type_C",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        },
+        {
+          "session_id": "Berth_D_T9_Type_A",
+          "windows": 72,
+          "unlabeled": 72,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        }
+      ],
+      "output_path": "ml/data/labels/feasibility/hohai/candidate_labels.parquet",
+      "partition_paths": {
+        "candidate_labels": "ml/data/labels/feasibility/hohai/candidate_labels.parquet",
+        "unlabeled_windows": "ml/data/labels/feasibility/hohai/unlabeled_windows.parquet",
+        "review_required_windows": "ml/data/labels/feasibility/hohai/review_required_windows.parquet",
+        "verified_reviewed_annotations": "ml/data/labels/feasibility/hohai/verified_reviewed_annotations.parquet"
+      }
+    },
+    "southampton": {
+      "dataset_source": "southampton",
+      "feature_candidate_rows_60s": 277,
+      "eligible_windows_180s_angle23": 34,
+      "sessions_with_eligible_windows": 1,
+      "session_ids": [
+        "southampton_run_14"
+      ],
+      "segment_count": 1,
+      "overlapping_stride_seconds": 10,
+      "window_seconds": 180,
+      "feature_validity_values": [
+        "VALID",
+        "MISSING_SOURCE_SIGNAL",
+        "INSUFFICIENT_WINDOW",
+        "INVALID_INPUT",
+        "UNDEFINED_MATHEMATICALLY",
+        "UNVERIFIED_SIGNAL_MAPPING"
+      ],
+      "metrics": {
+        "roll_mean_180_deg": {
+          "mean": 0.6936007919776088,
+          "std_population": 0.007508220396519031,
+          "min": 0.6801913547847006,
+          "p05": 0.6819999780191316,
+          "p50": 0.6920902422567208,
+          "p95": 0.7058370183698005,
+          "max": 0.7072317257689105
+        },
+        "roll_rms_60_deg": {
+          "mean": 0.6982612772796812,
+          "std_population": 0.013201241152376213,
+          "min": 0.6763966368966067,
+          "p05": 0.6773683479419972,
+          "p50": 0.6952336762991018,
+          "p95": 0.7182640281180236,
+          "max": 0.722417302552595
+        },
+        "roll_std_60_deg": {
+          "mean": 0.031855780821202995,
+          "std_population": 0.030440490434851256,
+          "min": 0.011750965509019513,
+          "p05": 0.01230083638819176,
+          "p50": 0.01784801563086621,
+          "p95": 0.10654619703219416,
+          "max": 0.11990584430472159
+        },
+        "roll_peak_to_peak_60_deg": {
+          "mean": 0.18411322639268987,
+          "std_population": 0.18208967675438992,
+          "min": 0.06285285949707031,
+          "p05": 0.0670590341091156,
+          "p50": 0.0849142074584961,
+          "p95": 0.6262847185134888,
+          "max": 0.6262847185134888
+        },
+        "roll_abs_p95_60_deg": {
+          "mean": 0.7501117139178164,
+          "std_population": 0.06019847858420608,
+          "min": 0.6975360125303268,
+          "p05": 0.6978580284118653,
+          "p50": 0.7229958444833755,
+          "p95": 0.8918526934087276,
+          "max": 0.8962153196334838
+        },
+        "roll_rms_slope_180_deg_per_min": {
+          "mean": 0.004606336779236758,
+          "std_population": 0.009037036639938966,
+          "min": -0.017221666407614133,
+          "p05": -0.012917771707215147,
+          "p50": 0.007082543776665562,
+          "p95": 0.014584078191781324,
+          "max": 0.01650432393914142
+        },
+        "roll_rms_trend_r2_180": {
+          "mean": 0.6114295563401758,
+          "std_population": 0.34258808004053126,
+          "min": 0.022490744391012285,
+          "p05": 0.09401468086482634,
+          "p50": 0.7671614719187292,
+          "p95": 0.9821648807335903,
+          "max": 0.9986303245397767
+        },
+        "pitch_rms_60_deg": {
+          "mean": 1.7756813061490557,
+          "std_population": 0.025194874249654244,
+          "min": 1.7174745213146883,
+          "p05": 1.7386841816251029,
+          "p50": 1.7780403645578475,
+          "p95": 1.814033069117484,
+          "max": 1.8192673309806913
+        }
+      },
+      "per_session": [
+        {
+          "session_id": "southampton_run_14",
+          "eligible_windows": 34,
+          "segments": 1,
+          "roll_std_60_p50_deg": 0.01784801563086621,
+          "abs_roll_mean_180_p50_deg": 0.6920902422567208,
+          "roll_rms_slope_180_p50_deg_per_min": 0.007082543776665562
+        }
+      ],
+      "class_evidence": {
+        "NORMAL": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "HIGH_ROLL": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "PERSISTENT_OFFSET": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        },
+        "AMPLITUDE_GROWTH": {
+          "proxy_windows": 0,
+          "verified_windows": 0,
+          "human_reviewed_windows": 0,
+          "supporting_sessions": 0,
+          "status": "NOT_ESTABLISHED"
+        }
+      },
+      "ground_truth_annotations_found": 0,
+      "human_review_decisions": 0,
+      "note_vi": "Cửa sổ chồng lấn; số lượng cửa sổ không phải số quan sát độc lập. Không có ngưỡng được phê duyệt để biến thống kê mô tả thành nhãn.",
+      "feature_input_audit": {
+        "candidate_feature_count": 30,
+        "features_with_any_valid": 26,
+        "gyro_features_with_any_valid": 0,
+        "features_with_any_valid_names": [
+          "pitch_peak_to_peak_60",
+          "pitch_rms_60",
+          "pitch_std_60",
+          "roll_abs_max_60",
+          "roll_abs_p95_60",
+          "roll_diff_rms_60",
+          "roll_dominant_sign_ratio_180",
+          "roll_iqr_60",
+          "roll_mean_180",
+          "roll_mean_60",
+          "roll_mean_abs_180",
+          "roll_mean_shift_180",
+          "roll_median_180",
+          "roll_p95_trend_slope_180",
+          "roll_peak_to_peak_60",
+          "roll_period_cv_180",
+          "roll_period_est_180",
+          "roll_rms_60",
+          "roll_rms_early_60",
+          "roll_rms_late_60",
+          "roll_rms_ratio_180",
+          "roll_rms_slope_180",
+          "roll_rms_trend_r2_180",
+          "roll_segment_mean_std_180",
+          "roll_std_60",
+          "roll_zero_crossings_180"
+        ],
+        "valid_row_counts_by_feature": {
+          "pitch_peak_to_peak_60": 277,
+          "pitch_rms_60": 277,
+          "pitch_std_60": 277,
+          "roll_abs_max_60": 277,
+          "roll_abs_p95_60": 277,
+          "roll_diff_rms_60": 277,
+          "roll_iqr_60": 277,
+          "roll_mean_60": 277,
+          "roll_peak_to_peak_60": 277,
+          "roll_rms_60": 277,
+          "roll_std_60": 277,
+          "roll_dominant_sign_ratio_180": 34,
+          "roll_mean_180": 34,
+          "roll_mean_abs_180": 34,
+          "roll_mean_shift_180": 34,
+          "roll_median_180": 34,
+          "roll_p95_trend_slope_180": 34,
+          "roll_period_cv_180": 34,
+          "roll_period_est_180": 34,
+          "roll_rms_early_60": 34,
+          "roll_rms_late_60": 34,
+          "roll_rms_ratio_180": 34,
+          "roll_rms_slope_180": 34,
+          "roll_rms_trend_r2_180": 34,
+          "roll_segment_mean_std_180": 34,
+          "roll_zero_crossings_180": 34
+        }
+      },
+      "output_label_counts": {
+        "UNLABELED": 34
+      },
+      "proxy_label_rows": 0,
+      "unlabeled_rows": 34,
+      "review_required_rows": 0,
+      "verified_rows": 0,
+      "human_reviewed_rows": 0,
+      "overlapping_phenotype_windows": 0,
+      "per_session_label_counts": [
+        {
+          "session_id": "southampton_run_14",
+          "windows": 34,
+          "unlabeled": 34,
+          "review_required": 0,
+          "proxy": 0,
+          "verified": 0,
+          "human_reviewed": 0,
+          "class_counts": {
+            "NORMAL": 0,
+            "HIGH_ROLL": 0,
+            "PERSISTENT_OFFSET": 0,
+            "AMPLITUDE_GROWTH": 0
+          }
+        }
+      ],
+      "output_path": "ml/data/labels/feasibility/southampton/candidate_labels.parquet",
+      "partition_paths": {
+        "candidate_labels": "ml/data/labels/feasibility/southampton/candidate_labels.parquet",
+        "unlabeled_windows": "ml/data/labels/feasibility/southampton/unlabeled_windows.parquet",
+        "review_required_windows": "ml/data/labels/feasibility/southampton/review_required_windows.parquet",
+        "verified_reviewed_annotations": "ml/data/labels/feasibility/southampton/verified_reviewed_annotations.parquet"
+      }
+    }
+  },
+  "review_queue_rows": 92,
+  "review_queue_strata_counts": {
+    "UNLABELED": 92
+  },
+  "review_queue_unavailable_strata": [
+    "BORDERLINE_CASE",
+    "SUSPECTED_FALSE_POSITIVE"
+  ],
+  "review_queue_unavailable_strata_reason_vi": "Không cấu hình biên review cho BORDERLINE_CASE và chưa có reviewer rejection độc lập cho SUSPECTED_FALSE_POSITIVE.",
+  "review_queue_path": "ml/data/labels/review_queue.csv",
+  "annotation_template_path": "ml/data/labels/annotation_template.csv",
+  "diagnostic_figures": [
+    "ml/data/labels/diagnostics/seafar_representative_window.png",
+    "ml/data/labels/diagnostics/seafar_offset_vs_oscillation.png",
+    "ml/data/labels/diagnostics/hohai_representative_window.png",
+    "ml/data/labels/diagnostics/hohai_offset_vs_oscillation.png",
+    "ml/data/labels/diagnostics/southampton_representative_window.png",
+    "ml/data/labels/diagnostics/southampton_offset_vs_oscillation.png",
+    "ml/data/labels/diagnostics/comparison_roll_std.png"
+  ],
+  "ground_truth_annotations_found": 0,
+  "human_review_decisions": 0,
+  "elapsed_seconds": 1.1577417500084266,
+  "scope_note_vi": "Không có external reference hoặc reviewer decision; proxy thresholds disabled; không có training labels.",
+  "test_results": {
+    "command": "python -m pytest ml/labeling/tests ml/features/tests ml/preprocessing/tests ml/audit -q",
+    "exit_code": 0,
+    "result_summary": "60 passed in 1.69s",
+    "passed": 60,
+    "failed": 0,
+    "skipped": 0
+  }
+}
