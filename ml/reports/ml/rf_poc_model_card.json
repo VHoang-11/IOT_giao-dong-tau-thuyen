@@ -1,0 +1,212 @@
+{
+ "RELATIVE_HIGH_ROLL": {
+  "model_version": "rf_proxy_phenotype_poc_v0.1.0",
+  "target": "RELATIVE_HIGH_ROLL",
+  "rule_version": "proxy_rules_v1.0.0",
+  "label_source": "PROXY_RULE",
+  "not_a_safety_classifier": true,
+  "intended_use": "Nghiên cứu PoC tái tạo proxy RELATIVE phenotype trong miền Hohai model-scale; không dùng cho cảnh báo vận hành.",
+  "domain": "hohai",
+  "feature_schema": {
+   "names": [
+    "roll_rms_60",
+    "roll_std_60",
+    "roll_mean_60",
+    "roll_peak_to_peak_60",
+    "roll_abs_p95_60",
+    "roll_abs_max_60",
+    "roll_iqr_60",
+    "roll_diff_rms_60",
+    "roll_mean_180",
+    "roll_median_180",
+    "roll_mean_abs_180",
+    "roll_dominant_sign_ratio_180",
+    "roll_segment_mean_std_180",
+    "roll_mean_shift_180",
+    "roll_rms_early_60",
+    "roll_rms_late_60",
+    "roll_rms_ratio_180",
+    "roll_rms_slope_180",
+    "roll_rms_trend_r2_180",
+    "roll_p95_trend_slope_180",
+    "pitch_rms_60",
+    "pitch_std_60",
+    "pitch_peak_to_peak_60"
+   ],
+   "count": 23,
+   "dtype": "float32-compatible float64",
+   "sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8"
+  },
+  "seed": 20261117,
+  "model_path": "ml/data/models/rf_poc_v1/relative_high_roll_rf.joblib",
+  "model_sha256": "eab2891044256ac2b8c4041ed0e1178c4cfb9d1a01bc95c7ed7e80fc19ffe714",
+  "environment": {
+   "python": "3.14.10",
+   "sklearn": "1.9.1",
+   "numpy": "2.4.6",
+   "pandas": "3.0.3"
+  },
+  "selection": {
+   "params": {
+    "max_depth": 8,
+    "min_samples_leaf": 10,
+    "class_weight": null
+   },
+   "inner_pooled_average_precision": 1.0,
+   "probability_threshold": 0.769065
+  },
+  "training_windows": 1361,
+  "training_positive": 152,
+  "training_groups": [
+   "hohai|T1",
+   "hohai|T2",
+   "hohai|T3",
+   "hohai|T4",
+   "hohai|T5",
+   "hohai|T6",
+   "hohai|T7",
+   "hohai|T8",
+   "hohai|T9"
+  ],
+  "training_sessions": 21,
+  "feature_ranges": {
+   "roll_rms_60": [
+    0.1795223649157641,
+    0.869262491658584
+   ],
+   "roll_std_60": [
+    0.17755627335855811,
+    0.8663703858542716
+   ],
+   "roll_mean_60": [
+    -0.11301503364248977,
+    0.26932108869366855
+   ],
+   "roll_peak_to_peak_60": [
+    0.9613398313522339,
+    4.4035325050354
+   ],
+   "roll_abs_p95_60": [
+    0.35151244103908524,
+    1.6587855517864218
+   ],
+   "roll_abs_max_60": [
+    0.5238329768180847,
+    2.233339786529541
+   ],
+   "roll_iqr_60": [
+    0.20474060624837875,
+    1.3227310627698898
+   ],
+   "roll_diff_rms_60": [
+    0.056839409740072,
+    0.2932130378238469
+   ],
+   "roll_mean_180": [
+    -0.09528286817121423,
+    0.23819953626250734
+   ],
+   "roll_median_180": [
+    -0.11152803897857666,
+    0.19976253807544708
+   ],
+   "roll_mean_abs_180": [
+    0.15478972516891795,
+    0.5291685474331502
+   ],
+   "roll_dominant_sign_ratio_180": [
+    0.5,
+    0.7705555555555555
+   ],
+   "roll_segment_mean_std_180": [
+    0.00017026078505426385,
+    0.04899889598071504
+   ],
+   "roll_mean_shift_180": [
+    -0.09214925698625544,
+    0.11379227745603807
+   ],
+   "roll_rms_early_60": [
+    0.13021668517971294,
+    0.869262491658584
+   ],
+   "roll_rms_late_60": [
+    0.1795223649157641,
+    0.869262491658584
+   ],
+   "roll_rms_ratio_180": [
+    0.4609163845566277,
+    2.512364646345981
+   ],
+   "roll_rms_slope_180": [
+    -0.18755661453879544,
+    0.15529181602446146
+   ],
+   "roll_rms_trend_r2_180": [
+    1.3877497414993556e-05,
+    0.99999992042591
+   ],
+   "roll_p95_trend_slope_180": [
+    -0.37835168391466145,
+    0.3651799663901325
+   ],
+   "pitch_rms_60": [
+    0.044356922052215635,
+    0.16473768760476581
+   ],
+   "pitch_std_60": [
+    0.04282368941070905,
+    0.16444778467912433
+   ],
+   "pitch_peak_to_peak_60": [
+    0.23133663833141327,
+    0.9405601918697357
+   ]
+  },
+  "mdi_importance": {
+   "roll_rms_60": 0.18814040561208045,
+   "roll_std_60": 0.12475734501585677,
+   "roll_mean_60": 6.081117731779703e-06,
+   "roll_peak_to_peak_60": 0.061599041655531234,
+   "roll_abs_p95_60": 0.1082109143417294,
+   "roll_abs_max_60": 0.029244923991493744,
+   "roll_iqr_60": 0.07756667933206479,
+   "roll_diff_rms_60": 0.19152387665119078,
+   "roll_mean_180": 0.0,
+   "roll_median_180": 1.9504993761988723e-05,
+   "roll_mean_abs_180": 0.03023527898857191,
+   "roll_dominant_sign_ratio_180": 0.0,
+   "roll_segment_mean_std_180": 0.0002948917803401801,
+   "roll_mean_shift_180": 0.00018571839032508993,
+   "roll_rms_early_60": 0.002150188239771206,
+   "roll_rms_late_60": 0.1419346271811425,
+   "roll_rms_ratio_180": 0.0018797205623299193,
+   "roll_rms_slope_180": 0.0032016527329869118,
+   "roll_rms_trend_r2_180": 0.0001242801739433456,
+   "roll_p95_trend_slope_180": 0.004786013828418998,
+   "pitch_rms_60": 0.02129448563173548,
+   "pitch_std_60": 0.008710555231147056,
+   "pitch_peak_to_peak_60": 0.004133814547846428
+  },
+  "tree_statistics": {
+   "n_estimators": 200,
+   "total_nodes": 1150,
+   "internal_nodes": 475,
+   "leaves": 675,
+   "max_depth": 5,
+   "mean_depth": 1.765,
+   "mean_comparisons_per_inference": 316.7566137566138,
+   "max_comparisons_per_inference": 330.0,
+   "estimated_c_array_bytes": 8400,
+   "estimate_note": "Ước tính: nút trong 12 B (feature int16, threshold float32, left/right int16, padding), lá 4 B (một xác suất float32). Chưa phải kích thước đo trên ESP32."
+  },
+  "calibration_id": "cal-5192d29f3b11",
+  "calibration_thresholds": {
+   "statistic": "roll_std_60",
+   "positive_quantile": 0.9,
+   "negative_quantile": 0.8,
+   "positive_threshold": 0.4921595572976134,
+   "negative_threshold": 0.43336725853364555
+  }
+ }
+}
