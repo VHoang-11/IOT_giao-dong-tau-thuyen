@@ -1,0 +1,318 @@
+{
+ "schema_version": "svmg-angle23-0.2.0-proposal",
+ "feature_count": 23,
+ "feature_order": [
+  "roll_rms_60",
+  "roll_std_60",
+  "roll_mean_60",
+  "roll_peak_to_peak_60",
+  "roll_abs_p95_60",
+  "roll_abs_max_60",
+  "roll_iqr_60",
+  "roll_diff_rms_60",
+  "roll_mean_180",
+  "roll_median_180",
+  "roll_mean_abs_180",
+  "roll_dominant_sign_ratio_180",
+  "roll_segment_mean_std_180",
+  "roll_mean_shift_180",
+  "roll_rms_early_60",
+  "roll_rms_late_60",
+  "roll_rms_ratio_180",
+  "roll_rms_slope_180",
+  "roll_rms_trend_r2_180",
+  "roll_p95_trend_slope_180",
+  "pitch_rms_60",
+  "pitch_std_60",
+  "pitch_peak_to_peak_60"
+ ],
+ "schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+ "model_card_schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+ "model_card_schema_matches": true,
+ "order_checks": {
+  "milestone_expected_selection": true,
+  "ml.features.spec.PRACTICAL_SUBSETS": true,
+  "ml.labeling.human_review_workflow.ANGLE_FEATURES": true,
+  "ml.train.rf_poc.FEATURE_ORDER": true,
+  "feature_contract_23_v0.1.json": true,
+  "M2_23_Features_ESP32_Integration.md": true
+ },
+ "inconsistent_orders": [],
+ "window_checks": {
+  "roll_rms_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_std_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_mean_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_peak_to_peak_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_abs_p95_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_abs_max_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_iqr_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_diff_rms_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "roll_mean_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_median_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_mean_abs_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_dominant_sign_ratio_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_segment_mean_std_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_mean_shift_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_rms_early_60": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_rms_late_60": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_rms_ratio_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_rms_slope_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_rms_trend_r2_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "roll_p95_trend_slope_180": {
+   "contract": 180,
+   "spec": 180,
+   "match": true
+  },
+  "pitch_rms_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "pitch_std_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  },
+  "pitch_peak_to_peak_60": {
+   "contract": 60,
+   "spec": 60,
+   "match": true
+  }
+ },
+ "all_windows_match": true,
+ "config_checks": {
+  "sampling_hz_10": true,
+  "stride_10s": true,
+  "minimum_valid_fraction_0_95": true,
+  "maximum_gap_factor_1_5": true,
+  "quantile_type7": true,
+  "endpoint_convention": true,
+  "three_60s_blocks": true,
+  "numeric_zero_epsilon_deg": 1e-09,
+  "r_squared_zero_tolerance": 1e-15
+ },
+ "behaviour_checks": [
+  {
+   "id": "population_std",
+   "expected": 0.7071067811865476,
+   "observed": 0.7071067811865475,
+   "passed": "True",
+   "note": "Sine biên độ 1, số chu kỳ nguyên: std quần thể = 1/sqrt(2); std mẫu (n-1) sẽ lớn hơn 0,083%."
+  },
+  {
+   "id": "type7_quantile",
+   "expected": 8.7802,
+   "observed": 8.780199999999999,
+   "passed": "True",
+   "note": "Cấp số cộng 600 giá trị: Q_0.95 Type-7 = x_min + 0.95*(n-1)*bước."
+  },
+  {
+   "id": "half_open_window",
+   "expected": 0.0,
+   "observed": 0.0,
+   "passed": "True",
+   "note": "Mẫu tại đúng t-60 bị loại khỏi cửa sổ 60 s nhưng thuộc cửa sổ 180 s."
+  },
+  {
+   "id": "zero_signal_undefined",
+   "expected": "UNDEFINED_MATHEMATICALLY x3",
+   "observed": [
+    "UNDEFINED_MATHEMATICALLY",
+    "EARLY_RMS_AT_OR_BELOW_EPSILON",
+    "UNDEFINED_MATHEMATICALLY",
+    "CONSTANT_RMS_TREND",
+    "UNDEFINED_MATHEMATICALLY"
+   ],
+   "passed": true,
+   "note": "Tín hiệu 0: ratio (rms_early <= epsilon), R² (SST = 0), sign ratio (không có mẫu khác 0) đều không xác định, không bằng 0."
+  },
+  {
+   "id": "warmup",
+   "expected": "60 s VALID, 180 s INSUFFICIENT_WINDOW",
+   "observed": [
+    "VALID",
+    "INSUFFICIENT_WINDOW",
+    "WINDOW_HISTORY_SHORT"
+   ],
+   "passed": true,
+   "note": "150 s lịch sử: feature 180 s chưa được tính (WARMUP)."
+  },
+  {
+   "id": "trend_slope_units",
+   "expected": 0.7071067811865475,
+   "observed": 0.7071067811865474,
+   "passed": "True",
+   "note": "RMS block 1/√2, 2/√2, 3/√2 tại tâm 30/90/150 s: slope = (r3-r1)/120 s × 60 = deg/phút."
+  },
+  {
+   "id": "difference_pair_semantics",
+   "expected": "rms VALID, diff_rms INVALID_INPUT/ADJACENT_PAIR_COVERAGE",
+   "observed": [
+    "VALID",
+    "INVALID_INPUT",
+    "ADJACENT_PAIR_COVERAGE"
+   ],
+   "passed": true,
+   "note": "20 NaN rời rạc (3,3%) giữ feature pointwise hợp lệ nhưng xóa 40 cặp kề nhau: 559 < 570 cặp."
+  }
+ ],
+ "all_behaviour_checks_passed": true,
+ "issues": [
+  {
+   "id": "C01",
+   "severity": "MATERIAL",
+   "status": "OPEN_TEAM_DECISION",
+   "title": "Điều kiện hợp lệ của feature block 180 s",
+   "spec": "feature_specification_30.md: roll_rms_early_60 chỉ cần block đầu, roll_rms_late_60 chỉ cần block cuối, mean_shift cần block đầu và cuối.",
+   "extractor": "extractor.py: cả 8 feature dựa trên block (C/D trừ 4 feature pointwise 180 s) INVALID nếu cửa sổ 180 s hoặc BẤT KỲ block nào không đạt coverage.",
+   "golden_policy": "Golden theo extractor (tham chiếu số học). Hiện thực C theo đúng chữ của đặc tả sẽ lệch validity ở cửa sổ thiếu mẫu."
+  },
+  {
+   "id": "C02",
+   "severity": "MATERIAL",
+   "status": "OPEN_TEAM_DECISION",
+   "title": "Epsilon mẫu số của roll_rms_ratio_180",
+   "spec": "Đặc tả yêu cầu epsilon_rms theo độ phân giải/nhiễu cảm biến (chưa chốt).",
+   "extractor": "extractor dùng numeric_zero_epsilon_deg = 1e-09 (epsilon số học, không phải vật lý).",
+   "golden_policy": "Golden dùng 1e-9 deg; case sát epsilon được đánh dấu ILL_CONDITIONED."
+  },
+  {
+   "id": "C03",
+   "severity": "MATERIAL",
+   "status": "OPEN_TEAM_DECISION",
+   "title": "Ngưỡng SST của roll_rms_trend_r2_180 thấp hơn độ phân giải float32",
+   "spec": "R² không xác định nếu SST = 0.",
+   "extractor": "SST <= 1e-15 deg² -> UNDEFINED. Với biên độ ~1°, nhiễu làm tròn float32 của RMS block (~1e-7) cho SST ~1e-14 > 1e-15, nên C float32 có thể báo VALID với R² vô nghĩa khi Python báo UNDEFINED.",
+   "golden_policy": "Golden giữ quyết định của extractor; harness xếp R² có SST tương đối nhỏ vào REVIEW_ILL_CONDITIONED thay vì PASS/FAIL. Cần nhóm chốt ngưỡng tương đối."
+  },
+  {
+   "id": "C04",
+   "severity": "MATERIAL",
+   "status": "OPEN_TEAM_DECISION",
+   "title": "Biểu diễn mẫu thiếu: NaN có timestamp khác với timestamp bị bỏ",
+   "spec": "≥ 95% mẫu hợp lệ; gap > 1,5 chu kỳ làm cửa sổ không hợp lệ.",
+   "extractor": "Mẫu NaN có timestamp được bỏ qua trong thống kê pointwise (≤ 5%); một timestamp bị bỏ (khoảng cách 0,2 s > 0,15 s) làm MỌI cửa sổ chứa nó INVALID_INPUT/TIMESTAMP_GAP.",
+   "golden_policy": "Golden có cả hai trường hợp. M1 phải chọn cách biểu diễn mẫu lỗi khớp với ý định (khuyến nghị: giữ nhịp 10 Hz và ghi NaN)."
+  },
+  {
+   "id": "C05",
+   "severity": "CLARIFICATION",
+   "status": "DOCUMENTED_IN_V0_2",
+   "title": "Neo lưới endpoint",
+   "extractor": "Endpoint theo CHỈ SỐ mẫu: mẫu thứ 600, 700, … tính từ mẫu đầu segment; mẫu đầu tiên không bao giờ thuộc cửa sổ 60 s đầu. Sau một timestamp bị bỏ, thời điểm endpoint lệch theo chỉ số.",
+   "golden_policy": "Golden ghi rõ endpoint (chỉ số và thời gian) cho từng case; C đánh giá đúng tại các endpoint đó."
+  },
+  {
+   "id": "C06",
+   "severity": "CLARIFICATION",
+   "status": "DOCUMENTED_IN_V0_2",
+   "title": "roll_rms_late_60 trùng giá trị nhưng khác validity với roll_rms_60",
+   "extractor": "Cùng mẫu (t-60, t] nên cùng giá trị khi cả hai hợp lệ; rms_late chỉ hợp lệ khi đủ 180 s và đủ 3 block."
+  },
+  {
+   "id": "C08",
+   "severity": "CLARIFICATION",
+   "status": "DOCUMENTED_IN_V0_2",
+   "title": "Mã lý do của roll_dominant_sign_ratio_180 khi mọi mẫu bằng 0",
+   "spec": "Không xác định nếu mọi giá trị đúng bằng 0.",
+   "extractor": "dominant_sign_ratio trả NaN, _valid() đổi thành UNDEFINED_MATHEMATICALLY với reason_code NON_FINITE_RESULT (không có mã riêng như NO_NONZERO_SAMPLES).",
+   "golden_policy": "Status được so khớp bắt buộc; reason_code chỉ so như cảnh báo. M1 nên xuất NON_FINITE_RESULT để trùng golden."
+  },
+  {
+   "id": "C09",
+   "severity": "CLARIFICATION",
+   "status": "DOCUMENTED_IN_V0_2",
+   "title": "Chỉ số 0-based của contract và STT 1-based trong tài liệu M1",
+   "spec": "M2_23_Features_ESP32_Integration.md đánh STT 1..23; contract JSON và golden dùng feature_index 0..22.",
+   "golden_policy": "Interchange dùng feature_index 0-based; harness kiểm tra feature_name khớp index để bắt lệch 1 vị trí."
+  },
+  {
+   "id": "C07",
+   "severity": "MATERIAL",
+   "status": "SUPERSEDED_IN_V0_2",
+   "title": "Dung sai parity một giá trị chung trong v0.1",
+   "spec": "v0.1 đề xuất tuyệt đối 1e-3°, tương đối 1e-4 cho mọi feature.",
+   "golden_policy": "v0.2 thay bằng dung sai theo nhóm feature có hạng tỷ lệ theo biên độ đầu vào (ml/parity/fixtures/tolerance_spec.json)."
+  }
+ ],
+ "blocking_inconsistency": false,
+ "extractor_reference": "ml/features/extractor.py (feature_extractor_version 0.1.0, feature_spec_version candidate-30-v1)",
+ "contract_v02_path": "ml/docs/feature_contract_23_v0.2.json",
+ "contract_v02_sha256": "ae37afa5f13816df1ee41ab5383df1dcdee122743499f08241b792b95055ceb3"
+}
