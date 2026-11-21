@@ -73,6 +73,14 @@ void test_three_blocks_analytic_values(void) {
   TEST_ASSERT_EQUAL_FLOAT(2, F.pitch_std_60);
   TEST_ASSERT_EQUAL_FLOAT(4, F.pitch_peak_to_peak_60);
   TEST_ASSERT_TRUE(svmg_features_vector_valid(&F));
+  svmg_window_clear(&W);
+  for (int block = 0; block < 3; block++) {
+    float amplitude = block == 1 ? 2.0f : 1.0f;
+    for (int i = 0; i < 600; i++)
+      push((i % 2 ? 1.0f : -1.0f) * amplitude, 0);
+  }
+  compute();
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, F.roll_rms_trend_r2_180);
 }
 void test_ramp_quantiles_population_and_difference(void) {
   for (int i = 0; i < 1800; i++)
@@ -95,6 +103,25 @@ void test_raw_rms_offset_growth_is_not_centered(void) {
   TEST_ASSERT_EQUAL_FLOAT(1, F.roll_rms_trend_r2_180);
   TEST_ASSERT_EQUAL_FLOAT(2, F.roll_mean_shift_180);
   TEST_ASSERT_FLOAT_WITHIN(1e-6, sqrt(2.0 / 3), F.roll_segment_mean_std_180);
+}
+void test_c02_ratio_epsilon_and_large_finite_ratio(void) {
+  svmg_window_clear(&W);
+  for (int i = 0; i < 600; i++)
+    push(1e-9f, 0); /* float representation is at or below the double threshold. */
+  constant(600, 0.5f, 0);
+  constant(600, 1.0f, 0);
+  compute();
+  TEST_ASSERT_TRUE(isnan(F.roll_rms_ratio_180));
+
+  svmg_window_clear(&W);
+  float above = nextafterf(1e-9f, INFINITY);
+  for (int i = 0; i < 600; i++)
+    push(above, 0);
+  constant(600, 0.5f, 0);
+  constant(600, 1.0f, 0);
+  compute();
+  TEST_ASSERT_TRUE(isfinite(F.roll_rms_ratio_180));
+  TEST_ASSERT_TRUE(F.roll_rms_ratio_180 > 1e8f);
 }
 void test_undefined_zero_and_flat_trend_are_nan(void) {
   constant(1800, 0, 0);
@@ -138,14 +165,19 @@ void test_missing_does_not_bridge_differences(void) {
   TEST_ASSERT_TRUE(isnan(F.roll_diff_rms_60));
 }
 void test_coverage_threshold_per_block(void) {
-  constant(1800, 2, 0);
-  for (int i = 0; i < 31; i++)
-    W.roll_deg[i] = NAN;
-  compute();
-  TEST_ASSERT_TRUE(isfinite(F.roll_mean_180));
-  TEST_ASSERT_TRUE(isnan(F.roll_rms_early_60));
-  TEST_ASSERT_TRUE(isnan(F.roll_rms_slope_180));
-  TEST_ASSERT_TRUE(isnan(F.roll_rms_late_60));
+  for (int block = 0; block < 3; block++) {
+    svmg_window_clear(&W);
+    constant(1800, 2, 0);
+    for (int i = block * 600; i < block * 600 + 31; i++)
+      W.roll_deg[i] = NAN; /* 569/600 in one block; 1769/1800 overall. */
+    compute();
+    TEST_ASSERT_TRUE(isfinite(F.roll_mean_180));
+    const float block_features[] = {F.roll_segment_mean_std_180, F.roll_mean_shift_180,
+      F.roll_rms_early_60, F.roll_rms_late_60, F.roll_rms_ratio_180, F.roll_rms_slope_180,
+      F.roll_rms_trend_r2_180, F.roll_p95_trend_slope_180};
+    for (int i = 0; i < 8; i++) TEST_ASSERT_TRUE(isnan(block_features[i]));
+    TEST_ASSERT_FALSE(svmg_features_vector_valid(&F));
+  }
 }
 void test_quality_and_fault_wall_time(void) {
   constant(1700, 1, 1);
@@ -218,6 +250,7 @@ int main(void) {
   RUN_TEST(test_three_blocks_analytic_values);
   RUN_TEST(test_ramp_quantiles_population_and_difference);
   RUN_TEST(test_raw_rms_offset_growth_is_not_centered);
+  RUN_TEST(test_c02_ratio_epsilon_and_large_finite_ratio);
   RUN_TEST(test_undefined_zero_and_flat_trend_are_nan);
   RUN_TEST(test_cold_start_and_update_cadence);
   RUN_TEST(test_missing_does_not_bridge_differences);

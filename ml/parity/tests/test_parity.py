@@ -151,14 +151,25 @@ def test_missing_samples_and_gaps(golden):
     assert _value(expected, "SYN21_isolated_nan", "roll_diff_rms_60")[::2] == ("INVALID_INPUT", "ADJACENT_PAIR_COVERAGE")
     assert _value(expected, "SYN22_nan_excess", "roll_rms_60")[::2] == ("INVALID_INPUT", "SIGNAL_VALID_COVERAGE")
     assert _value(expected, "SYN22_nan_excess", "pitch_rms_60")[0] == "VALID"
+    block_features = ("roll_segment_mean_std_180", "roll_mean_shift_180", "roll_rms_early_60", "roll_rms_late_60",
+                      "roll_rms_ratio_180", "roll_rms_slope_180", "roll_rms_trend_r2_180", "roll_p95_trend_slope_180")
+    for feature in block_features:
+        assert _value(expected, "SYN22_nan_excess", feature)[::2] == ("INVALID_INPUT", "SEGMENT_BLOCK_COVERAGE")
+        assert _value(expected, "SYN27_block_coverage_rule", feature)[::2] == ("INVALID_INPUT", "SEGMENT_BLOCK_COVERAGE")
     for case in ("SYN23_timestamp_gap", "SYN24_single_dropped_sample"):
         assert _value(expected, case, "roll_rms_60")[::2] == ("INVALID_INPUT", "TIMESTAMP_GAP")
-    # C01: block đầu thiếu mẫu làm rms_late INVALID dù roll_rms_60 VALID
     assert _value(expected, "SYN27_block_coverage_rule", "roll_rms_60")[0] == "VALID"
-    assert _value(expected, "SYN27_block_coverage_rule", "roll_rms_late_60")[::2] == ("INVALID_INPUT", "SEGMENT_BLOCK_COVERAGE")
     assert _value(expected, "SYN26_infinite_values", "roll_rms_60")[0] == "VALID"
     invalid = expected.loc[expected.status != "VALID"]
     assert invalid.value.isna().all(), "Feature không VALID phải có giá trị rỗng, không phải 0"
+
+
+def test_c02_golden_epsilon_cases_keep_large_finite_ratio():
+    expected, _ = compare.load_golden(REPO_ROOT, "synthetic")
+    assert _value(expected, "SYN17_zero_early_block", "roll_rms_ratio_180")[0] == "UNDEFINED_MATHEMATICALLY"
+    assert _value(expected, "SYN18_epsilon_below", "roll_rms_ratio_180")[0] == "UNDEFINED_MATHEMATICALLY"
+    status, ratio, _ = _value(expected, "SYN19_epsilon_above", "roll_rms_ratio_180")
+    assert status == "VALID" and math.isfinite(ratio) and ratio == pytest.approx(1e7, rel=1e-8)
 
 
 def test_quantile_convention_type7(golden):
@@ -212,6 +223,15 @@ def test_float32_emulation_passes_and_flags_c03(golden):
     assert set(reviews.feature_name) <= {"roll_rms_trend_r2_180", "roll_rms_ratio_180"}
     assert "SYN30_permuted_blocks" in set(reviews.case_id)
     assert max(f["max_error_ratio"] or 0 for f in s["per_feature"]) < 0.5
+
+
+def test_c03_production_double_accumulation_is_not_float32_probe():
+    source = (REPO_ROOT / "core/src/features.c").read_text(encoding="utf-8")
+    probe = float32_probe.emulation_metadata(None)
+    assert "double sum = 0, sq = 0, abs_sum = 0, var = 0" in source
+    assert "double rm =" in source and "sst = 0, sse = 0" in source
+    assert probe["producer"]["kind"] == "python_float32_emulation"
+    assert "KHÔNG phải mã C" in probe["producer"]["note"]
 
 
 @pytest.mark.parametrize("mutation", sorted(float32_probe.MUTATIONS))
