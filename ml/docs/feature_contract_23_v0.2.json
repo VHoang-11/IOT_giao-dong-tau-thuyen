@@ -1,6 +1,6 @@
 {
  "contract_id": "svmg-angle23",
- "status": "PROPOSAL_PENDING_M1_REVIEW",
+ "status": "FINALIZED_SEMANTICS",
  "supersedes": "0.1.0-proposal",
  "legacy_contract_untouched": [
   "contracts/features.md",
@@ -23,6 +23,36 @@
  "version": "0.2.0-proposal",
  "schema_version": "svmg-angle23-0.2.0-proposal",
  "schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+ "semantic_contract": {
+  "version": "svmg-angle23-semantics-1.0.0",
+  "status": "FINAL",
+  "validity_policy_version": "svmg-angle23-validity-1.0.0",
+  "feature_schema": {
+   "version": "svmg-angle-23-v1",
+   "sha256_scope": "ordered feature names only",
+   "sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8"
+  },
+  "parity_schema_mapping": {
+   "schema_version": "svmg-angle23-0.2.0-proposal",
+   "status": "HISTORICAL_ARTIFACT_SCHEMA_PRESERVED",
+   "note": "Golden và host parity metadata giữ định danh producer đã phát hành; không ghi lại fixture như thể được sinh dưới schema version mới."
+  },
+  "validity_policy": {
+   "C01": "Cửa sổ 180 s hợp lệ và cả ba block 60 s đều có ít nhất 570 mẫu; nếu một block không đạt, cả tám feature block INVALID_INPUT/SEGMENT_BLOCK_COVERAGE.",
+   "C02": "rms_early <= 1e-9 degree -> UNDEFINED_MATHEMATICALLY; ngưỡng zero số học, không phải noise floor cảm biến.",
+   "C03": "SST <= 1e-15 degree^2 -> UNDEFINED_MATHEMATICALLY; parity REVIEW chỉ là diagnostic."
+  },
+  "model_compatibility_metadata": {
+   "model_id": "RELATIVE_HIGH_ROLL",
+   "model_sha256": "eab2891044256ac2b8c4041ed0e1178c4cfb9d1a01bc95c7ed7e80fc19ffe714",
+   "feature_schema_version": "svmg-angle-23-v1",
+   "feature_schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+   "semantic_contract_version": "svmg-angle23-semantics-1.0.0",
+   "validity_policy_version": "svmg-angle23-validity-1.0.0",
+   "input_policy": "FULL_VECTOR_ONLY; training requires angle23_complete and inference rejects non-finite feature values",
+   "historical_metrics_and_model_modified": false
+  }
+ },
  "units": {
   "roll_deg": "degree",
   "pitch_deg": "degree",
@@ -46,7 +76,7 @@
   "m1_feature_only_api": "Giữ nguyên API số học không timestamp; yêu cầu chuỗi 10 Hz đều.",
   "host_c_parity": "46 bản ghi SYN23/SYN24 vẫn NOT_EVALUABLE đối với API không timestamp; chỉ implementation timestamp-aware có đầu ra thật mới có thể được so sánh."
  },
- "block_rule_as_implemented": "8 feature dựa trên block (segment_mean_std, mean_shift, rms_early, rms_late, rms_ratio, rms_slope, trend_r2, p95_trend_slope) cần cửa sổ 180 s hợp lệ VÀ cả 3 block đạt coverage; xem issue C01.",
+ "block_rule_as_implemented": "Chính sách validity production bảo thủ đã duyệt: cả 8 feature dựa trên block (segment_mean_std, mean_shift, rms_early, rms_late, rms_ratio, rms_slope, trend_r2, p95_trend_slope) cần cửa sổ 180 s hợp lệ VÀ cả 3 block đạt ít nhất 570 mẫu. Quy tắc này chặt hơn dependency toán học tối thiểu của một số công thức trong đặc tả 30 ứng viên.",
  "statistics": {
   "std": "quần thể, mẫu số n",
   "quantile": "Type-7: h=(n-1)p, nội suy tuyến tính trên giá trị đã sắp xếp",
@@ -83,12 +113,11 @@
  "interchange_format": "ml/parity/fixtures/interchange_format.json",
  "tolerance_spec": "ml/parity/fixtures/tolerance_spec.json",
  "golden_manifest": "ml/parity/fixtures/manifest.json",
- "open_issues": [
-  "C01",
-  "C02",
-  "C03"
- ],
+ "open_issues": [],
+ "validity_policy_version": "svmg-angle23-validity-1.0.0",
  "changelog": [
+  "Chốt C01-C03 thành semantic contract svmg-angle23-semantics-1.0.0.",
+  "Giữ nguyên numeric schema, feature formulas, tolerance, golden expected values và validity hiện tại.",
   "Thay dung sai chung của v0.1 bằng dung sai theo feature (C07).",
   "Giải quyết C04 bằng ranh giới validity timestamp-aware và restart end-to-end M1; giữ nguyên feature formulas và golden gap outputs.",
   "Bổ sung ngữ nghĩa cửa sổ, endpoint, warmup, coverage, mẫu thiếu, mã trạng thái (C04-C06, C08, C09).",

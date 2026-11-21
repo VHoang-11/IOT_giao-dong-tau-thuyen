@@ -4,7 +4,7 @@
 
 - Lệnh: `python -m ml.parity.golden --suite all` (chạy từ repository root, `.venv`). Không có dấu thời gian trong file: chạy lại cho byte giống hệt (đã kiểm tra bằng test `test_deterministic_generation_matches_tracked_fixtures`).
 - Môi trường: Python 3.14.10, NumPy 2.4.6, pandas 3.0.3.
-- Contract: `ml/docs/feature_contract_23_v0.2.json` (sha256 `ae37afa5f13816df…`); schema `svmg-angle23-0.2.0-proposal`.
+- Contract: `ml/docs/feature_contract_23_v0.2.json` (sha256 `36a7e59b270a3127…`); schema `svmg-angle23-0.2.0-proposal`.
 - Trạng thái: **PYTHON_REFERENCE_READY / C_PARITY_PENDING**.
 
 ## 1. Cách sinh
@@ -96,27 +96,7 @@ Cờ điều kiện số (`condition_flag`) đánh dấu golden mà quyết đ�
 
 ## 4. Case dữ liệu thật
 
-| Case | Dataset | Session | Segment | Mẫu bắt đầu | Số mẫu | Endpoint | Quy tắc chọn |
-|---|---|---|---|---|---|---|---|
-| `REAL_hohai_max_roll_std` | hohai | Berth_D_T9_Type_A | segment_000 | 3000 | 2401 | 19 | Session Hohai có median roll_std_60 max trong feature table; đoạn bắt đầu tại mẫu 3000. |
-| `REAL_hohai_min_roll_std` | hohai | Berth_D_T1_Type_A | segment_000 | 3000 | 2401 | 19 | Session Hohai có median roll_std_60 min trong feature table; đoạn bắt đầu tại mẫu 3000. |
-| `REAL_seafar_longest_segment_middle` | seafar | seafar_session_001 | segment_002 | 29900 | 2401 | 19 | Segment Seafar dài nhất (segment_002); đoạn giữa, start = bội số 100 gần nhất. |
-| `REAL_seafar_max_roll_std` | seafar | seafar_session_001 | segment_001 | 19400 | 2401 | 19 | Cửa sổ Seafar có roll_std_60 lớn nhất; đoạn kết thúc gần endpoint đó, start = bội số 100. |
-| `REAL_southampton_run14_end` | southampton | southampton_run_14 | segment_000 | 2700 | 2401 | 19 | Southampton Run 14 (run duy nhất đủ 180 s): đoạn kết thúc tại endpoint lưới cuối, gồm pha tăng biên độ cuối run. |
-
-Đối chiếu với feature table đã có (cùng extractor, endpoint trùng lưới vì mẫu bắt đầu là bội số 100):
-
-| Case | Giá trị so sánh | Max |Δ| | Lệch validity |
-|---|---|---|---|
-| REAL_hohai_max_roll_std | 293 | 0.0 | 0 |
-| REAL_hohai_min_roll_std | 293 | 0.0 | 0 |
-| REAL_seafar_longest_segment_middle | 293 | 0.0 | 0 |
-| REAL_seafar_max_roll_std | 293 | 0.0 | 0 |
-| REAL_southampton_run14_end | 293 | 0.0 | 0 |
-
-Kết quả: **đạt**. |Δ| = 0 vì Roll/Pitch processed đã lưu kiểu float32 nên làm tròn float32 của golden không đổi giá trị. Feature 180 s ở endpoint < 180 s của đoạn trích là WARMUP theo thiết kế (đoạn trích không mang lịch sử trước nó) và không được so với feature table.
-
-Đoạn trích chỉ lấy trong một segment, không vượt ranh giới segment, không dùng mẫu tương lai so với endpoint; định danh dataset/session/segment và chỉ số mẫu nguồn được giữ trong `cases.json` và cột `source_sample_index`.
+Golden real-data chưa được sinh trên máy này (cần `ml/data/processed` và `ml/data/features`).
 
 ## 5. Hạn chế
 

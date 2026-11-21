@@ -4,7 +4,7 @@
 
 Lượt chạy tham chiếu: `run_id = m1v1_host_clang`, commit nguồn `b82c609` (nhánh `feat/M2-m1-golden-parity-integration`; `core/` không có thay đổi chưa commit), `Apple clang version 21.0.0 (clang-2100.3.34.2)`, target `arm64-apple-darwin27.0.0`, cờ `-std=c99 -O2 -ffp-contract=off -Wall -Wextra`. Artefact sinh ra nằm ở `ml/data/parity/c_host/m1v1_host_clang/` và `ml/data/parity/runs/c_host_m1v1_host_clang_*` (gitignored).
 
-## 1. So sánh contract M1 `svmg-angle-23-v1` và M2 `svmg-angle23-0.2.0-proposal`
+## 1. So sánh numeric schema M1 và semantic contract M2
 
 | Khía cạnh | M1 v1 (`contracts/features23.json`, `svmg_feature_schema.h`) | M2 v0.2 (`ml/docs/feature_contract_23_v0.2.json`) | Tương thích |
 |---|---|---|---|
@@ -13,15 +13,15 @@ Lượt chạy tham chiếu: `run_id = m1v1_host_clang`, commit nguồn `b82c609
 | Biên cửa sổ | `(t-W,t]` | `(t-W, t]` | Trùng |
 | Std / RMS / phân vị | ddof 0, RMS không trừ mean, Type-7 | trùng | Trùng |
 | Coverage tối thiểu | `minimum_valid_fraction` 0,95 (C: 570/1710 mẫu hữu hạn) | 570/1710, cặp sai phân 570, block 570 | Trùng về số |
-| Epsilon ratio / ngưỡng SST R² | 1e-9 deg / 1e-15 | 1e-9 / 1e-15 | Trùng (C01–C03 vẫn mở) |
+| Epsilon ratio / ngưỡng SST R² | 1e-9 deg / 1e-15 | 1e-9 / 1e-15 | Trùng; validity policy v1.0.0 đã chốt |
 | Đơn vị | `deg/sample`, `dimensionless` | `deg/sample @10 Hz`, `1` | Cùng nghĩa, khác cách viết |
 | Trục thời gian | **không có**: cửa sổ = N mẫu cuối, warm-up đếm mẫu | theo timestamp, gap > 0,15 s → INVALID | **Khác** (C04) |
 | Status / reason | chỉ NaN + `valid_mask` | 4 status + 10 reason code | **C không biểu diễn** |
 | Mã hóa feature không hợp lệ | NaN | `null`/ô rỗng | Khác cách mã hóa, cùng nghĩa |
 | Tiền xử lý | `imu-cf-bw4-20to10-v1`, raw 20 Hz, `nraw` (2 mẫu raw/mẫu 10 Hz) | không quy định (Level 3) | Ngoài phạm vi golden |
-| Trạng thái phát hành | `-v1` (M1 đã hiện thực) | `PROPOSAL_PENDING_M1_REVIEW` | Chưa thống nhất chính thức |
+| Version ngữ nghĩa | `svmg-angle-23-v1` (M1 numerical schema) | `svmg-angle23-semantics-1.0.0`; validity `svmg-angle23-validity-1.0.0` | Mapping rõ; hash tên không chứng minh numeric semantics |
 
-**Quyết định tích hợp (ghi rõ, không đổi tên phiên bản):** candidate khai báo `schema_version = svmg-angle23-0.2.0-proposal` vì đó là contract dùng để *đánh giá*; schema gốc của C được ghi trong `metadata.producer.c_feature_schema_version = svmg-angle-23-v1` cùng khối `schema_mapping`. Runner dừng nếu tên/thứ tự/tham số trong binary khác golden.
+**Mapping version:** golden/host parity giữ `schema_version = svmg-angle23-0.2.0-proposal` để bảo toàn producer provenance. Semantic contract là `svmg-angle23-semantics-1.0.0`; validity policy là `svmg-angle23-validity-1.0.0`; schema C vẫn là `svmg-angle-23-v1`. Runner dừng nếu tên/thứ tự/tham số trong binary khác golden. SHA-256 hiện tại chỉ băm ordered names.
 
 ## 2. Cách tích hợp C
 
@@ -88,9 +88,9 @@ Golden **không phủ**: `SAMPLING_RATE_MISMATCH`, `TIME_SAMPLE_COVERAGE`, mẫu
 
 | Issue | Python | C M1 v1 | Bằng chứng | Tương đương | Cần M1 duyệt | Khuyến nghị |
 |---|---|---|---|---|---|---|
-| C01 block validity | 8 feature block cần cửa sổ 180 s hợp lệ **và** cả 3 block ≥ 570 | `bok &= b[j].n >= 570` cho cả 3 block; không cần `lok` riêng nhưng 3·570 = 1710 nên tương đương khi không có gap | SYN22, SYN27: 64 bản ghi `SEGMENT_BLOCK_COVERAGE` trùng status | **Có** (khi không có gap) | Có — cả hai lệch so với chữ của đặc tả | Ghi quy tắc "cả 3 block" vào contract chính thức; không đổi feature huấn luyện |
-| C02 epsilon ratio | `rms_early <= 1e-9` → UNDEFINED, so bằng float64 | `b[0].rms > 1e-9` so bằng double | 16 bản ghi `EARLY_RMS_AT_OR_BELOW_EPSILON` (SYN01, SYN05, SYN17, SYN18) trùng status; SYN19 VALID (ratio 1e7) PASS_VALUE | **Có** | Có — 1e-9 là epsilon số học, không theo cảm biến | Giữ 1e-9 cho parity; quyết định epsilon vật lý là thay đổi contract + huấn luyện lại |
-| C03 ngưỡng SST R² | SST ≤ 1e-15 → UNDEFINED, RMS block float64 | RMS block và SST tính bằng **double** từ mẫu float32 | 53 bản ghi `CONSTANT_RMS_TREND` ở 15 case (gồm SYN30 hoán vị block, SYN11, SYN31) trùng status; R² VALID có cờ `ILL_CONDITIONED_R2` ở SYN21/SYN26 đạt PASS_VALUE; 0 REVIEW | **Có trên host** | Có — rủi ro float32 (từ `float32_probe`) không xảy ra vì C dùng double; chưa xác nhận trên ESP32 | Ghi yêu cầu "tích lũy double" vào contract; vẫn nên chốt ngưỡng tương đối |
+| C01 block validity | 8 feature block cần cửa sổ 180 s hợp lệ **và** cả 3 block ≥ 570 | `bok &= b[j].n >= 570` cho cả 3 block; production policy bảo thủ | SYN22, SYN27 giữ nguyên expected status | **Có trên host** | Đã chốt; khác dependency toán học tối thiểu trong đặc tả ứng viên | Giữ rule all-three-block; golden không đổi |
+| C02 epsilon ratio | `rms_early <= 1e-9` → UNDEFINED, so bằng float64 | `b[0].rms > 1e-9` so bằng double | SYN17/SYN18 UNDEFINED; SYN19 VALID với ratio 1e7 | **Có trên host** | Đã chốt là epsilon số học, không theo cảm biến | Không thêm model-domain threshold |
+| C03 ngưỡng SST R² | SST ≤ 1e-15 → UNDEFINED, RMS block float64 | RMS block, SST và SSE tính bằng **double** từ mẫu float32 | SYN29 R²=0 VALID; SYN30 khớp Python reference; float32 probe là mô phỏng riêng | **Có trên host** | Đã chốt; chưa xác minh ESP32 | Giữ ngưỡng tuyệt đối; REVIEW chỉ là diagnostic |
 | C04 ranh giới timestamp gap | Python dùng timestamp: cửa sổ chứa gap > 0,15 s → `INVALID_INPUT/TIMESTAMP_GAP` | Pipeline M1 restart/xóa history/UNKNOWN khi gap hữu hạn; NaN/Inf bị loại, engine UNKNOWN tức thì. C feature-only không có timestamp | SYN23/SYN24 giữ nguyên; C host feature-only 46/46 `NOT_EVALUABLE`; gridfill 46/46 C VALID không tương đương | **Có ở mức an toàn stream; khác status feature-level** | **Đã giải quyết bằng ranh giới nhiều tầng** | Không sửa formula/golden; parity gap chỉ đánh giá khi có C timestamp-aware output thật |
 
 ### C04: ranh giới và mức xác minh
@@ -102,7 +102,7 @@ Golden **không phủ**: `SAMPLING_RATE_MISMATCH`, `TIME_SAMPLE_COVERAGE`, mẫu
 
 ## 6. Yêu cầu bàn giao cho M1
 
-1. C04 đã chốt theo phân lớp trên; C01–C03 vẫn cần nhóm duyệt trước khi phát hành contract cuối và quyết định giữ mapping v1 → v0.2.
+1. C01–C04 đã chốt theo validity policy `svmg-angle23-validity-1.0.0`. Các golden row vẫn giữ schema lịch sử `svmg-angle23-0.2.0-proposal`; contract ghi mapping sang semantic contract cuối mà không đổi 23-name SHA-256.
 2. Nếu cần status/reason trên thiết bị: xuất lý do không hợp lệ từ C thay cho adapter host hiện tại.
 3. Chạy lại cùng golden trên ESP32 (`xtensa-esp32-elf-gcc`, double phần mềm) và đo RAM/stack/thời gian — chưa có số đo nào.
 4. `svmg_features_from_series` có khung stack ~25 kB (báo cáo `run_native.py`): chỉ dùng trên host, không gọi trong task ESP32.
