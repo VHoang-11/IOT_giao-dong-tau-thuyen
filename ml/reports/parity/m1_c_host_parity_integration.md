@@ -13,7 +13,7 @@ Lượt chạy tham chiếu: `run_id = m1v1_host_clang`, commit nguồn `b82c609
 | Biên cửa sổ | `(t-W,t]` | `(t-W, t]` | Trùng |
 | Std / RMS / phân vị | ddof 0, RMS không trừ mean, Type-7 | trùng | Trùng |
 | Coverage tối thiểu | `minimum_valid_fraction` 0,95 (C: 570/1710 mẫu hữu hạn) | 570/1710, cặp sai phân 570, block 570 | Trùng về số |
-| Epsilon ratio / ngưỡng SST R² | 1e-9 deg / 1e-15 | 1e-9 / 1e-15 | Trùng (C01–C04 vẫn mở) |
+| Epsilon ratio / ngưỡng SST R² | 1e-9 deg / 1e-15 | 1e-9 / 1e-15 | Trùng (C01–C03 vẫn mở) |
 | Đơn vị | `deg/sample`, `dimensionless` | `deg/sample @10 Hz`, `1` | Cùng nghĩa, khác cách viết |
 | Trục thời gian | **không có**: cửa sổ = N mẫu cuối, warm-up đếm mẫu | theo timestamp, gap > 0,15 s → INVALID | **Khác** (C04) |
 | Status / reason | chỉ NaN + `valid_mask` | 4 status + 10 reason code | **C không biểu diễn** |
@@ -91,11 +91,18 @@ Golden **không phủ**: `SAMPLING_RATE_MISMATCH`, `TIME_SAMPLE_COVERAGE`, mẫu
 | C01 block validity | 8 feature block cần cửa sổ 180 s hợp lệ **và** cả 3 block ≥ 570 | `bok &= b[j].n >= 570` cho cả 3 block; không cần `lok` riêng nhưng 3·570 = 1710 nên tương đương khi không có gap | SYN22, SYN27: 64 bản ghi `SEGMENT_BLOCK_COVERAGE` trùng status | **Có** (khi không có gap) | Có — cả hai lệch so với chữ của đặc tả | Ghi quy tắc "cả 3 block" vào contract chính thức; không đổi feature huấn luyện |
 | C02 epsilon ratio | `rms_early <= 1e-9` → UNDEFINED, so bằng float64 | `b[0].rms > 1e-9` so bằng double | 16 bản ghi `EARLY_RMS_AT_OR_BELOW_EPSILON` (SYN01, SYN05, SYN17, SYN18) trùng status; SYN19 VALID (ratio 1e7) PASS_VALUE | **Có** | Có — 1e-9 là epsilon số học, không theo cảm biến | Giữ 1e-9 cho parity; quyết định epsilon vật lý là thay đổi contract + huấn luyện lại |
 | C03 ngưỡng SST R² | SST ≤ 1e-15 → UNDEFINED, RMS block float64 | RMS block và SST tính bằng **double** từ mẫu float32 | 53 bản ghi `CONSTANT_RMS_TREND` ở 15 case (gồm SYN30 hoán vị block, SYN11, SYN31) trùng status; R² VALID có cờ `ILL_CONDITIONED_R2` ở SYN21/SYN26 đạt PASS_VALUE; 0 REVIEW | **Có trên host** | Có — rủi ro float32 (từ `float32_probe`) không xảy ra vì C dùng double; chưa xác nhận trên ESP32 | Ghi yêu cầu "tích lũy double" vào contract; vẫn nên chốt ngưỡng tương đối |
-| C04 NaN có timestamp vs timestamp bị bỏ | NaN bỏ khỏi thống kê; timestamp bị bỏ → INVALID | NaN/Inf → mẫu invalid (trùng); C **không có timestamp**, firmware giữ nhịp bằng mẫu invalid | NaN: SYN21/22/26 trùng; gap: SYN23/24 NOT_EVALUABLE; gridfill: 46/46 C VALID vs Python INVALID | **NaN: có; gap: không** | **Có, chặn** | Chốt: firmware phát mẫu invalid khi lỡ nhịp (C hiện tại), và Python biểu diễn mẫu lỡ bằng NaN có timestamp; hoặc M1 thêm phát hiện gap vào API |
+| C04 ranh giới timestamp gap | Python dùng timestamp: cửa sổ chứa gap > 0,15 s → `INVALID_INPUT/TIMESTAMP_GAP` | Pipeline M1 restart/xóa history/UNKNOWN khi gap hữu hạn; NaN/Inf bị loại, engine UNKNOWN tức thì. C feature-only không có timestamp | SYN23/SYN24 giữ nguyên; C host feature-only 46/46 `NOT_EVALUABLE`; gridfill 46/46 C VALID không tương đương | **Có ở mức an toàn stream; khác status feature-level** | **Đã giải quyết bằng ranh giới nhiều tầng** | Không sửa formula/golden; parity gap chỉ đánh giá khi có C timestamp-aware output thật |
+
+### C04: ranh giới và mức xác minh
+
+1. **M2 timestamp-aware feature extraction:** extractor xét timestamp thực và giữ golden SYN23/SYN24 với `INVALID_INPUT/TIMESTAMP_GAP` cho cửa sổ có gap.
+2. **M1 end-to-end stream:** gap hữu hạn vượt ngưỡng pipeline làm restart, xóa lịch sử, chuyển `UNKNOWN` và warm-up lại; timestamp NaN/Inf bị loại trước lọc/decimation và engine chuyển `UNKNOWN` ngay, kể cả khi chưa có output 10 Hz. Restart không xóa alarm `CRITICAL`.
+3. **M1 C feature-only numerical API:** API hiện tại không nhận timestamp, giả định lưới 10 Hz đều; giữ nguyên API và công thức, không thể tự trả `TIMESTAMP_GAP`.
+4. **C host parity:** 13.363 bản ghi được đánh giá vẫn 0 FAIL; 46 bản ghi SYN23/SYN24 tiếp tục `NOT_EVALUABLE`, không tính là PASS. Đây là host parity của feature API, không phải xác minh gap end-to-end hay ESP32.
 
 ## 6. Yêu cầu bàn giao cho M1
 
-1. Duyệt C01–C04 (C04 là chặn) và phát hành contract chung không còn `-proposal`; quyết định có giữ mapping v1 → v0.2 như ở mục 1 hay không.
+1. C04 đã chốt theo phân lớp trên; C01–C03 vẫn cần nhóm duyệt trước khi phát hành contract cuối và quyết định giữ mapping v1 → v0.2.
 2. Nếu cần status/reason trên thiết bị: xuất lý do không hợp lệ từ C thay cho adapter host hiện tại.
 3. Chạy lại cùng golden trên ESP32 (`xtensa-esp32-elf-gcc`, double phần mềm) và đo RAM/stack/thời gian — chưa có số đo nào.
 4. `svmg_features_from_series` có khung stack ~25 kB (báo cáo `run_native.py`): chỉ dùng trên host, không gọi trong task ESP32.
@@ -105,7 +112,9 @@ Golden **không phủ**: `SAMPLING_RATE_MISMATCH`, `TIME_SAMPLE_COVERAGE`, mẫu
 
 | Cấp độ | Trạng thái |
 |---|---|
-| `HOST_C_FEATURE_PARITY` | **Xác minh một phần**: 0 FAIL trên 13363 bản ghi đánh giá được (synthetic + real); 46 bản ghi gap NOT_EVALUABLE; C04 mở |
+| `M2_TIMESTAMP_AWARE_REFERENCE` | **Có golden SYN23/SYN24**: status `INVALID_INPUT/TIMESTAMP_GAP` được giữ nguyên |
+| `M1_END_TO_END_TIMESTAMP_HANDLING` | **Được kiểm chứng bằng host native tests**: gap restart/UNKNOWN; NaN/Inf fail-closed; không chứng minh thiết bị |
+| `HOST_C_FEATURE_PARITY` | **Xác minh một phần**: 0 FAIL trên 13.363 bản ghi đánh giá được (synthetic + real); 46 bản ghi gap `NOT_EVALUABLE`; không gọi là parity hoàn chỉnh |
 | `ESP32_SENSOR_PIPELINE_COMPATIBILITY` | **Chưa kiểm chứng** — không có số đo ESP32 |
 | `RANDOM_FOREST_MODEL_INTEGRATION` | **Chưa kiểm chứng** — ngoài phạm vi, không xuất `model.h` |
 

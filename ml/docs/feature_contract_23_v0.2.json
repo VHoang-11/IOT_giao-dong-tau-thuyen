@@ -39,7 +39,13 @@
   "maximum_gap_seconds": 0.15,
   "maximum_timestamps_in_window": "N_expected + 1"
  },
- "missing_value_semantics": "NaN/Inf có timestamp: bỏ khỏi thống kê pointwise; cặp sai phân chỉ dùng hai mẫu hữu hạn kề nhau đúng 0,1 s. Timestamp vắng mặt tạo gap.",
+ "missing_value_semantics": "M2: NaN/Inf có timestamp bỏ khỏi thống kê pointwise; cặp sai phân chỉ dùng hai mẫu hữu hạn kề nhau đúng 0,1 s. Timestamp vắng mặt tạo gap và cửa sổ chứa gap vượt ngưỡng là INVALID_INPUT/TIMESTAMP_GAP. M1 stream: gap timestamp hữu hạn restart pipeline/window và đưa decision UNKNOWN; timestamp NaN/Inf bị từ chối, không lọc payload bằng nominal_dt, engine UNKNOWN tức thì. C feature-only API giả định lưới 10 Hz đều và không biểu diễn gap.",
+ "timestamp_gap_policy": {
+  "m2_timestamp_aware_reference": "Giữ nguyên semantics và golden SYN23/SYN24: cửa sổ chứa gap vượt 0,15 s là INVALID_INPUT/TIMESTAMP_GAP.",
+  "m1_end_to_end_stream": "Gap hữu hạn restart filter và xóa feature history; timestamp không hữu hạn bị loại khỏi decimation và làm engine UNKNOWN ngay; active CRITICAL không bị xóa.",
+  "m1_feature_only_api": "Giữ nguyên API số học không timestamp; yêu cầu chuỗi 10 Hz đều.",
+  "host_c_parity": "46 bản ghi SYN23/SYN24 vẫn NOT_EVALUABLE đối với API không timestamp; chỉ implementation timestamp-aware có đầu ra thật mới có thể được so sánh."
+ },
  "block_rule_as_implemented": "8 feature dựa trên block (segment_mean_std, mean_shift, rms_early, rms_late, rms_ratio, rms_slope, trend_r2, p95_trend_slope) cần cửa sổ 180 s hợp lệ VÀ cả 3 block đạt coverage; xem issue C01.",
  "statistics": {
   "std": "quần thể, mẫu số n",
@@ -80,11 +86,11 @@
  "open_issues": [
   "C01",
   "C02",
-  "C03",
-  "C04"
+  "C03"
  ],
  "changelog": [
   "Thay dung sai chung của v0.1 bằng dung sai theo feature (C07).",
+  "Giải quyết C04 bằng ranh giới validity timestamp-aware và restart end-to-end M1; giữ nguyên feature formulas và golden gap outputs.",
   "Bổ sung ngữ nghĩa cửa sổ, endpoint, warmup, coverage, mẫu thiếu, mã trạng thái (C04-C06, C08, C09).",
   "Công thức, tên, đơn vị, thứ tự 23 feature KHÔNG đổi so với v0.1."
  ],

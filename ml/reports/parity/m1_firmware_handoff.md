@@ -15,7 +15,10 @@
 | `pitch_deg` | float32 | độ | góc lắc dọc; NaN/±Inf = mẫu lỗi có timestamp |
 
 - **Lấy mẫu:** 10 Hz đều. Feature `roll_diff_rms_60` có đơn vị deg/mẫu nên **phụ thuộc trực tiếp** vào 10 Hz; không tính ở 20 Hz hay 2 Hz rồi quy đổi.
-- **Mẫu lỗi:** khuyến nghị giữ nhịp 10 Hz và ghi NaN (≤ 5% cửa sổ vẫn hợp lệ cho thống kê từng điểm). Bỏ hẳn timestamp tạo gap > 0,15 s làm MỌI cửa sổ chứa nó INVALID_INPUT/TIMESTAMP_GAP (issue C04).
+- **C04 — M2 tham chiếu timestamp-aware:** giữ nhịp timestamp; NaN/Inf có timestamp được xử lý theo coverage/adjacent-pair rules. Bỏ timestamp tạo gap; cửa sổ chứa gap > 0,15 s là `INVALID_INPUT/TIMESTAMP_GAP`. Golden SYN23/SYN24 giữ nguyên.
+- **C04 — M1 stream firmware:** pipeline 20 Hz restart khi timestamp hữu hạn bị trùng, lùi hoặc gap vượt 0,075 s; engine xóa feature history và chuyển `UNKNOWN`, rồi cần warm-up/đủ history mới. Timestamp NaN/Inf bị từ chối, không xử lý payload với `nominal_dt`, không tiêu thụ pha decimation; engine chuyển `UNKNOWN` ngay. Alarm `CRITICAL` giữ nguyên.
+- **C04 — M1 feature-only C API:** không nhận timestamp, giả định lưới 10 Hz đều. Không thể tự nhận diện gap hoặc tái tạo status M2.
+- **C04 — C host parity:** 46 bản ghi gap của SYN23/SYN24 tiếp tục `NOT_EVALUABLE`; không được tính là PASS. Chỉ đầu ra C timestamp-aware có dữ liệu/checksum/endpoint thực mới đủ điều kiện đánh giá chúng.
 - **Trục và dấu:** golden kiểm tra phép tính trên chuỗi số cho sẵn; dấu dương của Roll/Pitch trên ESP32 (`svmg_filter.h`: roll = atan2(ay, az), pitch = atan2(-ax, √(ay²+az²))) và mốc 0 sau hiệu chuẩn thuộc Level 3, cần M1 xác nhận khớp quy ước dataset trước khi dùng mô hình.
 - **Segment:** cửa sổ không được vượt ranh giới phiên/khởi động lại; sau reboot, đếm warm-up lại từ đầu.
 
@@ -101,7 +104,7 @@ Thứ tự ưu tiên trong một cửa sổ: WINDOW_HISTORY_SHORT → SAMPLING_R
 | `ml/parity/fixtures/manifest.json` | checksum mọi file | có |
 | `ml/data/parity/real/…` | 5 đoạn Hohai/Seafar/Southampton (sinh cục bộ) | không (gitignored) |
 
-Đọc input: `roll_deg`/`pitch_deg` là chuỗi float32 ngắn nhất (đọc bằng `strtof`), chấp nhận `nan`, `inf`, `-inf`; `source_sample_index` nhảy cóc là timestamp bị bỏ — C phải phát hiện gap bằng `time_seconds`.
+Đọc input: `roll_deg`/`pitch_deg` là chuỗi float32 ngắn nhất (đọc bằng `strtof`), chấp nhận `nan`, `inf`, `-inf`; `source_sample_index` nhảy cóc biểu thị timestamp bị bỏ. Runner host kiểm tra `time_seconds` và đánh dấu các cửa sổ gap là `NOT_EVALUABLE`; `svmg_features_compute`/`svmg_features_from_series` không nhận timestamp và không tự phát hiện gap. Mẫu NaN/Inf ở tín hiệu có timestamp vẫn là một slot của lưới đầu vào, khác với timestamp bị bỏ.
 
 ## 6. Định dạng đầu ra C
 
@@ -177,7 +180,7 @@ Mã thoát của `compare` là 0 khi không có FAIL, 1 khi có FAIL. Metadata k
 2. Chạy lại đúng golden trên ESP32 (không chỉ host) để thấy ảnh hưởng `madd.s`/cờ biên dịch.
 3. Chuỗi Roll/Pitch 10 Hz riêng cho feature (firmware hiện xuất 2 Hz sau lọc 0,5 Hz) và đánh giá lại lệch miền: thí nghiệm đã có cho thấy POS 188 → 4 khi lọc 0,5 Hz.
 4. Xác nhận trục/dấu và hiệu chuẩn mốc 0 của Roll/Pitch so với quy ước dataset.
-5. Thống nhất C01–C04 với M2 rồi phát hành contract có phiên bản (không phải `-proposal`).
+5. C04 đã chốt theo phân lớp trên; C01–C03 vẫn cần nhóm duyệt trước khi phát hành contract cuối.
 
 ## 10. Quyết định cần M1 phản hồi
 
@@ -186,7 +189,7 @@ Mã thoát của `compare` là 0 khi không có FAIL, 1 khi có FAIL. Metadata k
 | C01 | Giữ quy tắc 'cả 3 block hợp lệ' cho 8 feature block (như extractor), hay theo chữ đặc tả (rms_early chỉ cần block 1, …)? Đổi → sinh lại golden + huấn luyện lại. |
 | C02 | Epsilon của ratio: giữ 1e-9 deg (số học) hay đặt theo độ phân giải/nhiễu cảm biến? |
 | C03 | Ngưỡng SST của R²: giữ 1e-15 deg² tuyệt đối hay chuyển sang ngưỡng tương đối (đề xuất SST/mean(r)² < 1e-6)? |
-| C04 | Mẫu lỗi biểu diễn bằng NaN có timestamp (khuyến nghị) hay bỏ timestamp? |
+| C04 | Đã quyết định: semantics M2 timestamp-aware; firmware M1 restart/UNKNOWN; feature-only C giữ giả định lưới đều; 46 bản ghi parity vẫn NOT_EVALUABLE. |
 
 ## Giải thích kỹ thuật phục vụ vấn đáp cá nhân
 

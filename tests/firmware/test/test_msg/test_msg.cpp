@@ -55,6 +55,21 @@ void test_telemetry_unknown_and_fault_classes_are_explicit(void) {
   TEST_ASSERT_EQUAL_STRING("FAULT", D["class_rf"]);
   TEST_ASSERT_TRUE_MESSAGE(D["class_baseline_b"].isNull(), "schema không cho class_baseline_b = FAULT: phải bỏ trường, không phát giá trị sai");
 }
+void test_unknown_telemetry_omits_cached_feature_metrics_and_mai(void) {
+  svmg_engine_t e; memset(&e, 0, sizeof e);
+  e.dec.status = SVMG_ST_UNKNOWN;
+  e.dec.cls_rf = e.dec.cls_b = SVMG_UNKNOWN;
+  e.dec.feat.rms_roll = e.dec.feat.mean_roll = e.dec.feat.trend_rms_slope = NAN;
+  e.dec.mai.value = 99; /* Bảo đảm serializer không công bố giá trị cache khi status UNKNOWN. */
+  MsgTelemetry t;
+  msg_fill_telemetry(&t, &e, 1234, 12.3, 1, SVMG_SRC_SENSOR, -1, false, 0);
+  char b[512]; TEST_ASSERT_TRUE(msg_build_telemetry(b, sizeof b, ID(), 1, t) > 0); parse(b);
+  TEST_ASSERT_FALSE(D.containsKey("rms_roll_deg"));
+  TEST_ASSERT_FALSE(D.containsKey("heel_offset_deg"));
+  TEST_ASSERT_FALSE(D.containsKey("trend_rms_deg_per_min"));
+  TEST_ASSERT_FALSE(D.containsKey("mai"));
+  TEST_ASSERT_EQUAL_STRING("UNKNOWN", D["class_rf"]);
+}
 void test_worst_case_telemetry_size_budget(void) {
   MsgTelemetry t = TEL(); t.t_sim_s = 99999.9f; t.uptime_ms = 4294967295u; t.roll_deg = -179.99f; t.pitch_deg = -179.99f;
   t.rms_roll_deg = 179.99f; t.cls_rf = SVMG_PERSISTENT_OFFSET; t.cls_b = SVMG_PERSISTENT_OFFSET; t.config_version = 4294967295u;
@@ -355,6 +370,7 @@ int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_undefined_diagnostics_are_omitted_and_schema_is_versioned);
   RUN_TEST(test_telemetry_matches_appendix_A1); RUN_TEST(test_telemetry_sensor_mode_and_nan); RUN_TEST(test_telemetry_unknown_and_fault_classes_are_explicit);
+  RUN_TEST(test_unknown_telemetry_omits_cached_feature_metrics_and_mai);
   RUN_TEST(test_worst_case_telemetry_size_budget);
   RUN_TEST(test_event_alarm_state_matches_appendix_A2); RUN_TEST(test_event_without_alarm_id_is_never_published);
   RUN_TEST(test_ack_is_published_as_alarm_state_with_acked_by); RUN_TEST(test_event_class_outside_schema_enum_is_clamped);

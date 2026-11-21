@@ -22,6 +22,28 @@ static void out_add_sys(svmg_engine_out_t *o, svmg_event_type_t type, float t,
   e->aux = aux;
 }
 
+/* Invalidate values derived from the previous stream segment. Computing on an
+ * empty window initializes every feature to NaN and valid_mask to zero. */
+static void mark_stream_unknown(svmg_engine_t *e) {
+  e->dec.status = SVMG_ST_UNKNOWN;
+  e->dec.status_reason = SVMG_Q_COLD;
+  e->dec.cls_rf = e->dec.cls_b = e->dec.cls_primary = SVMG_UNKNOWN;
+  e->dec.hard = 0;
+  svmg_window_clear(&e->win);
+  svmg_features_compute(&e->win, &e->dec.feat);
+  /* Compatibility telemetry diagnostics are outside the 23-field macro, so
+   * initialize them explicitly when there is no segment data to describe. */
+  e->dec.feat.rms_roll = e->dec.feat.p95_roll = NAN;
+  e->dec.feat.rms_pitch = e->dec.feat.p95_pitch = NAN;
+  e->dec.feat.max_abs_roll = e->dec.feat.energy_roll = NAN;
+  e->dec.feat.mean_roll = e->dec.feat.mean_pitch = NAN;
+  e->dec.feat.std_roll = e->dec.feat.trend_rms_slope = NAN;
+  memset(&e->dec.mai, 0, sizeof e->dec.mai);
+  svmg_safety_reset(&e->safety);
+  svmg_calib_abort(&e->calib);
+  svmg_alarm_mark_unknown(&e->alarm);
+}
+
 void svmg_engine_init(svmg_engine_t *e, const svmg_config_t *cfg) {
   memset(e, 0, sizeof *e);
   e->cfg = *cfg;
@@ -63,11 +85,7 @@ void svmg_engine_apply_config(svmg_engine_t *e, const svmg_config_t *cfg) {
 
 void svmg_engine_restart_signal(svmg_engine_t *e) {
   svmg_pipeline_reset(&e->pipe);
-  svmg_window_clear(&e->win);
-  svmg_safety_reset(&e->safety);
-  svmg_calib_abort(&e->calib);
-  e->dec.status = SVMG_ST_UNKNOWN;
-  svmg_alarm_mark_unknown(&e->alarm);
+  mark_stream_unknown(e);
 }
 
 svmg_reason_t svmg_engine_calibrate_start(svmg_engine_t *e) {
@@ -151,18 +169,22 @@ int svmg_engine_push(svmg_engine_t *e, const svmg_motion_sample_t *s,
                      uint32_t now_ms, svmg_engine_out_t *out) {
   out_clear(out);
   svmg_sample10hz_t s2;
-  if (!svmg_pipeline_push(&e->pipe, s, &s2))
+  if (!svmg_pipeline_push(&e->pipe, s, &s2)) {
+    if (!isfinite(s->t)) {
+      /* Pipeline loại timestamp không hợp lệ mà chưa có output 10 Hz. Đưa
+       * decision/quality về UNKNOWN ngay, thay vì giữ trạng thái cũ đến output sau. */
+      mark_stream_unknown(e);
+      /* Engine đã áp dụng restart đồng bộ ở đây; không phát thêm restart
+       * trễ ở output 10 Hz kế tiếp cho cùng một timestamp lỗi. */
+      e->pipe.pending_restart = 0;
+    }
     return 0;
+  }
   out->got_10hz = 1;
 
   if (s2.flags & SVMG_PIPE_F_RESTARTED) { /* khoảng trống dữ liệu: bỏ lịch sử
                                              cũ, không trộn hai đoạn */
-    e->dec.status = SVMG_ST_UNKNOWN;
-    e->dec.cls_rf = e->dec.cls_b = e->dec.cls_primary = SVMG_UNKNOWN;
-    svmg_window_clear(&e->win);
-    svmg_safety_reset(&e->safety);
-    svmg_calib_abort(&e->calib);
-    svmg_alarm_mark_unknown(&e->alarm);
+    mark_stream_unknown(e);
   }
 
   uint8_t valid = (s2.n_valid >= SVMG_BLOCK_MIN_VALID) ? 1 : 0;

@@ -158,23 +158,34 @@ int svmg_pipeline_push(svmg_pipeline_t *p, const svmg_motion_sample_t *s,
   float dt = nominal_dt;
   p->cnt_in++;
 
-  if (isfinite(s->t)) {
-    if (p->have_t) {
-      dt = s->t - p->last_t;
-      if (dt < -SVMG_PIPE_WRAP_S)
-        dt = nominal_dt; /* đồng hồ float quấn vòng (firmware giữ t < 8192 s để
-                            không mất độ phân giải) */
-      if (!(dt > 0.0f) ||
-          dt > p->cfg.max_gap_s) { /* khoảng trống/đi lùi -> khởi động lại */
-        pipe_clear(p);
-        p->cnt_gap++;
-        p->pending_restart = 1;
-        dt = nominal_dt;
-      }
-    }
-    p->last_t = s->t;
-    p->have_t = 1;
+  if (!isfinite(s->t)) {
+    /* Không thể suy ra dt: không tích phân payload, không tiêu thụ pha 20 Hz,
+     * và không để last_t cũ bị xuất như timestamp của một mẫu mới. */
+    pipe_clear(p);
+    p->have_t = 0;
+    p->pending_restart = 1;
+    p->cnt_invalid++;
+    p->cnt_gap++;
+    return 0;
   }
+
+  if (p->have_t) {
+    dt = s->t - p->last_t;
+    if (dt < 0.0f && p->last_t >= SVMG_PIPE_WRAP_PERIOD_S - p->cfg.max_gap_s &&
+        s->t >= 0.0f && s->t <= p->cfg.max_gap_s) {
+      /* Chỉ wrap nguồn đã biết: timestamp đi từ sát 8192 về sát 0. */
+      dt = (SVMG_PIPE_WRAP_PERIOD_S - p->last_t) + s->t;
+    }
+    if (!(dt > 0.0f) || dt > p->cfg.max_gap_s) {
+      /* Gap/đi lùi/clock reset: bắt đầu segment mới từ mẫu hiện tại. */
+      pipe_clear(p);
+      p->cnt_gap++;
+      p->pending_restart = 1;
+      dt = nominal_dt;
+    }
+  }
+  p->last_t = s->t;
+  p->have_t = 1;
 
   if (s->valid && all_finite(s)) {
     uint8_t f = svmg_cf_update(&p->cf, s->ax, s->ay, s->az, s->gx, s->gy, dt);

@@ -265,9 +265,84 @@ void test_restart_signal_keeps_alarm_state(void) {
 }
 void test_time_gap_clears_history(void) {
   new_engine(SVMG_MODEL_BASELINE_B); drive(300, sea);
+  TEST_ASSERT_TRUE(E.win.total > 0);
   TS += 10.0; drive(5, sea);                                                    /* nhảy 10 s */
   TEST_ASSERT_EQUAL_UINT32(1, E.pipe.cnt_gap);
   TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.dec.status);                         /* cửa sổ bắt đầu lại, không trộn hai đoạn */
+  TEST_ASSERT_TRUE(E.win.total < 60);                                           /* chỉ còn vài giây history mới, không còn cửa sổ cũ */
+}
+void test_nonfinite_timestamp_invalidates_now_and_preserves_critical_until_recovery(void) {
+  new_engine(SVMG_MODEL_BASELINE_B); drive(300, sea);
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_OK, E.dec.status);
+  TEST_ASSERT_TRUE(E.win.total > 0);
+  TEST_ASSERT_TRUE(E.dec.feat.valid_mask != 0);
+  TEST_ASSERT_TRUE(isfinite(E.dec.feat.rms_roll));
+
+  svmg_event_t ev[SVMG_ALARM_MAX_EVENTS];
+  svmg_alarm_force_critical(&E.alarm, E.dec.t_sim_s, now_ms(), ev);
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_CRITICAL, E.alarm.level);
+  uint32_t alarm_id = E.alarm.alarm_id;
+
+  svmg_motion_sample_t bad_time = st_sample(NAN, 0.2, 1.0, 0, 0);
+  svmg_engine_push(&E, &bad_time, now_ms(), &OUT);                             /* không tạo output 10 Hz */
+  TEST_ASSERT_EQUAL_UINT8(0, OUT.got_10hz);
+  TEST_ASSERT_EQUAL_UINT8(0, E.pipe.pending_restart);                           /* không lặp restart ở output kế tiếp */
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.dec.status);                         /* INVALID_TIME phải xóa trạng thái OK ngay */
+  TEST_ASSERT_EQUAL_UINT32(0, E.win.total);
+  TEST_ASSERT_EQUAL_UINT32(0, E.dec.feat.valid_mask);                           /* health không còn báo mask của segment cũ */
+  TEST_ASSERT_FALSE(E.dec.feat.ready_short); TEST_ASSERT_FALSE(E.dec.feat.ready_long);
+  TEST_ASSERT_TRUE(isnan(E.dec.feat.rms_roll));                                 /* telemetry bỏ các metric không còn hiệu lực */
+  TEST_ASSERT_EQUAL_UINT8(0, E.dec.mai.value);
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.alarm.status);
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_CRITICAL, E.alarm.level);
+  TEST_ASSERT_EQUAL_UINT32(alarm_id, E.alarm.alarm_id);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_ON, outs().led_r);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_BUZ_CONTINUOUS, outs().buzzer);
+
+  TS += 0.05;
+  drive(65, sea);                                                               /* dưới 60 s/180 s history mới */
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.dec.status);
+  TEST_ASSERT_TRUE(E.win.total >= 600);                                          /* cửa sổ ngắn đã có mẫu mới */
+  TEST_ASSERT_TRUE(E.win.total < 1800);
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_CRITICAL, E.alarm.level);                      /* dữ liệu mù không giải tỏa alarm */
+  TEST_ASSERT_EQUAL_UINT32(alarm_id, E.alarm.alarm_id);
+
+  INVALID_ALL = 1; drive(0.2, sea); INVALID_ALL = 0;
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.dec.status);                         /* phục hồi không bỏ qua quality gate */
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_CRITICAL, E.alarm.level);
+
+  drive(150, sea);                                                              /* đủ history mới và các cập nhật recovery */
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_OK, E.dec.status);
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_NORMAL, E.alarm.level);                        /* chỉ clear sau điều kiện hợp lệ hiện hữu */
+}
+void test_finite_timestamp_gap_restarts_engine_without_clearing_critical(void) {
+  new_engine(SVMG_MODEL_BASELINE_B); drive(300, sea);
+  TEST_ASSERT_TRUE(E.dec.feat.valid_mask != 0);
+  svmg_event_t ev[SVMG_ALARM_MAX_EVENTS];
+  svmg_alarm_force_critical(&E.alarm, E.dec.t_sim_s, now_ms(), ev);
+  uint32_t alarm_id = E.alarm.alarm_id;
+
+  TS += 1.0;                                                                     /* gap hữu hạn vượt max_gap 75 ms */
+  svmg_motion_sample_t s = st_sample(TS, 0, 0, 0, 0);
+  svmg_engine_push(&E, &s, now_ms(), &OUT);
+  TEST_ASSERT_EQUAL_UINT8(0, OUT.got_10hz);                                      /* chờ đủ cặp decimation */
+  TS += 0.05;
+  s = st_sample(TS, 0, 0, 0, 0);
+  svmg_engine_push(&E, &s, now_ms(), &OUT);
+  TEST_ASSERT_EQUAL_UINT8(1, OUT.got_10hz);
+  TEST_ASSERT_EQUAL_UINT32(1, E.pipe.cnt_gap);
+  TEST_ASSERT_EQUAL_UINT8(19, E.pipe.warmup_outputs);
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.dec.status);
+  TEST_ASSERT_EQUAL_UINT32(0, E.win.total);
+  TEST_ASSERT_EQUAL_UINT32(0, E.dec.feat.valid_mask);
+  TEST_ASSERT_FALSE(E.dec.feat.ready_short); TEST_ASSERT_FALSE(E.dec.feat.ready_long);
+  TEST_ASSERT_TRUE(isnan(E.dec.feat.rms_roll));
+  TEST_ASSERT_EQUAL_UINT8(0, E.dec.mai.value);
+  TEST_ASSERT_EQUAL_INT(SVMG_ST_UNKNOWN, E.alarm.status);
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_CRITICAL, E.alarm.level);
+  TEST_ASSERT_EQUAL_UINT32(alarm_id, E.alarm.alarm_id);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_ON, outs().led_r);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_BUZ_CONTINUOUS, outs().buzzer);
 }
 void test_calibration_flow(void) {
   new_engine(SVMG_MODEL_BASELINE_B); drive(60, tilt3);                            /* cảm biến lắp lệch 3 deg, tàu tĩnh */
@@ -371,6 +446,8 @@ int main(void) {
   RUN_TEST(test_alarm_lifecycle_sequence); RUN_TEST(test_unacked_warning_escalates_after_60s_real_time);
   RUN_TEST(test_sensor_fault_never_normal_and_recovers); RUN_TEST(test_fault_threshold_10_seconds);
   RUN_TEST(test_dropped_samples_make_unknown_not_normal); RUN_TEST(test_dead_bus_zero_samples_flagged_fault);
+  RUN_TEST(test_nonfinite_timestamp_invalidates_now_and_preserves_critical_until_recovery);
+  RUN_TEST(test_finite_timestamp_gap_restarts_engine_without_clearing_critical);
   RUN_TEST(test_nan_samples_do_not_poison_state);
   RUN_TEST(test_offline_alarm_still_local_and_events_sync_without_loss_or_duplicates);
   RUN_TEST(test_restart_signal_keeps_alarm_state); RUN_TEST(test_time_gap_clears_history);

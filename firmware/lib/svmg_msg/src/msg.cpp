@@ -104,7 +104,10 @@ size_t msg_build_telemetry(char *buf, size_t cap, const MsgIdent &id, uint32_t s
   w.raw(",\"class_rf\":"); w.str(svmg_class_name((svmg_class_t)t.cls_rf));
   /* schema: class_baseline_b không có FAULT (trường tùy chọn) -> bỏ khi lỗi cảm biến thay vì phát giá trị làm bản tin bị loại */
   if (t.cls_b != SVMG_FAULT) { w.raw(",\"class_baseline_b\":"); w.str(svmg_class_name((svmg_class_t)t.cls_b)); }
-  w.fmt(",\"mai\":%u", (unsigned)t.mai);
+  /* MAI là phép đo tổng hợp có nguồn gốc feature; khi data UNKNOWN/FAULT thì
+   * bỏ trường tùy chọn thay vì phát số cache cũ hoặc giả vờ là MAI=0. */
+  if (t.data_status == SVMG_ST_OK)
+    w.fmt(",\"mai\":%u", (unsigned)t.mai);
   w.raw(",\"alarm_level\":"); w.str(svmg_level_name((svmg_level_t)t.alarm_level));
   w.raw(",\"model_version\":"); w.str(id.model_version);
   w.fmt(",\"config_version\":%lu,\"sensor_ok\":%s", (unsigned long)t.config_version, t.sensor_ok ? "true" : "false");

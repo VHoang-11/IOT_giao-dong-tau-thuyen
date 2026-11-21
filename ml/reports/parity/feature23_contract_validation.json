@@ -264,11 +264,13 @@
   {
    "id": "C04",
    "severity": "MATERIAL",
-   "status": "OPEN_TEAM_DECISION",
+   "status": "RESOLVED_LAYERED_TIMESTAMP_BOUNDARY",
    "title": "Biểu diễn mẫu thiếu: NaN có timestamp khác với timestamp bị bỏ",
    "spec": "≥ 95% mẫu hợp lệ; gap > 1,5 chu kỳ làm cửa sổ không hợp lệ.",
    "extractor": "Mẫu NaN có timestamp được bỏ qua trong thống kê pointwise (≤ 5%); một timestamp bị bỏ (khoảng cách 0,2 s > 0,15 s) làm MỌI cửa sổ chứa nó INVALID_INPUT/TIMESTAMP_GAP.",
-   "golden_policy": "Golden có cả hai trường hợp. M1 phải chọn cách biểu diễn mẫu lỗi khớp với ý định (khuyến nghị: giữ nhịp 10 Hz và ghi NaN)."
+   "firmware_policy": "Pipeline M1 xử lý gap timestamp hữu hạn bằng restart, xóa feature history và đưa decision về UNKNOWN; timestamp NaN/Inf bị loại khỏi filter/decimation và engine chuyển UNKNOWN ngay cả khi chưa phát output 10 Hz. Active CRITICAL được giữ nguyên.",
+   "numerical_api_policy": "C feature-only API không nhận timestamp và chỉ áp dụng trên lưới 10 Hz đều; API này không tự đánh giá TIMESTAMP_GAP.",
+   "golden_policy": "Giữ nguyên SYN23/SYN24 timestamp-aware expected outputs. C host feature-only tiếp tục NOT_EVALUABLE cho 46 bản ghi gap; không đổi sang PASS khi chưa có C timestamp-aware output."
   },
   {
    "id": "C05",
@@ -314,5 +316,5 @@
  "blocking_inconsistency": false,
  "extractor_reference": "ml/features/extractor.py (feature_extractor_version 0.1.0, feature_spec_version candidate-30-v1)",
  "contract_v02_path": "ml/docs/feature_contract_23_v0.2.json",
- "contract_v02_sha256": "ae37afa5f13816df1ee41ab5383df1dcdee122743499f08241b792b95055ceb3"
+ "contract_v02_sha256": "a367d002b9bdb81f35135fe69677ab95d9a1fd66f9601221533b2f68f37c2f6a"
 }
