@@ -1,6 +1,6 @@
 {
  "schema_version": "svmg-angle23-0.2.0-proposal",
- "golden_manifest_sha256": "05e481240fdfb56d7797d2d44acfbcdcfe30d2443136c7ac055ec5c601c0a17a",
+ "golden_manifest_sha256": "f43146abd57151c1c551a70f6da6b5b6abb9ac2ee4f6db7d3de3ca2ee55ef2d6",
  "manifest_verification": {
   "files": 44,
   "problems": [],

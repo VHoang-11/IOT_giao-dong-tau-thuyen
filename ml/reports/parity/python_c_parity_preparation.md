@@ -108,7 +108,7 @@ Bản ghi REVIEW:
 | 21 | `pitch_std_60` | 95 | 0 | 0 | 1.61e-07 | 3.23e-06 | 0.00324 |
 | 22 | `pitch_peak_to_peak_60` | 95 | 0 | 0 | 2.98e-08 | 5.92e-08 | 0.19 |
 
-Diễn giải: tỷ lệ sai số/cho phép lớn nhất của mô phỏng float32 là synthetic 0.188, real 0.190 (biên an toàn ≈ 5.3 lần), tức dung sai không đánh trượt một hiện thực float32 hợp lý. Bản ghi REVIEW của `SYN30_permuted_blocks` tái hiện rủi ro C03: ba block là hoán vị của cùng 600 giá trị; RMS block theo Python (`math.fsum`, không phụ thuộc thứ tự) = 1.490180883822287, 1.490180883822287, 1.490180883822287 → SST = 0 → UNDEFINED; float32 cộng tuần tự = 1.4901810884475708, 1.4901807308197021, 1.4901812076568604 → SST = 1.28e-13 > 1e-15 → VALID với R² không có ý nghĩa vật lý. Khuyến nghị: C cộng dồn bằng double, và nhóm chốt ngưỡng SST tương đối.
+Diễn giải: tỷ lệ sai số/cho phép lớn nhất của mô phỏng float32 là synthetic 0.188, real 0.190 (biên an toàn ≈ 5.3 lần), tức dung sai không đánh trượt phép mô phỏng float32 này. Bản ghi REVIEW của `SYN30_permuted_blocks` tái hiện rủi ro C03: ba block là hoán vị của cùng 600 giá trị; RMS block theo Python (`math.fsum`, không phụ thuộc thứ tự) = 1.490180883822287, 1.490180883822287, 1.490180883822287 → SST = 0 → UNDEFINED; float32 cộng tuần tự = 1.4901810884475708, 1.4901807308197021, 1.4901812076568604 → SST = 1.28e-13 > 1e-15 → probe có thể cho status khác reference. Đây là mô phỏng cộng dồn float32, không phải production C; `core/src/features.c` dùng double trung gian. Ngưỡng SST runtime vẫn là 1e-15; REVIEW là diagnostic riêng.
 
 ## 4. Ma trận phát hiện lỗi hiện thực C điển hình
 
@@ -166,7 +166,7 @@ Tất cả xử lý đúng: **đạt**.
 
 - Dung sai là đề xuất từ phân tích làm tròn + mô phỏng; chưa có số đo từ trình biên dịch Xtensa/ESP32 (có `madd.s` fused multiply-add) hay từ mã C thật.
 - Probe float32 dùng validity cửa sổ của golden nên KHÔNG kiểm tra logic coverage/gap của C; golden synthetic (SYN20–SYN27) mới kiểm tra phần đó.
-- Các issue C01–C04 còn mở: nếu nhóm đổi quyết định, phải tăng phiên bản contract, sinh lại golden và (nếu công thức đổi) huấn luyện lại RF.
+- C01–C03 đã được chốt trong `svmg-angle23-semantics-1.0.0`; C04 giữ chính sách timestamp phân lớp. Golden expected values không đổi vì công thức và validity production không đổi.
 
 ## Giải thích kỹ thuật phục vụ vấn đáp cá nhân
 

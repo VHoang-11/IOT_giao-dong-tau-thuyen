@@ -2,7 +2,7 @@
 
 > **Phạm vi.** Gói này chuẩn bị kiểm chứng parity *tính feature* Python/C cho 23 angle feature của PoC Random Forest phân loại motion phenotype bằng proxy label — KHÔNG phải bộ phân loại an toàn hàng hải đã xác thực. Golden vector đã chuẩn bị KHÔNG có nghĩa parity Python/C hay triển khai ESP32 đã được kiểm chứng.
 
-- Contract: `ml/docs/feature_contract_23_v0.2.json` — `svmg-angle23-0.2.0-proposal`, trạng thái `PROPOSAL_PENDING_M1_REVIEW`; SHA-256 thứ tự tên `060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8`.
+- Contract mapping: semantic `svmg-angle23-semantics-1.0.0` (FINAL); validity `svmg-angle23-validity-1.0.0`; parity lịch sử `svmg-angle23-0.2.0-proposal`; C `svmg-angle-23-v1`; SHA-256 chỉ nhận diện ordered names; model weights/hash/metrics giữ nguyên.
 - Contract C hiện hành (`contracts/features.md`, `core/include/svmg_core.h`, `core/include/svmg_features.h`) **không bị sửa**. Việc thêm vector 23 feature vào C là quyết định của M1 sau khi duyệt đề xuất này.
 - Trạng thái hiện tại: **PYTHON_REFERENCE_READY / C_PARITY_PENDING**. Golden đã sẵn sàng; parity Python/C chưa được kiểm chứng vì chưa có đầu ra C.
 
@@ -71,8 +71,6 @@ Chi tiết bắt buộc:
 - R² = 1 - SSE/SST với SST = Σ(r_j - r̄)²; dạng đóng cho 3 điểm cách đều: **R² = (r3 - r1)²/(2·SST)**. SST ≤ 1e-15 → UNDEFINED / CONSTANT_RMS_TREND. Kẹp về [0,1] chỉ khi lệch ≤ 1e-12.
 - Kết quả VALID nhưng không hữu hạn → UNDEFINED / NON_FINITE_RESULT.
 
-Khuyến nghị số học (không bắt buộc nhưng được dung sai giả định): cộng dồn tổng bằng `double` (hoặc Kahan float32), std hai lượt hoặc Welford — KHÔNG dùng E[x²]-E[x]² trong float32 (đột biến `one_pass_variance` bị FAIL ở SYN31); sắp xếp bản sao 600/1800 phần tử cho phân vị; khi so sánh ngưỡng epsilon/SST nên tính bằng double.
-
 ## 4. Ngữ nghĩa validity/status
 
 | Status | Reason code | Khi nào |
@@ -104,7 +102,7 @@ Thứ tự ưu tiên trong một cửa sổ: WINDOW_HISTORY_SHORT → SAMPLING_R
 | `ml/parity/fixtures/manifest.json` | checksum mọi file | có |
 | `ml/data/parity/real/…` | 5 đoạn Hohai/Seafar/Southampton (sinh cục bộ) | không (gitignored) |
 
-Đọc input: `roll_deg`/`pitch_deg` là chuỗi float32 ngắn nhất (đọc bằng `strtof`), chấp nhận `nan`, `inf`, `-inf`; `source_sample_index` nhảy cóc biểu thị timestamp bị bỏ. Runner host kiểm tra `time_seconds` và đánh dấu các cửa sổ gap là `NOT_EVALUABLE`; `svmg_features_compute`/`svmg_features_from_series` không nhận timestamp và không tự phát hiện gap. Mẫu NaN/Inf ở tín hiệu có timestamp vẫn là một slot của lưới đầu vào, khác với timestamp bị bỏ.
+Đọc input: `roll_deg`/`pitch_deg` là chuỗi float32 ngắn nhất (đọc bằng `strtof`), chấp nhận `nan`, `inf`, `-inf`; `source_sample_index` nhảy cóc biểu thị timestamp bị bỏ. Runner host kiểm tra `time_seconds` và đánh dấu cửa sổ gap là `NOT_EVALUABLE`; `svmg_features_compute`/`svmg_features_from_series` không nhận timestamp. Mẫu NaN/Inf có timestamp vẫn chiếm slot lưới, khác timestamp bị bỏ.
 
 ## 6. Định dạng đầu ra C
 
@@ -171,7 +169,7 @@ Mã thoát của `compare` là 0 khi không có FAIL, 1 khi có FAIL. Metadata k
 | std lệch lớn ở tín hiệu offset | phương sai một lượt float32 | SYN31 |
 | FAIL_STATUS_MISMATCH ở hàng INVALID | quy tắc coverage/gap/block khác extractor (C01, C04) | SYN21–SYN27 |
 | FAIL_INVALID_HAS_VALUE | ghi 0 thay vì để trống | SYN01, SYN17, SYN20 |
-| REVIEW_ILL_CONDITIONED (R²/ratio) | quyết định phụ thuộc làm tròn; xem accumulator, chờ quyết định C02/C03 | SYN30 |
+| REVIEW_ILL_CONDITIONED (R²/ratio) | diagnostic độ nhạy trong parity; không phải runtime validity và float32 probe không đại diện C production | SYN30 |
 | FAIL_INPUT_SHA256 / MISSING / EXTRA | đọc sai file, sai lưới endpoint | — |
 
 ## 9. Việc cần làm tiếp ở Level 3 (chưa thực hiện)
@@ -180,20 +178,13 @@ Mã thoát của `compare` là 0 khi không có FAIL, 1 khi có FAIL. Metadata k
 2. Chạy lại đúng golden trên ESP32 (không chỉ host) để thấy ảnh hưởng `madd.s`/cờ biên dịch.
 3. Chuỗi Roll/Pitch 10 Hz riêng cho feature (firmware hiện xuất 2 Hz sau lọc 0,5 Hz) và đánh giá lại lệch miền: thí nghiệm đã có cho thấy POS 188 → 4 khi lọc 0,5 Hz.
 4. Xác nhận trục/dấu và hiệu chuẩn mốc 0 của Roll/Pitch so với quy ước dataset.
-5. C04 đã chốt theo phân lớp trên; C01–C03 vẫn cần nhóm duyệt trước khi phát hành contract cuối.
+## 10. Trạng thái quyết định
 
-## 10. Quyết định cần M1 phản hồi
+C01: cả ba block ≥ 570 mẫu, chính sách production bảo thủ so với dependency tối thiểu của đặc tả ứng viên; C02: epsilon zero số học 1e-9 độ, không phải noise floor cảm biến; C03: SST tuyệt đối 1e-15 độ², C dùng double, float32 probe chỉ mô phỏng và REVIEW chỉ là diagnostic; C04: resolved. Validity policy `svmg-angle23-validity-1.0.0`.
 
-| Issue | Câu hỏi |
-|---|---|
-| C01 | Giữ quy tắc 'cả 3 block hợp lệ' cho 8 feature block (như extractor), hay theo chữ đặc tả (rms_early chỉ cần block 1, …)? Đổi → sinh lại golden + huấn luyện lại. |
-| C02 | Epsilon của ratio: giữ 1e-9 deg (số học) hay đặt theo độ phân giải/nhiễu cảm biến? |
-| C03 | Ngưỡng SST của R²: giữ 1e-15 deg² tuyệt đối hay chuyển sang ngưỡng tương đối (đề xuất SST/mean(r)² < 1e-6)? |
-| C04 | Đã quyết định: semantics M2 timestamp-aware; firmware M1 restart/UNKNOWN; feature-only C giữ giả định lưới đều; 46 bản ghi parity vẫn NOT_EVALUABLE. |
 
 ## Giải thích kỹ thuật phục vụ vấn đáp cá nhân
 
 - **Vì sao M1 phải xuất cả status chứ không chỉ 23 số?** Vì mô hình chỉ được chạy khi đủ 23 feature hợp lệ; nếu status sai, firmware có thể suy luận trên vector không hợp lệ hoặc bỏ qua vector hợp lệ — đều là lỗi parity dù số khớp.
 - **Vì sao golden đánh giá tại endpoint_index cố định?** Để so cùng một tập mẫu. So theo thời gian thực của ESP32 sẽ trộn lẫn sai lệch đồng hồ với sai lệch thuật toán.
 - **Parity đạt rồi có triển khai được không?** Chưa. Parity chỉ chứng minh C tính giống Python trên cùng chuỗi đầu vào. Còn phải chứng minh chuỗi Roll/Pitch mà ESP32 tạo ra giống miền dữ liệu huấn luyện (Level 3) và đo tài nguyên trên chip.
-- **Tại sao khuyến nghị cộng dồn bằng double trên ESP32 không có FPU double?** Mỗi 10 s chỉ cộng vài nghìn số; chi phí phần mềm nhỏ so với sắp xếp phân vị, đổi lại loại bỏ rủi ro C03 và sai số tích lũy.

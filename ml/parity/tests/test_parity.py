@@ -18,8 +18,10 @@ from ml.features.calculations import type7_quantile
 from ml.labeling.ai_assisted_review import protected_checksums
 from ml.parity import analytic, compare, float32_probe, interchange, readiness
 from ml.parity.cases import SYNTHETIC_CASES, synthetic_signal
-from ml.parity.contract import (CONTRACT_V02, EXPECTED_SELECTION, FEATURE_ORDER, SCHEMA_VERSION, STATUS_VOCABULARY,
-                                feature_settings, run_extractor, schema_sha256, validate_contract)
+from ml.parity.contract import (CONTRACT_V02, EXPECTED_SELECTION, FEATURE_ORDER, FEATURE_SCHEMA_VERSION,
+                                SCHEMA_VERSION, SEMANTIC_CONTRACT_VERSION, STATUS_VOCABULARY,
+                                VALIDITY_POLICY_VERSION, feature_settings, run_extractor, schema_sha256,
+                                validate_contract)
 from ml.parity.golden import (MANIFEST, REAL_ROOT, SYNTHETIC_ROOT, build_suite, fmt32, inputs_csv_bytes, read_inputs,
                               verify_manifest)
 from ml.parity.tolerance import CLASSES, FEATURE_CLASS, allowed_error
@@ -78,13 +80,41 @@ def test_contract_units_windows_and_conventions():
     assert SETTINGS["quantile_method"] == "type7" and SETTINGS["endpoint_convention"] == "(t-W,t]"
 
 
-def test_open_contract_issues_are_documented_not_silently_resolved():
+def test_approved_contract_decisions_and_c04_are_finalized():
     validation = validate_contract(REPO_ROOT)
     ids = {i["id"]: i for i in validation["issues"]}
-    assert {"C01", "C02", "C03"} <= {k for k, v in ids.items() if v["status"].startswith("OPEN")}
+    assert ids["C01"]["status"] == "RESOLVED_CONSERVATIVE_ALL_THREE_BLOCKS"
+    assert ids["C02"]["status"] == "RESOLVED_NUMERICAL_ZERO_EPSILON"
+    assert ids["C03"]["status"] == "RESOLVED_ABSOLUTE_SST_DOUBLE_ACCUMULATION"
     assert ids["C04"]["status"] == "RESOLVED_LAYERED_TIMESTAMP_BOUNDARY"
     assert "46 bản ghi" in ids["C04"]["golden_policy"]
+    assert not any(item["status"].startswith("OPEN") for item in validation["issues"])
     assert all(validation["behaviour_checks"][i]["passed"] for i in range(len(validation["behaviour_checks"])))
+    contract = json.loads((REPO_ROOT / CONTRACT_V02).read_text(encoding="utf-8"))
+    semantic = contract["semantic_contract"]
+    assert semantic["version"] == SEMANTIC_CONTRACT_VERSION
+    assert semantic["validity_policy_version"] == VALIDITY_POLICY_VERSION
+    assert semantic["feature_schema"] == {"version": FEATURE_SCHEMA_VERSION,
+                                          "sha256_scope": "ordered feature names only",
+                                          "sha256": schema_sha256()}
+    assert semantic["parity_schema_mapping"]["schema_version"] == SCHEMA_VERSION
+    assert contract["schema_version"] == SCHEMA_VERSION and contract["schema_sha256"] == schema_sha256()
+
+
+def test_stale_manifest_metadata_is_reconciled_without_relabeling_golden():
+    manifest = json.loads((REPO_ROOT / MANIFEST).read_text(encoding="utf-8"))
+    contract = json.loads((REPO_ROOT / CONTRACT_V02).read_text(encoding="utf-8"))
+    assert manifest["contract_sha256"] == hashlib.sha256((REPO_ROOT / CONTRACT_V02).read_bytes()).hexdigest()
+    assert manifest["contract_validation"]["open_issues"] == []
+    model = contract["semantic_contract"]["model_compatibility_metadata"]
+    assert model["semantic_contract_version"] == contract["semantic_contract"]["version"]
+    assert model["historical_metrics_and_model_modified"] is False
+    assert model["input_policy"].startswith("FULL_VECTOR_ONLY")
+    assert manifest["schema_version"] == SCHEMA_VERSION
+    golden_rows = (REPO_ROOT / SYN / "golden_vectors.jsonl").read_text(encoding="utf-8").splitlines()
+    assert {json.loads(row)["schema_version"] for row in golden_rows} == {SCHEMA_VERSION}
+    assert len(manifest["files"]) == 44
+    assert all(entry["sha256"] for entry in manifest["files"].values())
 
 
 # ----------------------------------------------------------------------------- Level 1: golden đúng

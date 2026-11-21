@@ -5,15 +5,10 @@
   "total": 123
  },
  "contract": "ml/docs/feature_contract_23_v0.2.json",
- "contract_sha256": "ae37afa5f13816df1ee41ab5383df1dcdee122743499f08241b792b95055ceb3",
+ "contract_sha256": "36a7e59b270a3127fc59659780e82783fb4618f57ad96b4395dc488d3d866a17",
  "contract_validation": {
   "blocking_inconsistency": false,
-  "open_issues": [
-   "C01",
-   "C02",
-   "C03",
-   "C04"
-  ]
+  "open_issues": []
  },
  "environment": {
   "numpy": "2.4.6",
@@ -45,6 +40,7 @@
   "pitch_std_60",
   "pitch_peak_to_peak_60"
  ],
+ "feature_schema_version": "svmg-angle-23-v1",
  "files": {
   "ml/data/parity/real/cases.json": {
    "bytes": 51383,
@@ -359,6 +355,7 @@
  },
  "schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
  "schema_version": "svmg-angle23-0.2.0-proposal",
+ "semantic_contract_version": "svmg-angle23-semantics-1.0.0",
  "suites": {
   "real": {
    "cases": 5,
@@ -371,5 +368,6 @@
    "expected_rows": 11224
   }
  },
+ "validity_policy_version": "svmg-angle23-validity-1.0.0",
  "window_index_rule_consistent": true
 }
