@@ -53,8 +53,9 @@ float svmg_biquad_step(svmg_biquad_t *f, float x);
 #define SVMG_PIPE_F_GATED     0x02  /* trong khối có bước bị cổng gia tốc */
 #define SVMG_PIPE_F_WARMUP 0x08 /* first 2 s after filter initialization/reset */
 #define SVMG_PIPE_F_PARTIAL   0x04  /* khối thiếu mẫu hợp lệ */
-/* Bước lùi thời gian lớn hơn ngưỡng này (s) được hiểu là đồng hồ quấn vòng chứ không phải lỗi: dt = 1/fs. */
-#define SVMG_PIPE_WRAP_S      1000.0f
+/* firmware/src/motion_source.cpp giới hạn timestamp bằng fmod(..., 8192 s).
+ * Chỉ nhận wrap thực quanh chu kỳ này; bước lùi lớn bất kỳ không phải wrap. */
+#define SVMG_PIPE_WRAP_PERIOD_S 8192.0f
 
 typedef struct {
   float   tau_s;        /* hằng số thời gian bộ lọc bù (mặc định 7.5 s) */
@@ -91,7 +92,9 @@ void svmg_pipeline_default_cfg(svmg_pipeline_cfg_t *cfg);
 void svmg_pipeline_init(svmg_pipeline_t *p, const svmg_pipeline_cfg_t *cfg);
 /* Xóa trạng thái lọc (giữ bộ đếm thống kê). */
 void svmg_pipeline_reset(svmg_pipeline_t *p);
-/* Đẩy một mẫu 20 Hz. Trả 1 nếu *out được ghi (mỗi `decim` mẫu). Mẫu valid=0 vẫn phải được đẩy vào. */
+/* Đẩy một mẫu 20 Hz. Trả 1 nếu *out được ghi (mỗi `decim` mẫu).
+ * Mẫu valid=0 vẫn phải được đẩy vào. Timestamp NaN/Inf bị loại: pipeline
+ * reset continuity, tăng bộ đếm invalid/gap và không tính mẫu đó vào decimation. */
 int  svmg_pipeline_push(svmg_pipeline_t *p, const svmg_motion_sample_t *s, svmg_sample10hz_t *out);
 
 #ifdef __cplusplus
