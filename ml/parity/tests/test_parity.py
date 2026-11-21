@@ -81,7 +81,9 @@ def test_contract_units_windows_and_conventions():
 def test_open_contract_issues_are_documented_not_silently_resolved():
     validation = validate_contract(REPO_ROOT)
     ids = {i["id"]: i for i in validation["issues"]}
-    assert {"C01", "C02", "C03", "C04"} <= {k for k, v in ids.items() if v["status"].startswith("OPEN")}
+    assert {"C01", "C02", "C03"} <= {k for k, v in ids.items() if v["status"].startswith("OPEN")}
+    assert ids["C04"]["status"] == "RESOLVED_LAYERED_TIMESTAMP_BOUNDARY"
+    assert "46 bản ghi" in ids["C04"]["golden_policy"]
     assert all(validation["behaviour_checks"][i]["passed"] for i in range(len(validation["behaviour_checks"])))
 
 
