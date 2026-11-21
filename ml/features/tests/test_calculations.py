@@ -38,6 +38,29 @@ def test_linear_slope_and_r_squared_known_trend_and_constant():
     assert math.isnan(linear_r_squared(time, np.ones(3)))
 
 
+def test_c03_absolute_sst_boundary_zero_below_equal_and_above():
+    time = np.array([30.0, 90.0, 150.0])
+    tolerance = 1e-15
+
+    assert math.isnan(linear_r_squared(time, [2.0, 2.0, 2.0], tolerance))  # SST = 0
+    delta = math.sqrt(0.5e-15)
+    at_threshold = [-delta, 0.0, delta]
+    mean = math.fsum(at_threshold) / 3
+    assert math.fsum((value - mean) ** 2 for value in at_threshold) == tolerance
+    assert math.isnan(linear_r_squared(time, at_threshold, tolerance))  # SST = threshold
+
+    below = [-delta * 0.99, 0.0, delta * 0.99]
+    above = [-delta * 1.01, 0.0, delta * 1.01]
+    assert math.isnan(linear_r_squared(time, below, tolerance))
+    assert math.isfinite(linear_r_squared(time, above, tolerance))
+    assert linear_r_squared(time, [-1.0, 0.0, 1.0], tolerance) == 1.0
+
+
+def test_c03_symmetric_rms_trend_has_valid_zero_r_squared():
+    time = np.array([30.0, 90.0, 150.0])
+    assert linear_r_squared(time, [1.0, 2.0, 1.0], 1e-15) == 0.0
+
+
 def test_zero_crossing_interpolation_plateau_and_gap_handling():
     t = np.arange(7, dtype=float) * 0.1
     y = np.array([-1.0, 0.0, 0.0, 1.0, 1.0, -1.0, 1.0])

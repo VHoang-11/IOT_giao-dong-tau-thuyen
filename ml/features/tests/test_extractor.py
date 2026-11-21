@@ -1,7 +1,9 @@
 import json
+import math
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ml.features.extractor import FeatureInputError, extract_segment, validate_segment
 from ml.features.spec import FEATURE_NAMES, PRACTICAL_SUBSETS
@@ -156,6 +158,41 @@ def test_missing_observations_preserve_missingness_and_enforce_coverage():
     validity = json.loads(metadata.iloc[0]["validity_json"])
     assert validity["roll_rms_60"]["status"] == "INVALID_INPUT"
     assert pd.isna(values.iloc[0]["roll_rms_60"])
+
+
+@pytest.mark.parametrize("missing_start", [1, 601, 1201], ids=["first", "middle", "last"])
+def test_c01_conservative_all_three_block_gate(missing_start):
+    data = frame(180)
+    data.loc[missing_start:missing_start + 30, "roll_deg"] = np.nan  # 569/600 in one block; total remains >=1710.
+    values, metadata, _ = extract_segment(data, provenance(), settings(), "test")
+    validity = json.loads(metadata.iloc[-1]["validity_json"])
+    block_features = (
+        "roll_segment_mean_std_180", "roll_mean_shift_180", "roll_rms_early_60", "roll_rms_late_60",
+        "roll_rms_ratio_180", "roll_rms_slope_180", "roll_rms_trend_r2_180", "roll_p95_trend_slope_180",
+    )
+    assert validity["roll_mean_180"]["status"] == "VALID"
+    for name in block_features:
+        assert validity[name]["status"] == "INVALID_INPUT"
+        assert validity[name]["reason_code"] == "SEGMENT_BLOCK_COVERAGE"
+        assert pd.isna(values.iloc[-1][name])
+
+
+@pytest.mark.parametrize("early_rms, expected", [
+    (np.nextafter(1e-9, 0.0), "UNDEFINED_MATHEMATICALLY"),
+    (1e-9, "UNDEFINED_MATHEMATICALLY"),
+    (np.nextafter(1e-9, np.inf), "VALID"),
+])
+def test_c02_ratio_epsilon_boundary_and_large_finite_value(early_rms, expected):
+    roll = np.zeros(1801, dtype=float)
+    roll[1:601] = early_rms
+    roll[601:1201] = 0.5
+    roll[1201:] = 1.0
+    values, metadata, _ = extract_segment(frame(180, roll=roll), provenance(), settings(), "test")
+    validity = json.loads(metadata.iloc[-1]["validity_json"])
+    assert validity["roll_rms_ratio_180"]["status"] == expected
+    if expected == "VALID":
+        assert math.isfinite(values.iloc[-1]["roll_rms_ratio_180"])
+        assert values.iloc[-1]["roll_rms_ratio_180"] > 1e8
 
 
 def test_gap_invalidates_window_and_causal_endpoint_ignores_future():
