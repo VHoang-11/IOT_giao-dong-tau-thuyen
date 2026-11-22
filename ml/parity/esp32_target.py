@@ -1,10 +1,17 @@
 """Serial v1 transport and transaction state machine for the HV01-A target."""
 from __future__ import annotations
 
-import math, re, struct, time, zlib
+import argparse, csv, hashlib, json, math, re, struct, subprocess, sys, time, zlib
 from dataclasses import dataclass
+from pathlib import Path
 
 from ml.parity.contract import FEATURE_ORDER, FEATURE_SCHEMA_VERSION, SCHEMA_VERSION, SEMANTIC_CONTRACT_VERSION, VALIDITY_POLICY_VERSION
+
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / "ml/parity/fixtures"
+MANIFEST_PATH = FIXTURES / "manifest.json"
+SYNTHETIC_CASES = FIXTURES / "synthetic/cases.json"
+REAL_CASES = ROOT / "ml/data/parity/real/cases.json"
 
 VERSION, MAX_PAYLOAD = 1, 384
 MAX_BATCH, MAX_CASES, MAX_SAMPLES, MAX_ENDPOINTS = 32, 64, 4096, 32
@@ -117,7 +124,7 @@ class TargetSession:
         self.serial,self.timeout=serial,timeout
         self.tx_seq=self.rx_seq=0; self.state="WAIT_HELLO"; self.hello=None
         self.run_id=None; self.manifest_sha=None; self.expected_cases=0; self.completed_cases=0; self.seen_case_ids=set()
-        self.case=None; self.results=[]; self.transport_complete=False
+        self.case=None; self.results=[]; self.raw_results=[]; self.transport_complete=False
 
     def _read(self,n: int) -> bytes:
         deadline=time.monotonic()+self.timeout; data=bytearray()
@@ -167,6 +174,8 @@ class TargetSession:
                 if f.kind==128 and kind==1 and self.state=="WAIT_RUN": continue
                 if f.kind==143: raise ProtocolError(f"target ERROR {m['code']}; reset target")
                 if f.kind==130:
+                    self.raw_results.append(dict(seq=f.seq,payload_hex=f.payload.hex(),
+                        wire_hex=encode_frame(f.kind,f.seq,f.payload).hex(),decoded=m))
                     c=self.case
                     if c is None or m["case_id"]!=c["case_id"] or m["input_csv_sha256"]!=c["input_sha"]:
                         raise ProtocolError("RESULT case/input SHA mismatch")
@@ -255,3 +264,143 @@ class TargetSession:
         if (m["run_id"],m["cases_completed"],m["manifest_sha256"],m["status"])!=(self.run_id,self.expected_cases,self.manifest_sha,0):
             self.state="FAILED"; raise ProtocolError("RUN_DONE thiếu hoặc không khớp")
         self.state="COMPLETE"; self.transport_complete=True; return m
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def load_suite(suite: str="synthetic") -> tuple[list[dict],str]:
+    """Load and verify canonical golden inputs without regenerating fixtures."""
+    manifest_raw=MANIFEST_PATH.read_bytes(); manifest=json.loads(manifest_raw)
+    paths={"synthetic":SYNTHETIC_CASES,"real":REAL_CASES}
+    selected=list(paths) if suite=="all" else [suite]
+    if any(name not in paths or not paths[name].is_file() for name in selected):
+        raise FileNotFoundError(f"suite {suite!r}: NOT_AVAILABLE; fixture cases.json không tồn tại")
+    definitions=[]
+    for name in selected:
+        cases_path=paths[name]; cases_raw=cases_path.read_bytes(); cases_meta=json.loads(cases_raw)
+        entry=manifest.get("files",{}).get(cases_path.relative_to(ROOT).as_posix())
+        if (not entry or entry.get("sha256")!=_sha(cases_raw)
+                or entry.get("bytes")!=len(cases_raw)): raise ProtocolError(f"SHA/size manifest cases {name} không khớp")
+        if cases_meta.get("suite")!=name or cases_meta.get("feature_order")!=list(FEATURE_ORDER):
+            raise ProtocolError(f"metadata suite/feature order {name} không khớp contract")
+        if cases_meta.get("schema_version")!=SCHEMA_VERSION or cases_meta.get("schema_sha256")!=manifest.get("schema_sha256"):
+            raise ProtocolError(f"metadata schema {name} không khớp manifest/contract")
+        definitions.extend((name,case) for case in cases_meta["cases"])
+    if not definitions or len(definitions)>MAX_CASES: raise ProtocolError("suite rỗng hoặc vượt 64 case")
+    from ml.parity.golden import read_inputs
+    loaded=[]; ids=set()
+    for source_suite,meta in definitions:
+        cid=meta["case_id"]; rel=meta["input_file"]
+        if cid in ids or not ID.fullmatch(cid) or len(cid.encode("ascii"))>48: raise ProtocolError("case ID trùng hoặc sai")
+        ids.add(cid); path=ROOT / rel; raw=path.read_bytes()
+        file_entry=manifest.get("files",{}).get(rel)
+        digest=_sha(raw)
+        if digest!=meta["input_sha256"] or not file_entry or digest!=file_entry.get("sha256") or len(raw)!=file_entry.get("bytes"):
+            raise ProtocolError(f"CSV SHA/manifest không khớp: {rel}")
+        header=next(csv.reader([raw.splitlines()[0].decode("ascii")]),[])
+        if header!=["sample_index","time_seconds","roll_deg","pitch_deg","source_sample_index"]:
+            raise ProtocolError(f"CSV columns sai: {rel}")
+        frame=read_inputs(path)
+        indexes=frame.sample_index.tolist()
+        if indexes!=list(range(len(indexes))) or len(indexes)!=meta["n_samples"] or not indexes or len(indexes)>MAX_SAMPLES:
+            raise ProtocolError(f"sample_index/count không liên tục: {cid}")
+        endpoints=[int(e["endpoint_index"]) for e in meta["endpoints"]]
+        if (len(endpoints)!=meta["endpoint_count"] or not endpoints or len(endpoints)>MAX_ENDPOINTS
+                or endpoints!=sorted(set(endpoints)) or endpoints[-1]>=len(indexes)):
+            raise ProtocolError(f"endpoint metadata sai: {cid}")
+        records=b"".join(struct.pack("<ffBB",float(r),float(p),2,1)
+                         for r,p in zip(frame.roll_deg,frame.pitch_deg))
+        loaded.append(dict(case_id=cid,input_sha256=digest,sample_count=len(indexes),
+                           endpoints=endpoints,source_sample_index=frame.source_sample_index.tolist(),
+                           records=records,samples_crc32=zlib.crc32(records)&0xffffffff,
+                           provenance="SIMULATION" if source_suite=="synthetic" else "SENSOR"))
+    return loaded,_sha(manifest_raw)
+
+
+def run_suite(session: TargetSession, cases: list[dict], run_id: str, manifest_sha: str) -> dict:
+    """Stream verified fixtures using the B1a transaction state machine."""
+    session.wait_hello(); session.begin_run(run_id,len(cases),manifest_sha); completed=[]
+    for case in cases:
+        session.begin_case(case["case_id"],case["sample_count"],case["endpoints"],
+                           case["input_sha256"],case["samples_crc32"])
+        records=case["records"]
+        for first in range(0,len(records)//10,MAX_BATCH):
+            block=records[first*10:min(first+MAX_BATCH,len(records)//10)*10]
+            session.send_samples(first,block)
+        session.end_case(); completed.append(case["case_id"])
+    done=session.end_run()
+    return dict(run_done=done,completed_case_ids=completed,transport_status="TRANSPORT_COMPLETE",
+                numerical_parity="NUMERICAL_PARITY_NOT_RUN")
+
+
+def _safe_result(result: dict) -> dict:
+    row=dict(result); mask=row["valid_mask"]
+    row["values"]=[float(v) if mask>>i&1 else None for i,v in enumerate(row["values"])]
+    return row
+
+
+def _source_metadata() -> dict:
+    try: commit=subprocess.check_output(["git","-C",str(ROOT),"rev-parse","HEAD"],text=True).strip()
+    except (OSError,subprocess.CalledProcessError): commit="NOT_AVAILABLE"
+    try: dirty=bool(subprocess.check_output(["git","-C",str(ROOT),"status","--porcelain"],text=True).strip())
+    except (OSError,subprocess.CalledProcessError): dirty=None
+    return dict(source_commit=commit,source_worktree_dirty=dirty)
+
+
+def save_capture(output: Path, run_id: str, suite: str, manifest_sha: str,
+                 cases: list[dict], session: TargetSession, status: str,
+                 firmware_bin: Path | None=None, error: str | None=None) -> None:
+    output.mkdir(parents=True,exist_ok=True)
+    firmware_sha=_sha(firmware_bin.read_bytes()) if firmware_bin else "NOT_AVAILABLE"
+    rows=[]
+    for raw in session.raw_results:
+        rows.append(dict(raw_frame_hex=raw["wire_hex"],payload_hex=raw["payload_hex"],
+                         result=_safe_result(raw["decoded"]),provisional=status!="TRANSPORT_COMPLETE"))
+    (output/"raw_results.jsonl").write_text("".join(json.dumps(r,allow_nan=False,sort_keys=True)+"\n" for r in rows),encoding="utf-8")
+    metadata=dict(run_id=run_id,suite=suite,**_source_metadata(),manifest_sha256=manifest_sha,
+        protocol_version=VERSION,feature_schema_version=FEATURE_SCHEMA_VERSION,
+        semantic_contract_version=SEMANTIC_CONTRACT_VERSION,validity_policy_version=VALIDITY_POLICY_VERSION,
+        parity_schema_version=SCHEMA_VERSION,firmware_sha256=firmware_sha,
+        device_hello=session.hello,cases=[{k:c[k] for k in ("case_id","input_sha256","sample_count","endpoints","source_sample_index","provenance")} for c in cases])
+    summary=dict(transport_status=status,numerical_parity="NUMERICAL_PARITY_NOT_RUN",
+        cases_expected=len(cases),cases_completed=session.completed_cases,
+        result_count=len(session.raw_results),error=error,reset_target_before_retry=status!="TRANSPORT_COMPLETE")
+    (output/"metadata.json").write_text(json.dumps(metadata,allow_nan=False,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+    (output/"transport_summary.json").write_text(json.dumps(summary,allow_nan=False,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+
+
+def main(argv: list[str] | None=None) -> int:
+    parser=argparse.ArgumentParser(description="Gửi golden fixture tới ESP32 HV01 target; không thực hiện numerical parity comparison.")
+    parser.add_argument("--port",required=True); parser.add_argument("--baud",type=int,default=115200)
+    parser.add_argument("--suite",choices=("synthetic","real","all"),default="synthetic")
+    parser.add_argument("--run-id",required=True); parser.add_argument("--output",type=Path)
+    parser.add_argument("--firmware-bin",type=Path); parser.add_argument("--timeout",type=float,default=8.0)
+    args=parser.parse_args(argv)
+    if not ID.fullmatch(args.run_id) or args.run_id in (".","..") or len(args.run_id)>32 or args.baud<=0 or args.timeout<=0:
+        parser.error("run-id, baud hoặc timeout không hợp lệ")
+    output=args.output or ROOT/"ml/data/parity/esp32_target"/args.run_id
+    if output.exists() and (not output.is_dir() or any(output.iterdir())):
+        parser.error(f"thư mục output đã có dữ liệu, không ghi đè: {output}")
+    cases=[]; session=None
+    try:
+        cases,manifest_sha=load_suite(args.suite)
+        if args.firmware_bin and not args.firmware_bin.is_file(): raise FileNotFoundError(args.firmware_bin)
+        try: import serial
+        except ImportError as e: raise RuntimeError("Thiếu pyserial; cài bằng: python -m pip install pyserial") from e
+        with serial.Serial(args.port,args.baud,timeout=args.timeout,write_timeout=args.timeout) as port:
+            session=TargetSession(port,args.timeout); run_suite(session,cases,args.run_id,manifest_sha)
+        save_capture(output,args.run_id,args.suite,manifest_sha,cases,session,"TRANSPORT_COMPLETE",args.firmware_bin)
+        print(f"TRANSPORT_COMPLETE; NUMERICAL_PARITY_NOT_RUN; capture: {output}"); return 0
+    except Exception as exc:
+        if session is None: session=TargetSession(type("NoSerial",(),{})())
+        try:
+            save_capture(output,args.run_id,args.suite,locals().get("manifest_sha","NOT_AVAILABLE"),
+                         cases,session,"FAIL_TRANSPORT",args.firmware_bin,str(exc))
+        except Exception as capture_error: print(f"Không lưu được diagnostic capture: {capture_error}",file=sys.stderr)
+        print(f"FAIL_TRANSPORT: {exc}. Reset target trước lần chạy tiếp theo.",file=sys.stderr); return 2
+
+
+if __name__=="__main__":
+    raise SystemExit(main())
