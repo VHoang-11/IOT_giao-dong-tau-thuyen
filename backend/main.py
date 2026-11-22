@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import app.models  # noqa: F401
+import app.models as _models  # noqa: F401  (dang ky bang cho create_all; ten rieng de khong che ten `app` = FastAPI)
 from alarms.realtime import hub
 from alarms.service import escalate_overdue
 from app.core.config import settings
@@ -14,9 +14,15 @@ from app.core.db import Base, SessionLocal, engine
 from app.core.logging import setup_logging
 from app.core.security import validate_security_settings
 from app.routers import (
-    alarms, auth, commands, device_health, devices, health, notify as notify_router, replay as replay_router, voyages,
+    alarms, auth, commands, device_health, devices, health, ingest_stats,
+    monitor as monitor_router,
+    notify as notify_router,
+    replay as replay_router,
+    retention as retention_router,
+    voyages,
 )
 from app.services.auth import bootstrap_admin
+from app.services.retention import purge_old, retention_enabled
 from commands.service import expire_overdue
 from notify.service import dispatcher
 
@@ -37,6 +43,23 @@ def _escalation_sweep() -> None:
             db.close()
 
 
+def _retention_sweep() -> None:
+    db = SessionLocal()
+    try:
+        purge_old(db)
+    except Exception:
+        db.rollback()
+        log.exception("retention sweep failed")
+    finally:
+        db.close()
+
+
+async def _retention_loop() -> None:
+    while True:
+        await asyncio.to_thread(_retention_sweep)
+        await asyncio.sleep(settings.retention_interval_s)
+
+
 async def _escalation_loop() -> None:
     while True:
         await asyncio.sleep(settings.alarm_escalation_check_s)
@@ -52,14 +75,16 @@ async def lifespan(_: FastAPI):
     log.info("backend started", extra={"database": engine.url.render_as_string(hide_password=True)})
     hub.bind_loop(asyncio.get_running_loop())  # de luong MQTT day tin sang WebSocket
     task = asyncio.create_task(_escalation_loop()) if settings.alarm_escalation_enabled else None
+    retention_task = asyncio.create_task(_retention_loop()) if retention_enabled() else None  # mac dinh khong chay
     if settings.mqtt_enabled:
         from ingest.consumer import start_consumer, stop_consumer
         start_consumer()  # connect_async: khong chan neu broker chua len
     yield
     if settings.mqtt_enabled:
         stop_consumer()
-    if task:
-        task.cancel()
+    for t in (task, retention_task):
+        if t:
+            t.cancel()
     dispatcher.shutdown()
 
 
@@ -69,6 +94,10 @@ app = FastAPI(
     description="Smart Vessel Motion Guard - nguyên mẫu nghiên cứu/đào tạo, dữ liệu mô phỏng. "
                 "Không phải hệ thống an toàn hàng hải.",
     lifespan=lifespan,
+    # production: khong phuc vu tai lieu API cong khai (van xuat duoc file bang scripts/export_openapi.py)
+    docs_url="/docs" if settings.docs_on else None,
+    redoc_url="/redoc" if settings.docs_on else None,
+    openapi_url="/openapi.json" if settings.docs_on else None,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -86,4 +115,6 @@ app.include_router(device_health.router)
 app.include_router(notify_router.router)
 app.include_router(voyages.router)
 app.include_router(replay_router.router)
-# TODO: M3-06 voyages/reports, M3-07 replay/monitor
+app.include_router(monitor_router.router)
+app.include_router(ingest_stats.router)
+app.include_router(retention_router.router)

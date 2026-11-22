@@ -16,14 +16,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from alarms.service import apply_event
+from app.core.config import settings
 from commands.config_service import mark_applied as mark_config_applied
 from commands.service import handle_ack as handle_command_ack
 from notify.service import notify_device_offline
 from app.models import AlarmEvent, Device, DeviceHealth, Telemetry
 from app.models.enums import AlarmLevel, DeviceState, MotionClass, SourceMode
+from ingest.stats import stats
 from ingest.validator import validate
 
-log = logging.getLogger("svmg.ingest")
+log =logging.getLogger("svmg.ingest")
 
 MAX_PAYLOAD_BYTES = 16 * 1024
 
@@ -70,21 +72,16 @@ class Result:
     reason: Optional[str] = None
 
 
-class Stats:
-    """Bo dem don gian de do ti le ban tin nhan/trung/loi (T06, T14)."""
-    def __init__(self) -> None:
-        self.counts: dict[str, int] = {}
-
-    def add(self, r: Result) -> None:
-        k = f"{r.kind or 'unknown'}.{r.outcome.value}"
-        self.counts[k] = self.counts.get(k, 0) + 1
-
-
-stats = Stats()
-
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _device_gate(db: Session, dev_id: str) -> Optional[str]:
+    """Ly do tu choi ban tin theo trang thai thiet bi (Admin quan ly), hoac None neu cho qua."""
+    row = db.execute(select(Device.enabled).where(Device.device_id == dev_id)).first()
+    if row is None:
+        return None if settings.auto_register_devices else "thiet bi chua duoc Admin dang ky (AUTO_REGISTER_DEVICES=false)"
+    return None if row[0] else "thiet bi da bi Admin vo hieu hoa"
 
 
 def _get_or_create_device(db: Session, device_id: str) -> Device:
@@ -196,7 +193,7 @@ def handle_message(db: Session, topic: str, payload: bytes, rx_time: Optional[da
     """Xu ly 1 ban tin. Khong nem exception ra ngoai vi loi du lieu - tra ve Result."""
     rx = rx_time or _utcnow()  # luon gan server_rx_time
     result = _process(db, topic, payload, rx)
-    stats.add(result)
+    stats.add(result.kind, result.outcome.value, result.device_id, topic, result.reason)
     level = logging.INFO if result.outcome in (Outcome.STORED, Outcome.DUPLICATE, Outcome.IGNORED) else logging.WARNING
     log.log(level, "mqtt message", extra={"topic": topic, "device_id": result.device_id,
                                           "kind": result.kind, "outcome": result.outcome.value,
@@ -211,6 +208,9 @@ def _process(db: Session, topic: str, payload: bytes, rx: datetime) -> Result:
     dev_id, kind = m.group(1), m.group(2)
     if len(payload) > MAX_PAYLOAD_BYTES:
         return Result(Outcome.INVALID, kind, dev_id, "payload qua lon")
+    blocked = _device_gate(db, dev_id)
+    if blocked:
+        return Result(Outcome.REJECTED, kind, dev_id, blocked)
     try:
         # parse_constant/parse_float: JSON chuan khong co NaN/Infinity; Python mac dinh van nhan -> phai tu choi
         data = json.loads(payload, parse_constant=_reject_constant, parse_float=_finite_float)

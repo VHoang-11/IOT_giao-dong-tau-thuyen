@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy.sql.expression import true
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +49,8 @@ class Device(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(128))
+    # false = Admin vo hieu hoa: ingest tu choi ban tin, khong nhan lenh/cau hinh/chuyen moi (lich su van giu nguyen)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode), default=SourceMode.SIMULATION)
     state: Mapped[DeviceState] = mapped_column(_enum(DeviceState), default=DeviceState.offline)
     last_seen: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())

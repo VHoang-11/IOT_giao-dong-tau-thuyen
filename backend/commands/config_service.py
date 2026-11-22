@@ -55,6 +55,8 @@ def _device(db: Session, device_id: str) -> Device:
 
 def _publish_new_version(db: Session, dev: Device, body: dict[str, Any], actor: str,
                          action: str, detail: dict[str, Any]) -> DeviceConfigVersion:
+    if not dev.enabled:
+        raise ConfigConflict("Thiết bị đã bị Admin vô hiệu hóa, không nhận cấu hình")
     existing = history(db, dev.device_id)
     # so phien ban phai vuot ca ban server da tao lan ban thiet bi dang bao cao
     version = max([r.config_version for r in existing] + [dev.config_version or 0]) + 1

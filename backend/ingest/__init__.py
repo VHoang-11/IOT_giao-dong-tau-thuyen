@@ -1,1 +1,1 @@
-"""Module ingest — TODO (M3). Xem backend/README.md."""
+"""Nhận bản tin MQTT: validator (JSON Schema), service (xử lý + chống trùng), consumer (paho-mqtt)."""

@@ -91,8 +91,14 @@ def create_command(db: Session, device_id: str, cmd: CommandName, params: dict[s
                    ttl_s: int, actor: str, cmd_id: Optional[str] = None,
                    now: Optional[datetime] = None) -> tuple[Command, bool]:
     """Tao + gui lenh. Tra ve (command, created); created=False neu la gui lai cmd_id cu."""
-    if db.scalar(select(Device.id).where(Device.device_id == device_id)) is None:
+    dev = db.scalar(select(Device).where(Device.device_id == device_id))
+    if dev is None:
         raise DeviceNotFound(f"Không tìm thấy thiết bị '{device_id}'")
+    if not dev.enabled:
+        msg = "Thiết bị đã bị Admin vô hiệu hóa, không nhận lệnh"
+        audit(db, actor, "CMD_BLOCKED", f"{device_id}:{cmd_id or '-'}", {"cmd": cmd.value, "reason": msg})
+        db.commit()  # lan bi chan van phai de lai dau vet
+        raise CommandBlocked(msg)
     clean = validate_params(cmd, params)
     cmd_id = cmd_id or "c-" + uuid.uuid4().hex[:8]
 

@@ -13,14 +13,15 @@ Backend của **Smart Vessel Motion Guard**: nhận bản tin MQTT từ thiết 
 | M3-03 | Alarm service (ACK, MTTA, leo thang, WebSocket) | Xong |
 | M3-04 | Command service (vòng đời lệnh, TTL, cấu hình có phiên bản, rollback) | Xong |
 | M3-05 | JWT + RBAC (3 vai trò) | Xong |
-| M3-06 | Voyage + báo cáo PDF/CSV | Phần lõi xong (chuyến đi, số liệu, CSV, PDF). **Chưa nối** với lệnh `start_voyage` xuống thiết bị (chờ M1) |
-| M3-07 | Replay, Health, Model monitor | **Replay** và **Health** xong; **Model monitor chưa làm** (chờ M2: vector đặc trưng, model registry) |
-| M3-08 | Thông báo Telegram/email | Xong |
-| M3-09 | Kiểm thử T06/T09/T10/T14 + README | Test đơn vị/tích hợp xong (264 test); **chưa chạy với broker thật** |
+| M3-06 | Voyage + báo cáo PDF/CSV | Phần lõi xong (chuyến đi, số liệu, CSV, PDF). **Chưa nối** với lệnh `start_voyage` xuống thiết bị (chờ M1); báo cáo chưa tự sinh khi kết thúc chuyến (chờ nhóm quyết định) |
+| Ngoài WP | Quản lý thiết bị (Admin), số đếm ingest, dọn dữ liệu cũ, hiệu chuẩn, gắn nhãn cảnh báo, TLS MQTT | Xong |
+| M3-07 | Replay, Health, Model monitor | **Replay**, **Health** và **độ nhất quán RF/Baseline** xong. **Drift PSI chưa khả dụng** (chờ M2: vector 14 đặc trưng, `ml/monitor/`); endpoint trả `available=false`, không trả số giả |
+| M3-08 | Thông báo Telegram/email | Xong (chưa gửi thử tin thật) |
+| M3-09 | Kiểm thử T06/T09/T10/T14 + README | 375 test, độ phủ 97%, gồm test **qua kết nối MQTT thật** (broker thuần Python). **Chưa** chạy với Mosquitto, ESP32 hay đội tàu thật: T14 và T05 chờ M1/M2 |
 
 ## Công nghệ
 
-FastAPI · SQLAlchemy 2.0 · Alembic · Pydantic v2 · paho-mqtt 2.x · PyJWT · httpx · jsonschema. CSDL: SQLite (dev), PostgreSQL (dự kiến cho production, **chưa chạy thử trên PostgreSQL**).
+FastAPI · SQLAlchemy 2.0 · Alembic · Pydantic v2 · paho-mqtt 2.x · PyJWT · httpx · jsonschema · ReportLab. CSDL: SQLite chế độ WAL (dev), PostgreSQL (dự kiến cho production, **chưa chạy thử trên PostgreSQL**). Phiên bản thư viện được **ghim** trong `requirements.txt` (bộ đã chạy đủ test trên Python 3.13.5).
 
 ## Cấu trúc
 
@@ -31,17 +32,17 @@ backend/
 │   ├── core/                # config, db, logging (JSON), security (JWT/RBAC), passwords (scrypt)
 │   ├── models/              # 10 bảng SQLAlchemy + enums
 │   ├── schemas/             # Pydantic request/response
-│   ├── routers/             # auth, devices, alarms, commands, device_health, notify, health
-│   └── services/            # audit, auth
-├── ingest/                  # validator (JSON Schema), service (xử lý bản tin), consumer (paho)
+│   ├── routers/             # auth, devices, alarms, commands, device_health, notify, voyages, replay, monitor, ingest_stats, retention, health
+│   └── services/            # audit, auth, voyages, retention
+├── ingest/                  # validator (JSON Schema), service (xử lý bản tin), consumer (paho), stats (bộ đếm)
 ├── alarms/                  # service (vòng đời cảnh báo), realtime (WebSocket hub)
 ├── commands/                # params (an toàn), service (vòng đời lệnh), config_service, publisher
 ├── notify/                  # Telegram + email webhook
 ├── reports/                 # metrics (số liệu), csvexport, pdf, fonts/ (DejaVu, kèm license)
-├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo, 0003 nhãn cảnh báo, 0004 chuyến đi)
+├── migrations/              # Alembic (0001 schema, 0002 định danh cảnh báo, 0003 nhãn cảnh báo, 0004 chuyến đi, 0005 bật/tắt thiết bị)
 ├── scripts/                 # export_openapi.py, create_user.py
 ├── replay/                  # Replay API (service lấy dữ liệu theo trang)
-└── (monitor/ — chưa làm, chờ M2)
+└── monitor/                 # nhất quán RF vs Baseline B; drift PSI chờ M2
 ```
 
 ## Cài đặt & chạy
@@ -52,7 +53,8 @@ Chạy các lệnh **từ thư mục `backend/`** (file `.env` được đọc t
 cd backend
 python -m venv venv
 venv\Scripts\activate            # Windows   |   source venv/bin/activate  (Linux/Mac)
-pip install -r requirements.txt        # hoặc requirements-dev.txt (thêm pdfplumber cho test đọc PDF)
+pip install -r requirements.txt        # chạy backend (phiên bản đã ghim)
+pip install -r requirements-dev.txt    # thêm: chạy đủ test (pdfplumber đọc PDF, amqtt = broker MQTT trong test)
 
 cp ../infra/.env.example .env    # rồi sửa .env (xem bảng biến môi trường)
 python scripts/create_user.py admin ADMIN   # tạo admin đầu tiên (hỏi mật khẩu, không hiện trên màn hình)
@@ -79,11 +81,18 @@ uvicorn main:app --reload --port 8000
 | `MQTT_ENABLED` | `true` | Bật/tắt consumer MQTT |
 | `MQTT_BROKER` / `MQTT_PORT` | `localhost` / `1883` | Broker |
 | `MQTT_USER` / `MQTT_PASS` | `backend` / *(rỗng)* | Tài khoản MQTT |
+| `MQTT_TLS` / `MQTT_CA_CERTS` | `false` / *(rỗng)* | Mã hóa kết nối tới broker (thường cổng 8883). Luôn xác minh chứng chỉ, **không có tùy chọn tắt xác minh**. `ENV=production` mà chưa bật sẽ có cảnh báo |
+| `AUTO_REGISTER_DEVICES` | `true` | `false` = chỉ nhận thiết bị Admin đã đăng ký trước (`POST /devices`); nên dùng ở production |
+| `DOCS_ENABLED` | *(tự động)* | Bật `/docs`, `/redoc`, `/openapi.json`. Mặc định bật ở dev, **tắt khi `ENV=production`** |
 | `CONTRACTS_DIR` | *(rỗng → `<repo>/contracts/schemas`)* | Thư mục JSON Schema |
 | `ALARM_ESCALATE_AFTER_S` | `60` | Cảnh báo chưa ACK sau N giây → leo thang |
+| `ALARM_ESCALATION_ENABLED` / `ALARM_ESCALATION_CHECK_S` | `true` / `5` | Bật/tắt và chu kỳ quét nền (leo thang cảnh báo, TIMEOUT lệnh) |
+| `HEALTH_STALE_S` | `90` | Thiết bị im quá N giây = `stale` (health gửi mỗi 30 s → 3 chu kỳ) |
+| `RETENTION_HEALTH_DAYS` / `RETENTION_TELEMETRY_DAYS` | `0` / `0` | Dọn dữ liệu cũ; **0 = giữ mãi (mặc định)**. Xem mục *Dọn dữ liệu cũ* |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | *(rỗng)* | Bật kênh Telegram khi cả hai được đặt |
 | `EMAIL_WEBHOOK_URL` | *(rỗng)* | Bật kênh email webhook |
 | `NOTIFY_COOLDOWN_S` | `30` | Không gửi lại cùng một thông báo trong N giây |
+| `NOTIFY_TIMEOUT_S` / `NOTIFY_RETRIES` / `NOTIFY_BACKOFF_S` | `5` / `2` / `1` | Thời gian chờ, số lần thử lại, giãn cách giữa các lần thử |
 | `CORS_ORIGINS` | `http://localhost:5173` | Origin được phép, ngăn cách bằng dấu phẩy |
 
 **Không commit `.env`.** `.gitignore` đã chặn.
@@ -95,8 +104,8 @@ uvicorn main:app --reload --port 8000
 | Vai trò | Quyền |
 |---------|-------|
 | **OPERATOR** | Xem dữ liệu, ACK cảnh báo, gửi lệnh `mute_alarm` |
-| **SUPERVISOR** | + tạo/kết thúc chuyến đi, `set_profile`, `set_threshold`, `calibrate_zero`, `start/stop_voyage`, `PUT /config`, rollback, **gắn nhãn cảnh báo**, xem audit |
-| **ADMIN** | + `restart_device`, quản lý người dùng, kiểm tra kênh thông báo |
+| **SUPERVISOR** | + tạo/kết thúc chuyến đi, `set_profile`, `set_threshold`, `calibrate_zero`, `start/stop_voyage`, `PUT /config`, rollback, **gắn nhãn cảnh báo**, xem audit và số đếm ingest |
+| **ADMIN** | + `restart_device`, quản lý người dùng và **thiết bị** (đăng ký, đặt tên, bật/tắt), đặt lại số đếm ingest, kiểm tra kênh thông báo, dọn dữ liệu cũ |
 
 Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào `audit_log` (`GET /api/v1/audit`).
 
@@ -106,8 +115,11 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 |------|----------|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/change-password` |
 | Người dùng (Admin) | `GET/POST /users`, `PATCH /users/{id}` |
-| Thiết bị | `GET /devices`, `/devices/{id}`, `/devices/{id}/telemetry` |
-| Sức khỏe | `GET /health/devices`, `/devices/{id}/health` |
+| Thiết bị | `GET /devices`, `/devices/{id}`, `/devices/{id}/telemetry`; Admin: `POST /devices`, `PATCH /devices/{id}` |
+| Sức khỏe | `GET /health/devices` (kèm trạng thái hiệu chuẩn), `/devices/{id}/health` |
+| Giám sát mô hình | `GET /monitor/agreement`, `/monitor/drift` |
+| Số đếm ingest | `GET /ingest/stats` (Supervisor), `POST /ingest/stats/reset` (Admin) |
+| Dọn dữ liệu (Admin) | `GET /retention/status`, `POST /retention/run` |
 | Cảnh báo | `GET /alarms` (lọc `state`, `label`, `unlabeled`), `/alarms/{id}`, `/alarms/stats`, `POST /alarms/{id}/ack`, `PUT /alarms/{id}/label`, WebSocket `/ws/alarms` |
 | Chuyến đi (Supervisor tạo/kết thúc) | `POST /voyages`, `GET /voyages`, `/voyages/{id}`, `POST /voyages/{id}/end` |
 | Báo cáo chuyến | `GET /voyages/{id}/summary`, `/telemetry.csv`, `/alarms.csv`, `/report.pdf` |
@@ -143,6 +155,9 @@ Topic `svmg/{device_id}/…` theo `contracts/mqtt_topics.md`.
 - Backend **không tự điền giá trị cấu hình mặc định**: phiên bản config đầu tiên chỉ chứa đúng những trường người gọi gửi.
 - Việc nặng (băm mật khẩu, gửi thông báo thử) chạy ngoài event loop; WebSocket gửi song song, client chậm bị loại để không chặn cảnh báo tới người khác.
 - SQLite chạy chế độ WAL + `busy_timeout` để MQTT, API và tác vụ nền ghi đồng thời không gây `database is locked`.
+- **Không bao giờ trả số liệu giả:** drift chưa có nguồn thì `available=false` kèm lý do (không phải PSI = 0, không phải "ổn định"); tỉ lệ chưa có mẫu thì `null` chứ không phải 0%.
+- Thiết bị bị Admin vô hiệu hóa: bản tin bị từ chối (hiện trong số đếm lỗi), không nhận lệnh, cấu hình, chuyến mới. Không có chức năng xóa thiết bị để giữ lịch sử và báo cáo.
+- `/docs` và `/openapi.json` tự tắt khi `ENV=production`.
 
 ## Gắn nhãn cảnh báo (đánh giá sau sự việc)
 
@@ -200,6 +215,33 @@ Kết quả gồm `meta` (tổng quan thanh thời gian), `telemetry`, `alarm_ev
 
 Mọi mốc thời gian lưu và trả về là **UTC, có ký hiệu múi giờ** (`...Z`). SQLite không lưu múi giờ, nên backend dùng kiểu `UTCDateTime` để đọc ra luôn có múi giờ UTC (nếu không, JavaScript hiểu chuỗi thiếu `Z` là giờ địa phương và dashboard ở UTC+7 sẽ lệch 7 tiếng). Giao diện chỉ cần đổi sang giờ địa phương khi hiển thị.
 
+## Giám sát mô hình (G6)
+
+- `GET /monitor/agreement?device_id=…[&voyage_id=…][&limit=…]`: tỉ lệ Random Forest **trùng** Baseline B trên `limit` mẫu gần nhất (theo giờ nhận) có đủ cả hai nhãn. Đây là độ **nhất quán** giữa hai mô hình, không phải độ chính xác (không có nhãn thật) và không phải dự báo nguy hiểm. Mẫu `sensor_ok=false` bị loại và đếm riêng (`excluded_sensor_fault`); kết quả luôn có `source_label` (`SIMULATION`/`SENSOR`/`MIXED`); chia theo **lớp RF** (`by_rf_class`), không đổi tên thành mức cảnh báo. `agreement_rate = null` khi chưa có mẫu.
+- `GET /monitor/drift?device_id=…[&window_hours=…]`: **hiện chưa khả dụng**. PSI cần vector 14 đặc trưng (`contracts/features.md`), trong khi telemetry chỉ lưu 3 đặc trưng tóm tắt. Endpoint trả `available=false`, `reason`, `expected_features` (14 tên đúng thứ tự hợp đồng, có test đối chiếu), và `window_samples` thật. **Không trả PSI nào.** Khi M2 giao `ml/monitor/` và nguồn đặc trưng, thay phần trả về trong `monitor/service.py`.
+
+## Quản lý thiết bị (Admin)
+
+Thiết bị mặc định **tự đăng ký** khi có bản tin đầu tiên. Admin có thể:
+
+- `POST /devices` `{device_id, name?, source_mode}`: đăng ký trước. `source_mode` (`SENSOR`/`SIMULATION`) **bắt buộc**, không có mặc định ngầm; giá trị này được cập nhật theo bản tin thật khi thiết bị bắt đầu gửi.
+- `PATCH /devices/{id}` `{name?, enabled?}`: đặt tên, bật/tắt. Mọi thay đổi có audit.
+- Đặt `AUTO_REGISTER_DEVICES=false` để chỉ nhận thiết bị đã đăng ký (khuyến nghị cho production).
+
+Thiết bị `enabled=false`: ingest từ chối bản tin; lệnh, cấu hình, chuyến mới trả 409. Lưu ý: tắt thiết bị nghĩa là **bỏ qua cả cảnh báo** của nó, chỉ dùng cho thiết bị đã ngừng hoạt động hoặc đáng ngờ.
+
+## Số đếm ingest (đo T06, T14)
+
+`GET /ingest/stats` trả số bản tin theo kết quả (`STORED`, `DUPLICATE`, `INVALID`, `REJECTED`, `IGNORED`), theo loại bản tin và theo thiết bị, kèm các tỉ lệ (`null` khi chưa có bản tin), và **50 bản tin bị từ chối gần nhất kèm lý do** để M1 tự sửa firmware mà không phải đọc log. `POST /ingest/stats/reset` (Admin, có audit) đặt lại trước mỗi lần chạy thí nghiệm. Bộ đếm nằm trong bộ nhớ tiến trình (mất khi khởi động lại; không chia sẻ giữa nhiều worker); số theo từng chuyến (dựa trên `seq`) xem trong báo cáo chuyến đi.
+
+## Hiệu chuẩn (G5)
+
+`GET /health/devices` có thêm `last_calibrated_at` (lần `calibrate_zero` gần nhất được thiết bị xác nhận `APPLIED`) và `last_calibration_state` (kết quả lần gửi lệnh gần nhất). **Chỉ phản ánh lệnh qua backend**; hiệu chuẩn bằng nút/chiết áp trên thiết bị không được ghi nhận. `null` nghĩa là chưa có lần nào (không phải "không cần").
+
+## Dọn dữ liệu cũ (retention)
+
+**Mặc định TẮT** (`0` ngày = giữ mãi). Khi bật, chỉ động vào `device_health` cũ hơn `RETENTION_HEALTH_DAYS` và telemetry **không thuộc chuyến nào** cũ hơn `RETENTION_TELEMETRY_DAYS`. **Không bao giờ xóa**: telemetry thuộc chuyến đi (nguồn của báo cáo, replay, T11/T15), cảnh báo, sự kiện cảnh báo, lệnh, cấu hình, chuyến đi, nhật ký kiểm toán. Xóa theo lô nhỏ, commit từng lô, có audit `RETENTION_PURGE`. `GET /retention/status` xem chính sách và số dòng; `POST /retention/run` chạy ngay. Thời gian giữ dữ liệu là quyết định của nhóm, chưa chốt.
+
 ## Thông báo Telegram / email
 
 1. Tạo bot qua BotFather, lấy token; lấy `chat_id` của nhóm/người nhận.
@@ -210,25 +252,32 @@ Gửi khi: cảnh báo lên **CRITICAL**, cảnh báo chưa ACK bị **leo thang
 
 ## Kiểm thử
 
-Từ thư mục gốc repo:
+Từ thư mục gốc repo (nên dùng venv riêng + `pip install -r backend/requirements-dev.txt`):
 
 ```bash
 python -m pytest tests/backend -q
 ```
 
-Test dùng SQLite trong bộ nhớ, publisher MQTT giả và mạng giả (`httpx.MockTransport`). **Không cần broker, không gửi tin nhắn thật, không dùng dữ liệu của thành viên khác** — chỉ dùng `contracts/examples/` và payload tối thiểu trong chính file test.
+**375 test, độ phủ ~97%.** Thiếu `amqtt` hoặc `pdfplumber` thì test tương ứng tự bỏ qua (không lỗi). Đã chạy đủ trong một môi trường sạch dựng từ `requirements-dev.txt`.
+
+- **Test đơn vị/API:** SQLite trong bộ nhớ, publisher MQTT giả, mạng giả (`httpx.MockTransport`). Không gửi tin nhắn thật, không dùng dữ liệu của thành viên khác: chỉ `contracts/examples/` và payload tối thiểu trong chính file test.
+- **Test tích hợp MQTT thật** (`tests/backend/test_mqtt_integration.py`): `consumer.py` kết nối tới một broker `amqtt` qua **TCP thật** (không cần Docker), cùng một "thiết bị giả" dùng paho. Phủ: nhận telemetry/event/status, khử trùng khi gửi lại sau mất mạng (T06), payload xấu, thiết bị bị vô hiệu hóa, **LWT**, lệnh khứ hồi (PUBACK → `DELIVERED` → ACK → `APPLIED`), mute bị chặn khi CRITICAL không bao giờ tới thiết bị, cấu hình **retained** tới thiết bị bật sau, **broker chết rồi sống lại** (tự kết nối lại, subscribe lại, không xếp hàng lệnh hỏng). Mỗi test dùng một broker riêng để không rò rỉ tin retained.
+- Bộ test tích hợp đã được kiểm chứng bằng cách **cố ý phá code thật** (bỏ `subscribe`; bỏ chốt chặn gửi lệnh khi mất kết nối) và xem test có bắt được không.
+- `test_pinned_versions_match_what_is_installed` báo ngay nếu ai nâng thư viện mà quên cập nhật `requirements.txt`.
 
 ## Hạn chế đã biết
 
-- **Chưa chạy với Mosquitto thật** và **chưa thử trên PostgreSQL**.
+- **Đã chạy qua broker MQTT thuần Python (`amqtt`), chưa chạy với Mosquitto, ESP32/Wokwi hay đội tàu thật.** T05 và T14 vẫn chờ M1/M2. Chưa thử trên **PostgreSQL**. Chưa gửi **Telegram thật**. `Dockerfile` chưa được build thử (Docker Desktop chưa chạy khi kiểm tra).
+- MQTT TLS đã có cấu hình nhưng chưa được thử với broker thật (cần chứng chỉ).
 - Chưa có refresh token và đăng xuất phía server (token sống `JWT_EXPIRE_MINUTES`; muốn thu hồi sớm thì khóa tài khoản).
-- Bộ đếm khóa đăng nhập nằm trong bộ nhớ tiến trình (mất khi restart, không chia sẻ giữa nhiều worker).
-- Token WebSocket nằm trong URL (có thể vào log của proxy); phiên WebSocket không tự ngắt khi token hết hạn.
+- Bộ đếm khóa đăng nhập và bộ đếm ingest nằm trong bộ nhớ tiến trình (mất khi khởi động lại, không chia sẻ giữa nhiều worker).
+- Token WebSocket nằm trong URL (có thể vào log của proxy); phiên WebSocket không tự ngắt khi token hết hạn. WebSocket chỉ đẩy cảnh báo và lệnh, **chưa đẩy telemetry** (trang Live Motion đang cần polling hoặc cần thêm kênh, chờ M4 quyết định).
 - MTTA tính theo giờ server nhận bản tin, nên có thể bị phóng đại khi thiết bị gửi lại dữ liệu đệm sau mất mạng.
-- Báo cáo đọc toàn bộ telemetry của chuyến trong một lượt (bộ nhớ ~ số mẫu cho phân vị 95 và biểu đồ). Đã thử 6000 mẫu; chuyến rất dài (hàng trăm nghìn mẫu) chưa kiểm chứng.
-- Bảng `telemetry`, `device_health`, `audit_log` **chưa có cơ chế dọn dữ liệu cũ** (retention); cần xử lý nếu chạy dài ngày.
-- `Dockerfile` chưa được thử build. Thư mục `contracts/` không nằm trong image, cần mount và đặt `CONTRACTS_DIR`.
+- Báo cáo đọc toàn bộ telemetry của chuyến trong một lượt (bộ nhớ ~ số mẫu). Đã thử 6000 mẫu; chuyến rất dài (hàng trăm nghìn mẫu) chưa kiểm chứng.
+- Retention chỉ xóa `device_health` và telemetry không thuộc chuyến; telemetry của chuyến đã kết thúc giữ mãi.
+- `contracts/` không nằm trong Docker image, cần mount và đặt `CONTRACTS_DIR`.
 - Nếu chạy nhiều instance backend, `client_id` MQTT cố định (`svmg-backend-ingest`) sẽ làm các instance đá nhau khỏi broker.
+- `main.py` (vòng đời khởi động, các vòng quét nền) phủ test thấp nhất (~68%).
 
 ## Điểm cần thống nhất với nhóm (chưa chốt)
 
@@ -237,4 +286,6 @@ Test dùng SQLite trong bộ nhớ, publisher MQTT giả và mạng giả (`http
 3. **`DELIVERED`** nghĩa là broker đã nhận (PUBACK), không phải thiết bị đã nhận; chỉ `cmd/ack` mới xác nhận thiết bị.
 4. **`voyage_id` trong lệnh `start_voyage`**: thiết bị nhận từ lệnh hay tự sinh rồi báo ngược lên? Hiện `POST /voyages` cho phép truyền sẵn `voyage_id` để khớp với giá trị thiết bị đang phát.
 5. **Ý nghĩa của `t_sim_s`**: có đếm lại sau mỗi lần khởi động không? Với dữ liệu thật (`SENSOR`) nó mang nghĩa gì? Replay hiện sắp xếp theo giờ server vì chưa chốt điều này.
-6. **Tên giá trị nhãn cảnh báo** (`TRUE_ALARM`/`FALSE_ALARM`/`UNCLEAR`) và các trường `summary.json` do backend đặt, cần M4 xác nhận khi làm giao diện.
+6. **Drift PSI (G6):** cần M2 cung cấp vector 14 đặc trưng (qua topic/trường nào, tần suất) và `ml/monitor/`. Trước khi có, endpoint chỉ trả `available=false`.
+7. **Thời gian giữ dữ liệu** (retention) và việc "báo cáo tự động" khi kết thúc chuyến nghĩa là gì (chỉ tải được bất kỳ lúc nào, hay tự tạo và lưu file).
+8. **Tên giá trị nhãn cảnh báo** (`TRUE_ALARM`/`FALSE_ALARM`/`UNCLEAR`) và các trường `summary.json` do backend đặt, cần M4 xác nhận khi làm giao diện.

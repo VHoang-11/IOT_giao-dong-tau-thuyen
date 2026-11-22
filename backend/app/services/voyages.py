@@ -53,6 +53,8 @@ def start_voyage(db: Session, actor: str, device_id: str, voyage_id: Optional[st
     dev = db.scalar(select(Device).where(Device.device_id == device_id))
     if dev is None:
         raise VoyageNotFound(f"Không tìm thấy thiết bị '{device_id}'")
+    if not dev.enabled:
+        raise VoyageConflict(f"Thiết bị '{device_id}' đã bị vô hiệu hóa, không thể bắt đầu chuyến mới")
     active = _active_voyage(db, device_id)
     if active is not None:
         raise VoyageConflict(f"Thiết bị '{device_id}' đang có chuyến '{active.voyage_id}' chưa kết thúc")

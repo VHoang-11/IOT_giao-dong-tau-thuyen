@@ -2,14 +2,12 @@
 import asyncio
 import json
 import threading
-from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 import pytest
 from conftest import NOAUTH, PASSWORD
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
 
 from alarms.realtime import AlarmHub, hub
 from app.core.config import settings

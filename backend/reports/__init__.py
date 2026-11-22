@@ -1,1 +1,1 @@
-"""Module reports — TODO (M3). Xem backend/README.md."""
+"""Báo cáo chuyến đi: metrics (số liệu), csvexport, pdf (ReportLab + font DejaVu)."""
