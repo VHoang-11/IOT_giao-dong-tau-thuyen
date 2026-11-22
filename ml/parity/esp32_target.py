@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse, csv, hashlib, json, math, re, struct, subprocess, sys, time, zlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ml.parity.contract import FEATURE_ORDER, FEATURE_SCHEMA_VERSION, SCHEMA_VERSION, SEMANTIC_CONTRACT_VERSION, VALIDITY_POLICY_VERSION
@@ -120,40 +121,91 @@ def parse_error(p: bytes) -> dict:
 
 class TargetSession:
     """Transport transactions only; fixture loading, CLI, and parity comparison live outside B1a."""
-    def __init__(self, serial, timeout: float=8.0):
+    def __init__(self, serial, timeout: float=8.0, transcript_path: Path | None=None,
+                 execution_kind: str="host_mock"):
         self.serial,self.timeout=serial,timeout
         self.tx_seq=self.rx_seq=0; self.state="WAIT_HELLO"; self.hello=None
         self.run_id=None; self.manifest_sha=None; self.expected_cases=0; self.completed_cases=0; self.seen_case_ids=set()
         self.case=None; self.results=[]; self.raw_results=[]; self.transport_complete=False
+        self.transcript=[]; self.transcript_path=Path(transcript_path) if transcript_path else None
+        self.execution_kind=execution_kind; self.transcript_complete=False; self.transcript_integrity=True
 
-    def _read(self,n: int) -> bytes:
+    def _record(self, direction: str, raw: bytes, status: str="OK", detail: str | None=None) -> None:
+        kind=seq=declared=None
+        if len(raw)>=4: kind=raw[3]
+        if len(raw)>=8: seq=struct.unpack_from("<I",raw,4)[0]
+        if len(raw)>=10: declared=struct.unpack_from("<H",raw,8)[0]
+        event=dict(event_index=len(self.transcript),direction=direction,frame_type=TYPES.get(kind),
+            type_id=kind,sequence=seq,timestamp_utc=datetime.now(timezone.utc).isoformat(timespec="microseconds"),
+            monotonic_ns=time.monotonic_ns(),frame_length=len(raw),declared_payload_length=declared,
+            expected_frame_length=declared+14 if declared is not None else None,
+            raw_frame_hex=raw.hex(),frame_complete=status=="OK",status=status,detail=detail)
+        self.transcript.append(event)
+        if status!="OK": self.transcript_integrity=False
+        if self.transcript_path is not None:
+            try:
+                self.transcript_path.parent.mkdir(parents=True,exist_ok=True)
+                with self.transcript_path.open("a",encoding="utf-8") as stream:
+                    stream.write(json.dumps(event,allow_nan=False,separators=(",",":"))+"\n")
+            except OSError as exc:
+                self.transcript_integrity=False
+                raise ProtocolError(f"Không ghi được serial transcript: {exc}") from exc
+
+    def _read(self,n: int, capture: bytearray | None=None) -> bytes:
         deadline=time.monotonic()+self.timeout; data=bytearray()
         while len(data)<n:
             if time.monotonic()>=deadline: raise ProtocolError("timeout chờ frame/terminal completion")
             part=self.serial.read(n-len(data))
-            if part: data.extend(part)
+            if part:
+                data.extend(part)
+                if capture is not None: capture.extend(part)
         return bytes(data)
 
     def receive(self) -> tuple[Frame,dict]:
-        sync=self._read(2)
-        if sync!=b"\x53\x56": raise ProtocolError("sync sai")
-        h=self._read(8); ver,kind,seq,n=struct.unpack("<BBIH",h)
-        if n>MAX_PAYLOAD: raise ProtocolError("payload vượt 384 byte")
-        f=decode_frame(sync+h+self._read(n+4),self.rx_seq); self.rx_seq+=1
-        parsers={128:parse_hello,129:parse_ack,130:parse_result,131:parse_case_done,132:parse_run_done,143:parse_error}
-        if f.kind not in parsers: raise ProtocolError(f"unexpected target message {f.kind}")
-        value=parsers[f.kind](f.payload)
+        raw=bytearray()
+        try:
+            sync=self._read(2,raw)
+            if sync!=b"\x53\x56": raise ProtocolError("sync sai")
+            h=self._read(8,raw); _,kind,_,n=struct.unpack("<BBIH",h)
+            if n>MAX_PAYLOAD: raise ProtocolError("payload vượt 384 byte")
+            tail=self._read(n+4,raw); f=decode_frame(sync+h+tail,self.rx_seq)
+            parsers={128:parse_hello,129:parse_ack,130:parse_result,131:parse_case_done,132:parse_run_done,143:parse_error}
+            if f.kind not in parsers: raise ProtocolError(f"unexpected target message {f.kind}")
+            value=parsers[f.kind](f.payload)
+        except ProtocolError as exc:
+            self._record("RX",bytes(raw),"FRAME_ERROR" if raw else "TIMEOUT",str(exc))
+            raise
+        except Exception as exc:
+            self._record("RX",bytes(raw),"READ_ERROR",str(exc))
+            raise ProtocolError("serial read lỗi") from exc
+        self._record("RX",bytes(raw))
+        self.rx_seq+=1
         if f.kind==128: self.hello=value
         return f,value
 
     def send(self,kind: int,payload: bytes=b"") -> int:
         wire=encode_frame(kind,self.tx_seq,payload)
+        raw=b""
         try:
             n=self.serial.write(wire)
-            if n is not None and n!=len(wire): raise ProtocolError("serial write ngắn")
+            if n is None:
+                raw=wire
+                self._record("TX",raw,"WRITE_COUNT_UNKNOWN","Serial.write không trả byte count")
+            elif isinstance(n,int) and 0<=n<=len(wire):
+                raw=wire[:n]
+                if n!=len(wire):
+                    self._record("TX",raw,"PARTIAL_WRITE",f"{n}/{len(wire)} byte")
+                    raise ProtocolError("serial write lỗi: ghi thiếu byte")
+            else:
+                self._record("TX",b"","WRITE_COUNT_INVALID",f"byte count không hợp lệ: {n!r}")
+                raise ProtocolError("serial write trả byte count không hợp lệ")
             if hasattr(self.serial,"flush"): self.serial.flush()
+        except ProtocolError:
+            self.state="FAILED"; raise
         except Exception as e:
+            self._record("TX",raw,"WRITE_ERROR",str(e))
             self.state="FAILED"; raise ProtocolError("serial write lỗi; reset target") from e
+        if n is not None: self._record("TX",raw)
         seq=self.tx_seq; self.tx_seq+=1; return seq
 
     def wait_hello(self) -> dict:
@@ -263,7 +315,9 @@ class TargetSession:
         self._exchange(5,b"",self._last_count); m=self._terminal(132)
         if (m["run_id"],m["cases_completed"],m["manifest_sha256"],m["status"])!=(self.run_id,self.expected_cases,self.manifest_sha,0):
             self.state="FAILED"; raise ProtocolError("RUN_DONE thiếu hoặc không khớp")
-        self.state="COMPLETE"; self.transport_complete=True; return m
+        self.state="COMPLETE"; self.transport_complete=True
+        self.transcript_complete=self.transcript_integrity
+        return m
 
 
 def _sha(data: bytes) -> str:
@@ -353,22 +407,55 @@ def save_capture(output: Path, run_id: str, suite: str, manifest_sha: str,
                  cases: list[dict], session: TargetSession, status: str,
                  firmware_bin: Path | None=None, error: str | None=None) -> None:
     output.mkdir(parents=True,exist_ok=True)
+    transcript_path=output/"serial_transcript.jsonl"
+    if session.transcript_path is not None:
+        source=session.transcript_path
+        if source.resolve()!=transcript_path.resolve():
+            with transcript_path.open("xb") as stream: stream.write(source.read_bytes())
+        elif not transcript_path.exists():
+            with transcript_path.open("xb") as stream:
+                for event in session.transcript:
+                    stream.write((json.dumps(event,allow_nan=False,separators=(",",":"))+"\n").encode())
+    elif not transcript_path.exists():
+        with transcript_path.open("xb") as stream:
+            for event in session.transcript:
+                stream.write((json.dumps(event,allow_nan=False,separators=(",",":"))+"\n").encode())
+    transcript_raw=transcript_path.read_bytes()
+    transcript_sha=_sha(transcript_raw)
+    transcript_complete=bool(status=="TRANSPORT_COMPLETE" and session.transcript_complete
+                             and session.transcript_integrity)
     firmware_sha=_sha(firmware_bin.read_bytes()) if firmware_bin else "NOT_AVAILABLE"
+    has_serial_bytes=any(e["direction"] in ("TX","RX") and e["raw_frame_hex"] for e in session.transcript)
+    capture_status=("HOST_MOCK_VERIFIED" if session.execution_kind=="host_mock" else
+                    "TARGET_CAPTURE_COLLECTED" if has_serial_bytes else "TARGET_EVIDENCE_NOT_VERIFIED")
     rows=[]
     for raw in session.raw_results:
         rows.append(dict(raw_frame_hex=raw["wire_hex"],payload_hex=raw["payload_hex"],
                          result=_safe_result(raw["decoded"]),provisional=status!="TRANSPORT_COMPLETE"))
-    (output/"raw_results.jsonl").write_text("".join(json.dumps(r,allow_nan=False,sort_keys=True)+"\n" for r in rows),encoding="utf-8")
+    with (output/"raw_results.jsonl").open("x",encoding="utf-8") as stream:
+        stream.write("".join(json.dumps(r,allow_nan=False,sort_keys=True)+"\n" for r in rows))
     metadata=dict(run_id=run_id,suite=suite,**_source_metadata(),manifest_sha256=manifest_sha,
         protocol_version=VERSION,feature_schema_version=FEATURE_SCHEMA_VERSION,
         semantic_contract_version=SEMANTIC_CONTRACT_VERSION,validity_policy_version=VALIDITY_POLICY_VERSION,
         parity_schema_version=SCHEMA_VERSION,firmware_sha256=firmware_sha,
+        firmware_sha256_source="host_file" if firmware_bin else "NOT_AVAILABLE",
+        firmware_sha256_scope="host file only; not attestation of the binary running on the device" if firmware_bin else "NOT_AVAILABLE",
+        execution_kind=session.execution_kind,
+        capture_status=capture_status,
+        target_evidence_status="TARGET_EVIDENCE_NOT_VERIFIED",
+        numerical_parity="NUMERICAL_PARITY_NOT_RUN",
+        serial_transcript_sha256=transcript_sha,serial_transcript_complete=transcript_complete,
+        serial_transcript_event_count=len(session.transcript),
         device_hello=session.hello,cases=[{k:c[k] for k in ("case_id","input_sha256","sample_count","endpoints","source_sample_index","provenance")} for c in cases])
     summary=dict(transport_status=status,numerical_parity="NUMERICAL_PARITY_NOT_RUN",
         cases_expected=len(cases),cases_completed=session.completed_cases,
-        result_count=len(session.raw_results),error=error,reset_target_before_retry=status!="TRANSPORT_COMPLETE")
-    (output/"metadata.json").write_text(json.dumps(metadata,allow_nan=False,indent=2,sort_keys=True)+"\n",encoding="utf-8")
-    (output/"transport_summary.json").write_text(json.dumps(summary,allow_nan=False,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        result_count=len(session.raw_results),error=error,reset_target_before_retry=status!="TRANSPORT_COMPLETE",
+        serial_transcript_sha256=transcript_sha,serial_transcript_complete=transcript_complete,
+        capture_status=capture_status,target_evidence_status="TARGET_EVIDENCE_NOT_VERIFIED")
+    with (output/"metadata.json").open("x",encoding="utf-8") as stream:
+        stream.write(json.dumps(metadata,allow_nan=False,indent=2,sort_keys=True)+"\n")
+    with (output/"transport_summary.json").open("x",encoding="utf-8") as stream:
+        stream.write(json.dumps(summary,allow_nan=False,indent=2,sort_keys=True)+"\n")
 
 
 def main(argv: list[str] | None=None) -> int:
@@ -383,6 +470,7 @@ def main(argv: list[str] | None=None) -> int:
     output=args.output or ROOT/"ml/data/parity/esp32_target"/args.run_id
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
         parser.error(f"thư mục output đã có dữ liệu, không ghi đè: {output}")
+    output.mkdir(parents=True,exist_ok=True)
     cases=[]; session=None
     try:
         cases,manifest_sha=load_suite(args.suite)
@@ -390,11 +478,14 @@ def main(argv: list[str] | None=None) -> int:
         try: import serial
         except ImportError as e: raise RuntimeError("Thiếu pyserial; cài bằng: python -m pip install pyserial") from e
         with serial.Serial(args.port,args.baud,timeout=args.timeout,write_timeout=args.timeout) as port:
-            session=TargetSession(port,args.timeout); run_suite(session,cases,args.run_id,manifest_sha)
+            session=TargetSession(port,args.timeout,output/"serial_transcript.jsonl","serial_target")
+            run_suite(session,cases,args.run_id,manifest_sha)
         save_capture(output,args.run_id,args.suite,manifest_sha,cases,session,"TRANSPORT_COMPLETE",args.firmware_bin)
         print(f"TRANSPORT_COMPLETE; NUMERICAL_PARITY_NOT_RUN; capture: {output}"); return 0
     except Exception as exc:
-        if session is None: session=TargetSession(type("NoSerial",(),{})())
+        if session is None:
+            session=TargetSession(type("NoSerial",(),{})(),transcript_path=output/"serial_transcript.jsonl",
+                                  execution_kind="serial_target")
         try:
             save_capture(output,args.run_id,args.suite,locals().get("manifest_sha","NOT_AVAILABLE"),
                          cases,session,"FAIL_TRANSPORT",args.firmware_bin,str(exc))
