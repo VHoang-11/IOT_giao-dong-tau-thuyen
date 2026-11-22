@@ -16,8 +16,8 @@ def result(case,endpoint,sha=None):
 
 class MockSerial:
     def __init__(self,mode="ok"):
-        self.rx=bytearray(); self.mode=mode; self.tx=0; self.rxseq=0; self.sent=[]
-        self.run=""; self.manifest=b""; self.case=None; self.received=0
+        self.rx=bytearray(); self.mode=mode; self.tx=0; self.rxseq=0; self.sent=[]; self.written=[]
+        self.run=""; self.manifest=b""; self.case=None; self.received=0; self.expected_cases=1; self.completed=0
         self.push(128,hello("wrong" if mode=="bad_hello" else None))
         if mode=="repeat_hello": self.push(128,hello())
 
@@ -29,8 +29,9 @@ class MockSerial:
     def write(self,wire):
         if self.mode=="short_write": return len(wire)-1
         f=p.decode_frame(wire,self.tx); self.tx+=1
+        self.written.append(f.kind)
         if f.kind==1:
-            n=f.payload[0]; self.run=f.payload[1:1+n].decode(); self.manifest=f.payload[3+n:35+n]
+            n=f.payload[0]; self.run=f.payload[1:1+n].decode(); self.expected_cases=struct.unpack_from("<H",f.payload,1+n)[0]; self.manifest=f.payload[3+n:35+n]
             if self.mode=="error": self.push(143,b"\x07\x01")
             else: self.ack(f,0,1 if self.mode=="nack" else 0)
         elif f.kind==2:
@@ -48,10 +49,11 @@ class MockSerial:
             if self.mode!="no_case_done":
                 c=self.case; cid=c["id"].encode()
                 self.push(131,bytes([len(cid)])+cid+struct.pack("<IBIB",c["count"],len(c["endpoints"]),c["crc"],0))
+            self.completed+=1
         elif f.kind==5:
             self.ack(f,self.received)
             if self.mode!="no_run_done":
-                rid=self.run.encode(); self.push(132,bytes([len(rid)])+rid+struct.pack("<H32sB",1,self.manifest,0))
+                rid=self.run.encode(); self.push(132,bytes([len(rid)])+rid+struct.pack("<H32sB",self.completed,self.manifest,0))
         return len(wire)
 
     def read(self,n):
@@ -141,3 +143,95 @@ def test_happy_path_requires_case_done_and_run_done():
     assert struct.unpack_from("<I",records)[0]==0x7fc00000
     assert s.end_case()["case_id"]=="SYN01"
     assert s.end_run()["run_id"]=="run_1" and s.transport_complete and s.state=="COMPLETE"
+
+
+def test_canonical_loader_checks_fixture_hash_order_and_float32_bits():
+    cases,manifest_sha=p.load_suite("synthetic")
+    assert len(cases)==31 and len(manifest_sha)==64
+    c=cases[0]
+    assert c["case_id"]=="SYN01_const_zero" and c["endpoints"]==[e["endpoint_index"] for e in __import__("json").loads((p.SYNTHETIC_CASES).read_text())["cases"][0]["endpoints"]]
+    assert len(c["records"])==c["sample_count"]*10 and len(c["source_sample_index"])==c["sample_count"]
+    assert c["records"][:10]==struct.pack("<ffBB",0.0,0.0,2,1)
+    nan_case=next(x for x in cases if x["case_id"]=="SYN21_isolated_nan")
+    nan_record=next(nan_case["records"][i*10:i*10+10] for i in range(nan_case["sample_count"])
+                    if math.isnan(struct.unpack_from("<f",nan_case["records"],i*10)[0]))
+    assert struct.unpack_from("<I",nan_record)[0]==0x7fc00000 and nan_record[8:]==b"\x02\x01"
+    inf_case=next(x for x in cases if x["case_id"]=="SYN26_infinite_values")
+    assert any(struct.unpack_from("<I",inf_case["records"],i*10)[0]==0x7f800000
+               for i in range(inf_case["sample_count"]))
+
+
+def test_fixture_loader_rejects_unavailable_suite_and_float32_nan_bits():
+    if p.REAL_CASES.is_file():
+        real,_=p.load_suite("real"); both,_=p.load_suite("all")
+        assert len(real)==5 and len(both)==36 and real[0]["provenance"]=="SENSOR"
+    else:
+        with pytest.raises(FileNotFoundError,match="NOT_AVAILABLE"): p.load_suite("real")
+    rec=struct.pack("<ffBB",float("nan"),float("inf"),2,1)
+    assert struct.unpack_from("<I",rec)[0]==0x7fc00000
+    assert struct.unpack_from("<I",rec,4)[0]==0x7f800000 and rec[8:]==b"\x02\x01"
+
+
+def test_fixture_loader_rejects_csv_sha_mismatch(tmp_path,monkeypatch):
+    import hashlib, json
+    root=tmp_path; base=root/"ml/parity/fixtures/synthetic"; base.mkdir(parents=True)
+    csv_path=base/"tiny.csv"; csv_path.write_text("sample_index,time_seconds,roll_deg,pitch_deg,source_sample_index\n0,0,0.0,0.0,17\n")
+    rel="ml/parity/fixtures/synthetic/tiny.csv"; digest=hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    cases={"suite":"synthetic","schema_version":p.SCHEMA_VERSION,"schema_sha256":"s",
+        "feature_order":list(p.FEATURE_ORDER),"cases":[{"case_id":"SYN_TEST","input_file":rel,
+        "input_sha256":digest,"n_samples":1,"endpoint_count":1,"endpoints":[{"endpoint_index":0}]}]}
+    case_path=base/"cases.json"; case_path.write_text(json.dumps(cases)); case_rel="ml/parity/fixtures/synthetic/cases.json"
+    manifest={"schema_sha256":"s","files":{case_rel:{"sha256":hashlib.sha256(case_path.read_bytes()).hexdigest(),"bytes":case_path.stat().st_size},
+        rel:{"sha256":digest,"bytes":csv_path.stat().st_size}}}
+    manifest_path=root/"ml/parity/fixtures/manifest.json"; manifest_path.parent.mkdir(parents=True,exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(p,"ROOT",root); monkeypatch.setattr(p,"SYNTHETIC_CASES",case_path); monkeypatch.setattr(p,"MANIFEST_PATH",manifest_path)
+    loaded,_=p.load_suite(); assert loaded[0]["source_sample_index"]==[17]
+    csv_path.write_text(csv_path.read_text().replace(",0.0,0.0,17",",1.0,0.0,17"))
+    with pytest.raises(p.ProtocolError,match="SHA/manifest"): p.load_suite()
+
+
+def test_real_synthetic_fixtures_stream_through_b1a_session_in_multiple_batches_and_cases(tmp_path):
+    cases,manifest_sha=p.load_suite("synthetic"); cases=cases[:2]
+    io=MockSerial(); session=p.TargetSession(io,.02)
+    report=p.run_suite(session,cases,"fixture_run",manifest_sha)
+    assert report["transport_status"]=="TRANSPORT_COMPLETE"
+    assert report["numerical_parity"]=="NUMERICAL_PARITY_NOT_RUN"
+    assert report["completed_case_ids"]==[c["case_id"] for c in cases]
+    assert session.completed_cases==2 and len(session.results)==32
+    assert io.written.count(3)>2 and session.transport_complete
+    p.save_capture(tmp_path,"fixture_run","synthetic",manifest_sha,cases,session,"TRANSPORT_COMPLETE")
+    import json
+    meta=json.loads((tmp_path/"metadata.json").read_text())
+    raw=[json.loads(x) for x in (tmp_path/"raw_results.jsonl").read_text().splitlines()]
+    assert meta["cases"][0]["provenance"]=="SIMULATION" and meta["source_commit"]
+    assert len(raw)==32 and raw[0]["result"]["values"][1] is None
+    assert raw[0]["result"]["valid_mask"]==1 and not raw[0]["provisional"]
+
+
+def test_incomplete_capture_is_never_marked_complete(tmp_path):
+    io,s,records,_,_=ready("no_run_done"); s.send_samples(0,records); s.end_case()
+    with pytest.raises(p.ProtocolError): s.end_run()
+    p.save_capture(tmp_path,"run_1","synthetic","ab"*32,[],s,"FAIL_TRANSPORT",error="terminal missing")
+    import json
+    summary=json.loads((tmp_path/"transport_summary.json").read_text())
+    raw=[json.loads(x) for x in (tmp_path/"raw_results.jsonl").read_text().splitlines()]
+    assert summary["transport_status"]=="FAIL_TRANSPORT" and summary["numerical_parity"]=="NUMERICAL_PARITY_NOT_RUN"
+    assert all(r["provisional"] for r in raw)
+
+
+def test_cli_help_and_argument_errors_without_pyserial():
+    with pytest.raises(SystemExit) as help_exit: p.main(["--help"])
+    assert help_exit.value.code==0
+    with pytest.raises(SystemExit): p.main(["--port","mock","--run-id","bad id"])
+
+
+def test_cli_missing_pyserial_fails_closed(tmp_path,monkeypatch,capsys):
+    import builtins
+    original=builtins.__import__
+    def no_serial(name,*args,**kwargs):
+        if name=="serial": raise ImportError("mock missing pyserial")
+        return original(name,*args,**kwargs)
+    monkeypatch.setattr(builtins,"__import__",no_serial)
+    code=p.main(["--port","mock","--run-id","no_serial","--output",str(tmp_path)])
+    assert code==2 and "pip install pyserial" in capsys.readouterr().err
