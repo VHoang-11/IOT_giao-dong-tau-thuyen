@@ -1,4 +1,4 @@
-import math, struct, zlib
+import hashlib, json, math, struct, zlib
 
 import pytest
 
@@ -17,17 +17,20 @@ def result(case,endpoint,sha=None):
 class MockSerial:
     def __init__(self,mode="ok"):
         self.rx=bytearray(); self.mode=mode; self.tx=0; self.rxseq=0; self.sent=[]; self.written=[]
+        self.rx_frames=[]; self.tx_frames=[]
         self.run=""; self.manifest=b""; self.case=None; self.received=0; self.expected_cases=1; self.completed=0
         self.push(128,hello("wrong" if mode=="bad_hello" else None))
         if mode=="repeat_hello": self.push(128,hello())
 
     def push(self,kind,payload=b""):
-        self.rx.extend(p.encode_frame(kind,self.rxseq,payload)); self.rxseq+=1; self.sent.append(kind)
+        raw=p.encode_frame(kind,self.rxseq,payload); self.rx.extend(raw); self.rx_frames.append(raw)
+        self.rxseq+=1; self.sent.append(kind)
 
     def ack(self,f,count,code=0): self.push(129,struct.pack("<IBI",f.seq,code,count))
 
     def write(self,wire):
         if self.mode=="short_write": return len(wire)-1
+        self.tx_frames.append(bytes(wire))
         f=p.decode_frame(wire,self.tx); self.tx+=1
         self.written.append(f.kind)
         if f.kind==1:
@@ -61,8 +64,8 @@ class MockSerial:
 
     def flush(self): pass
 
-def ready(mode="ok",endpoints=(0,1)):
-    io=MockSerial(mode); s=p.TargetSession(io,0.005); s.wait_hello()
+def ready(mode="ok",endpoints=(0,1),transcript_path=None):
+    io=MockSerial(mode); s=p.TargetSession(io,0.005,transcript_path=transcript_path); s.wait_hello()
     s.begin_run("run_1",1,"ab"*32)
     records=struct.pack("<ffBB",float("nan"),0.1,2,1)+struct.pack("<ffBB",1.0,-2.0,2,1)
     crc=zlib.crc32(records)&0xffffffff; sha="cd"*32
@@ -218,6 +221,52 @@ def test_incomplete_capture_is_never_marked_complete(tmp_path):
     raw=[json.loads(x) for x in (tmp_path/"raw_results.jsonl").read_text().splitlines()]
     assert summary["transport_status"]=="FAIL_TRANSPORT" and summary["numerical_parity"]=="NUMERICAL_PARITY_NOT_RUN"
     assert all(r["provisional"] for r in raw)
+    transcript=(tmp_path/"serial_transcript.jsonl").read_bytes()
+    assert summary["serial_transcript_complete"] is False
+    assert summary["serial_transcript_sha256"]==hashlib.sha256(transcript).hexdigest()
+    assert json.loads(transcript.splitlines()[-1])["status"]=="TIMEOUT"
+
+
+def test_transcript_preserves_actual_tx_rx_bytes_and_result_before_ack(tmp_path):
+    path=tmp_path/"serial_transcript.jsonl"
+    io,s,records,_,_=ready("repeat_hello",transcript_path=path)
+    s.send_samples(0,records); s.end_case(); s.end_run()
+    # Events were collected from the exact mock serial read/write byte strings.
+    events=s.transcript
+    tx=[bytes.fromhex(e["raw_frame_hex"]) for e in events if e["direction"]=="TX"]
+    rx=[bytes.fromhex(e["raw_frame_hex"]) for e in events if e["direction"]=="RX" and e["status"]=="OK"]
+    assert tx==io.tx_frames and rx==io.rx_frames
+    kinds=[e["frame_type"] for e in events]
+    assert [e["frame_type"] for e in events if e["direction"]=="RX"][:2]==["HELLO","HELLO"]
+    assert kinds.index("RESULT")<kinds.index("ACK",kinds.index("RESULT"))
+    assert "CASE_DONE" in kinds and "RUN_DONE" in kinds
+    assert s.transcript_complete
+    p.save_capture(tmp_path,"run_1","synthetic","ab"*32,[],s,"TRANSPORT_COMPLETE")
+    saved=(tmp_path/"serial_transcript.jsonl").read_bytes()
+    metadata=json.loads((tmp_path/"metadata.json").read_text())
+    assert hashlib.sha256(saved).hexdigest()==metadata["serial_transcript_sha256"]
+    assert metadata["capture_status"]=="HOST_MOCK_VERIFIED"
+    assert metadata["target_evidence_status"]=="TARGET_EVIDENCE_NOT_VERIFIED"
+    assert metadata["numerical_parity"]=="NUMERICAL_PARITY_NOT_RUN"
+
+
+def test_transcript_retains_nack_error_and_partial_frame_diagnostics():
+    s=p.TargetSession(MockSerial("nack"),.005); s.wait_hello()
+    with pytest.raises(p.ProtocolError,match="NACK"): s.begin_run("run_1",1,"ab"*32)
+    assert [e["frame_type"] for e in s.transcript if e["direction"]=="RX"]==["HELLO","ACK"]
+    assert s.transcript[-1]["raw_frame_hex"]
+    s=p.TargetSession(MockSerial("error"),.005); s.wait_hello()
+    with pytest.raises(p.ProtocolError,match="ERROR"): s.begin_run("run_1",1,"ab"*32)
+    assert any(e["frame_type"]=="ERROR" and e["raw_frame_hex"] for e in s.transcript)
+
+
+def test_transcript_artifacts_do_not_overwrite_existing_files(tmp_path):
+    io,s,records,_,_=ready(); s.send_samples(0,records); s.end_case(); s.end_run()
+    p.save_capture(tmp_path,"run_1","synthetic","ab"*32,[],s,"TRANSPORT_COMPLETE")
+    original=(tmp_path/"serial_transcript.jsonl").read_bytes()
+    with pytest.raises(FileExistsError):
+        p.save_capture(tmp_path,"run_1","synthetic","ab"*32,[],s,"TRANSPORT_COMPLETE")
+    assert (tmp_path/"serial_transcript.jsonl").read_bytes()==original
 
 
 def test_cli_help_and_argument_errors_without_pyserial():
