@@ -53,7 +53,7 @@ def populated(client, db):
         {"device_id": DEV, "boot_id": "b1", "seq": 2, "type": "ALARM_STATE", "alarm_id": "A-1", "level": "WARNING",
          "class": "HIGH_ROLL", "t_sim_s": 1.0}).encode())
     client.post("/api/v1/voyages", json={"device_id": DEV, "voyage_id": "V-TZ"})
-    cmd_service.create_command(db, DEV, cmd_service.CommandName.calibrate_zero, {}, 30, "sup01")
+    cmd_service.create_command(db, DEV, cmd_service.CommandName.calibrate_zero, {}, 60, "sup01")
     alarm_id = client.get("/api/v1/alarms").json()[0]["id"]
     client.post(f"/api/v1/alarms/{alarm_id}/ack")
     client.put(f"/api/v1/alarms/{alarm_id}/label", json={"label": "TRUE_ALARM"})

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./svmg.db"
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:5173"
+    feature_contract_path: str = ""          # mac dinh: <repo>/contracts/features23.json (hop dong dac trung cua M1/M2)
     contracts_dir: str = ""  # mac dinh: <repo>/contracts/schemas
     alarm_escalation_enabled: bool = True
     alarm_escalate_after_s: int = 60         # canh bao chua ACK sau N giay -> leo thang

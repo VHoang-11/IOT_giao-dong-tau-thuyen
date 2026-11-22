@@ -33,8 +33,9 @@ class VoyageOut(BaseModel):
 
 class DataQuality(BaseModel):
     samples: int
-    expected_samples: int            # tong (seq_max - seq_min + 1) cua TUNG boot_id
+    expected_samples: int            # tong (seq_max - seq_min + 1) cua TUNG boot_id, tru cac seq do event chiem
     missing_samples: int
+    seq_used_by_events: int = 0      # so seq trong dai bi event chiem (seq dung chung telemetry + event)
     received_rate: Optional[float] = None   # samples / expected_samples; None neu khong co mau
     boots: int                       # so lan khoi dong (boot_id) trong chuyen
     sensor_fault_samples: int        # mau co sensor_ok = false (bi LOAI khoi thong ke chuyen dong)

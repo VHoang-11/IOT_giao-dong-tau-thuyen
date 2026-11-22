@@ -19,6 +19,7 @@ from app.models import Alarm, AlarmEvent, Device, Telemetry
 from app.models.enums import AlarmLabel, AlarmLevel, AlarmState, SourceMode
 from app.schemas.alarm import AlarmOut, AlarmStats
 from app.services.audit import audit
+from app.services.voyages import active_voyage_id
 from notify.service import notify_alarm
 
 log = logging.getLogger("svmg.alarms")
@@ -64,8 +65,9 @@ def apply_event(db: Session, ev: AlarmEvent) -> Optional[Alarm]:
         if ev.level == AlarmLevel.NORMAL:
             return None  # khong co gi de dong
         dev = db.scalar(select(Device).where(Device.device_id == ev.device_id))
+        # chuyen cua canh bao: theo ban tin telemetry moi nhat (da duoc gan chuyen luc ingest); chua co thi lay chuyen dang chay
         voyage = db.scalar(select(Telemetry.voyage_id).where(Telemetry.device_id == ev.device_id)
-                           .order_by(Telemetry.id.desc()).limit(1))
+                           .order_by(Telemetry.id.desc()).limit(1)) or active_voyage_id(db, ev.device_id)
         alarm = Alarm(alarm_id=ev.alarm_id, boot_id=ev.boot_id, device_id=ev.device_id,
                       last_seq=ev.seq, state=AlarmState.ACTIVE, level=ev.level, max_level=ev.level,
                       motion_class=ev.motion_class, voyage_id=voyage,

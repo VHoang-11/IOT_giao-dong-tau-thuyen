@@ -15,8 +15,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from alarms.realtime import telemetry_hub
 from alarms.service import apply_event
 from app.core.config import settings
+from app.services.voyages import active_voyage_id
 from commands.config_service import mark_applied as mark_config_applied
 from commands.service import handle_ack as handle_command_ack
 from notify.service import notify_device_offline
@@ -108,6 +110,11 @@ def _dedup_exists(db: Session, model, device_id: str, boot_id: str, seq: int) ->
         model.device_id == device_id, model.boot_id == boot_id, model.seq == seq)) is not None
 
 
+def _iso(dt: datetime) -> str:
+    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
     if _dedup_exists(db, Telemetry, dev_id, p["boot_id"], p["seq"]):
         return Result(Outcome.DUPLICATE, "telemetry", dev_id)
@@ -118,11 +125,14 @@ def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime)
     dev.config_version = p["config_version"]
     dev.boot_id = p["boot_id"]
     bb = p.get("class_baseline_b")
+    # Thiet bi that khong gui voyage_id -> gan theo chuyen DANG CHAY cua thiet bi luc nhan ban tin.
+    # Neu ban tin tu mang voyage_id (nguon khac) thi giu nguyen.
+    voyage_id = p.get("voyage_id") or active_voyage_id(db, dev_id)
     db.add(Telemetry(
         device_id=dev_id, boot_id=p["boot_id"], seq=p["seq"], t_sim_s=p["t_sim_s"],
         uptime_ms=p["uptime_ms"], timewarp=p.get("timewarp", 1),
         source_mode=SourceMode(p["source_mode"]), synthetic=p.get("synthetic"),
-        scenario_id=p.get("scenario_id"), voyage_id=p.get("voyage_id"),
+        scenario_id=p.get("scenario_id"), voyage_id=voyage_id,
         roll_deg=p["roll_deg"], pitch_deg=p["pitch_deg"], rms_roll_deg=p.get("rms_roll_deg"),
         heel_offset_deg=p.get("heel_offset_deg"), trend_rms_deg_per_min=p.get("trend_rms_deg_per_min"),
         class_rf=MotionClass(p["class_rf"]), class_baseline_b=MotionClass(bb) if bb else None,
@@ -130,6 +140,9 @@ def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime)
         model_version=p["model_version"], config_version=p["config_version"],
         sensor_ok=p["sensor_ok"], server_rx_time=rx))
     ok = _commit_or_duplicate(db)
+    if ok:
+        telemetry_hub.publish({"type": "telemetry", **p, "device_id": dev_id, "voyage_id": voyage_id,
+                               "server_rx_time": _iso(rx)})
     return Result(Outcome.STORED if ok else Outcome.DUPLICATE, "telemetry", dev_id)
 
 
@@ -164,7 +177,12 @@ def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) ->
                      ("config_version", "config_version"), ("boot_id", "boot_id")):
         if src in p:
             setattr(dev, dst, p[src])
+    for k in ("feature_schema_version", "preprocessing_version", "feature_count"):
+        if p.get(k) is not None:
+            setattr(dev, k, p[k])
     db.commit()
+    telemetry_hub.publish({"type": "device_status", "device_id": dev_id, "state": dev.state.value,
+                           "last_seen": _iso(rx)})
     if p.get("state") == "online":
         mark_config_applied(db, dev_id, p.get("config_version"))  # thiet bi bao dang dung phien ban nay
     elif was_online:  # chi bao khi chuyen online -> offline (LWT gui lai khong bao lap)
@@ -175,6 +193,9 @@ def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) ->
 def _handle_health(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
     dev = _get_or_create_device(db, dev_id)
     dev.last_seen = rx
+    for k in ("feature_schema_version", "preprocessing_version", "feature_count"):
+        if p.get(k) is not None:
+            setattr(dev, k, p[k])
     db.add(DeviceHealth(
         device_id=dev_id, free_heap_bytes=p["free_heap_bytes"],
         min_free_heap_bytes=p.get("min_free_heap_bytes"), uptime_ms=p["uptime_ms"],

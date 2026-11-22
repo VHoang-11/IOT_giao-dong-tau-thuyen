@@ -169,7 +169,7 @@ def test_ttl_expiry_and_late_ack_does_not_resurrect(client, db, pub, device):
 
 
 def test_finished_commands_not_expired(client, db, pub, device):
-    c, _ = service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "bob", now=T0)
+    c, _ = service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "bob", now=T0)
     ack(db, {"cmd_id": c.cmd_id, "result": "APPLIED"}, rx=T0 + timedelta(seconds=2))
     assert service.expire_overdue(db, now=T0 + timedelta(hours=1)) == []
 
@@ -188,9 +188,9 @@ def test_no_publisher_configured_returns_503(client, device):
 
 
 def test_stats_rtt_and_timeout_rate(client, db, pub, device):
-    c1, _ = service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "a", now=T0)
+    c1, _ = service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "a", now=T0)
     ack(db, {"cmd_id": c1.cmd_id, "result": "APPLIED"}, rx=T0 + timedelta(seconds=2))
-    service.create_command(db, DEV, CommandName.calibrate_zero, {}, 10, "a", now=T0)
+    service.create_command(db, DEV, CommandName.set_profile, {"profile": "STANDARD"}, 10, "a", now=T0)
     service.expire_overdue(db, now=T0 + timedelta(seconds=11))
     s = client.get("/api/v1/commands/stats").json()
     assert s["total"] == 2 and s["by_state"] == {"APPLIED": 1, "TIMEOUT": 1}

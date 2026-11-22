@@ -150,7 +150,8 @@ def build_pdf(s: ReportSummary, series: list[tuple[float, float]]) -> bytes:
     q = s.data_quality
     story += [Paragraph("2. Chất lượng dữ liệu", st["h2"]), _table([
         ["Số bản tin nhận được", str(q.samples)],
-        ["Số bản tin kỳ vọng (theo dải seq từng lần khởi động)", str(q.expected_samples)],
+        ["Số bản tin kỳ vọng (dải seq từng lần khởi động, đã trừ seq do sự kiện chiếm)", str(q.expected_samples)],
+        ["Số seq do sự kiện cảnh báo chiếm (seq dùng chung với telemetry)", str(q.seq_used_by_events)],
         ["Thiếu", str(q.missing_samples)],
         ["Tỉ lệ nhận", _pct(q.received_rate)],
         ["Số lần khởi động thiết bị (boot_id)", str(q.boots)],

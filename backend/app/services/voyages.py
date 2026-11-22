@@ -38,6 +38,15 @@ def _active_voyage(db: Session, device_id: str) -> Optional[Voyage]:
     return db.scalar(select(Voyage).where(Voyage.device_id == device_id, Voyage.status == VoyageStatus.ACTIVE))
 
 
+def active_voyage_id(db: Session, device_id: str) -> Optional[str]:
+    """Ma chuyen dang chay cua thiet bi (None neu khong co).
+
+    Thiet bi (M1) KHONG phat voyage_id: backend gan du lieu vao chuyen dang chay theo THIET BI + THOI DIEM NHAN
+    (contracts / firmware/docs/CONTRACT_PROPOSALS.md muc B8)."""
+    v = _active_voyage(db, device_id)
+    return v.voyage_id if v is not None else None
+
+
 def _next_voyage_id(db: Session, now: datetime) -> str:
     """V-YYYY-NNN theo so chuyen da co trong nam (mau theo vi du trong hop dong); trung thi tang tiep."""
     prefix = f"V-{now.year}-"

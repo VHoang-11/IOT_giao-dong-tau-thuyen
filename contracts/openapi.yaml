@@ -1438,6 +1438,15 @@ components:
         already_acked:
           type: boolean
           title: Already Acked
+        device_ack:
+          type: string
+          title: Device Ack
+          default: not_applicable
+        device_ack_detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Ack Detail
       type: object
       required:
       - alarm
@@ -1814,6 +1823,7 @@ components:
       - start_voyage
       - stop_voyage
       - restart_device
+      - ack_alarm
       title: CommandName
     CommandOut:
       properties:
@@ -1887,11 +1897,12 @@ components:
           type: object
           title: Params
         ttl_s:
-          type: integer
-          maximum: 300.0
-          minimum: 1.0
+          anyOf:
+          - type: integer
+            maximum: 300.0
+            minimum: 1.0
+          - type: 'null'
           title: Ttl S
-          default: 30
         cmd_id:
           anyOf:
           - type: string
@@ -1986,6 +1997,11 @@ components:
         applied:
           type: boolean
           title: Applied
+        rejected_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rejected Reason
       type: object
       required:
       - device_id
@@ -2058,6 +2074,10 @@ components:
         missing_samples:
           type: integer
           title: Missing Samples
+        seq_used_by_events:
+          type: integer
+          title: Seq Used By Events
+          default: 0
         received_rate:
           anyOf:
           - type: number
@@ -2357,6 +2377,35 @@ components:
             type: string
           type: array
           title: Expected Features
+        feature_contract_available:
+          type: boolean
+          title: Feature Contract Available
+          default: false
+        feature_schema_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Feature Schema Version
+        feature_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Feature Count
+        device_feature_schema_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Feature Schema Version
+        device_feature_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Device Feature Count
+        schema_match:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Schema Match
         features:
           items:
             $ref: '#/components/schemas/DriftReport'

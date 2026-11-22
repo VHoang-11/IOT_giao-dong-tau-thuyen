@@ -58,6 +58,10 @@ class Device(Base):
     boot_id: Mapped[Optional[str]] = mapped_column(String(64))
     model_version: Mapped[Optional[str]] = mapped_column(String(32))
     config_version: Mapped[Optional[int]] = mapped_column(Integer)
+    # Thiet bi tu bao trong status/health (M1): dung de phat hien lech hop dong dac trung (vd. firmware 14 vs contract 23)
+    feature_schema_version: Mapped[Optional[str]] = mapped_column(String(64))
+    preprocessing_version: Mapped[Optional[str]] = mapped_column(String(64))
+    feature_count: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
@@ -163,6 +167,7 @@ class DeviceConfigVersion(Base):
     created_by: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    rejected_reason: Mapped[Optional[str]] = mapped_column(String(256))  # thiet bi tu choi ban nay (ack cfg-<ver> REJECTED)
 
 
 class DeviceHealth(Base):

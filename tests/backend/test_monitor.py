@@ -10,9 +10,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from conftest import NOAUTH
 
+from sqlalchemy import select
+
+from app.core.config import settings
 from app.models import Device, Telemetry
 from app.models.enums import AlarmLevel, MotionClass, SourceMode
-from app.schemas.monitor import FEATURE_NAMES
 
 T0 = datetime(2026, 3, 1, 0, 0, 0, tzinfo=timezone.utc)
 DEV = "monitor-dev-01"
@@ -175,7 +177,7 @@ def test_drift_is_unavailable_and_returns_no_fabricated_numbers(client, db, dev)
     assert d["features"] == [] and d["flagged_count"] is None                   # None, KHONG phai 0
     assert "psi" not in str(d["features"]).lower()
     assert "mock" not in str(d).lower() and "0.0" not in str(d["features"])
-    assert "M2" in d["reason"] and "14 đặc trưng" in d["reason"]
+    assert "M2" in d["reason"] and "đặc trưng" in d["reason"]
 
 
 def test_drift_still_reports_real_window_sample_count_and_sources(client, db, dev):
@@ -189,18 +191,57 @@ def test_drift_still_reports_real_window_sample_count_and_sources(client, db, de
     assert drift(client, window_hours=168)["window_samples"] == 4
 
 
-def test_drift_lists_the_14_expected_features_in_contract_order(client, dev):
+def _write_contract(tmp_path, monkeypatch, **over):
+    """Hop dong gia lap NGAN, chi de thu cau truc doc file (khong phai hop dong that cua M1/M2)."""
+    import json
+    c = {"feature_schema_version": "test-v1", "preprocessing_version": "pp-test", "feature_count": 2,
+         "features": [{"index": 1, "name": "feat_b", "unit": "deg"}, {"index": 0, "name": "feat_a", "unit": "deg"}]}
+    c.update(over)
+    f = tmp_path / "features.json"
+    f.write_text(json.dumps(c), encoding="utf-8")
+    monkeypatch.setattr(settings, "feature_contract_path", str(f))
+
+
+def test_drift_reads_expected_features_from_contract_file_in_index_order(client, dev, tmp_path, monkeypatch):
+    _write_contract(tmp_path, monkeypatch)
     d = drift(client)
-    assert d["expected_features"] == FEATURE_NAMES and len(FEATURE_NAMES) == 14
-    assert FEATURE_NAMES[0] == "rms_roll" and FEATURE_NAMES[13] == "sensor_ok"
+    assert d["expected_features"] == ["feat_a", "feat_b"] and d["feature_contract_available"] is True
+    assert d["feature_schema_version"] == "test-v1" and d["feature_count"] == 2
+    assert "2 đặc trưng" in d["reason"]
 
 
-def test_feature_names_match_the_contract_file():
+def test_drift_without_contract_file_lists_nothing_and_does_not_guess(client, dev, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "feature_contract_path", str(tmp_path / "missing.json"))
+    d = drift(client)
+    assert d["expected_features"] == [] and d["feature_contract_available"] is False
+    assert d["schema_match"] is None and d["available"] is False
+
+
+def test_drift_ignores_self_contradicting_contract(client, dev, tmp_path, monkeypatch):
+    _write_contract(tmp_path, monkeypatch, feature_count=5)          # khai bao 5 nhung chi co 2 dac trung
+    assert drift(client)["feature_contract_available"] is False
+
+
+def test_schema_match_compares_device_report_with_contract(client, db, dev, tmp_path, monkeypatch):
+    _write_contract(tmp_path, monkeypatch)
+    assert drift(client)["schema_match"] is None                      # thiet bi chua bao -> khong ket luan
+    d = db.scalar(select(Device))
+    d.feature_schema_version, d.feature_count, d.preprocessing_version = "test-v1", 2, "pp-test"
+    db.commit()
+    assert drift(client)["schema_match"] is True
+    d.feature_count = 14                                              # firmware cu
+    db.commit()
+    r = drift(client)
+    assert r["schema_match"] is False and r["device_feature_count"] == 14
+
+
+def test_real_contract_file_loads_if_present():
     from pathlib import Path
-    import re
-    md = (Path(__file__).resolve().parents[2] / "contracts" / "features.md").read_text(encoding="utf-8")
-    in_contract = [m.group(2) for m in re.finditer(r"^\|\s*(\d+)\s*\|\s*`(\w+)`", md, re.M)]
-    assert in_contract == FEATURE_NAMES                                         # ten + thu tu khop hop dong
+    from monitor.feature_contract import contract_path, load_contract
+    if not Path(contract_path()).exists():
+        pytest.skip("contracts/features23.json chua co trong nhanh nay (se co sau khi merge main)")
+    fc = load_contract()
+    assert fc is not None and fc.count == len(fc.names) == 23
 
 
 def test_empty_window_has_zero_samples_but_is_still_unavailable(client, dev):

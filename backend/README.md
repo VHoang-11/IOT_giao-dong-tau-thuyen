@@ -15,9 +15,9 @@ Backend của **Smart Vessel Motion Guard**: nhận bản tin MQTT từ thiết 
 | M3-05 | JWT + RBAC (3 vai trò) | Xong |
 | M3-06 | Voyage + báo cáo PDF/CSV | Phần lõi xong (chuyến đi, số liệu, CSV, PDF). **Chưa nối** với lệnh `start_voyage` xuống thiết bị (chờ M1); báo cáo chưa tự sinh khi kết thúc chuyến (chờ nhóm quyết định) |
 | Ngoài WP | Quản lý thiết bị (Admin), số đếm ingest, dọn dữ liệu cũ, hiệu chuẩn, gắn nhãn cảnh báo, TLS MQTT | Xong |
-| M3-07 | Replay, Health, Model monitor | **Replay**, **Health** và **độ nhất quán RF/Baseline** xong. **Drift PSI chưa khả dụng** (chờ M2: vector 14 đặc trưng, `ml/monitor/`); endpoint trả `available=false`, không trả số giả |
+| M3-07 | Replay, Health, Model monitor | **Replay**, **Health** và **độ nhất quán RF/Baseline** xong. **Drift PSI chưa khả dụng** (chờ M2: vector 23 đặc trưng, `ml/monitor/`; đọc hợp đồng từ `features23.json`, so khớp phiên bản thiết bị); endpoint trả `available=false`, không trả số giả |
 | M3-08 | Thông báo Telegram/email | Xong (chưa gửi thử tin thật) |
-| M3-09 | Kiểm thử T06/T09/T10/T14 + README | 375 test, độ phủ 97%, gồm test **qua kết nối MQTT thật** (broker thuần Python). **Chưa** chạy với Mosquitto, ESP32 hay đội tàu thật: T14 và T05 chờ M1/M2 |
+| M3-09 | Kiểm thử T06/T09/T10/T14 + README | 408 test, độ phủ 97%, gồm test **qua kết nối MQTT thật** (broker thuần Python). **Chưa** chạy với Mosquitto, ESP32 hay đội tàu thật: T14 và T05 chờ M1/M2 |
 
 ## Công nghệ
 
@@ -121,6 +121,7 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 | Số đếm ingest | `GET /ingest/stats` (Supervisor), `POST /ingest/stats/reset` (Admin) |
 | Dọn dữ liệu (Admin) | `GET /retention/status`, `POST /retention/run` |
 | Cảnh báo | `GET /alarms` (lọc `state`, `label`, `unlabeled`), `/alarms/{id}`, `/alarms/stats`, `POST /alarms/{id}/ack`, `PUT /alarms/{id}/label`, WebSocket `/ws/alarms` |
+| Đo thời gian thực | WebSocket `/ws/telemetry?token=…[&device_id=…]` (tin `telemetry` và `device_status`) |
 | Chuyến đi (Supervisor tạo/kết thúc) | `POST /voyages`, `GET /voyages`, `/voyages/{id}`, `POST /voyages/{id}/end` |
 | Báo cáo chuyến | `GET /voyages/{id}/summary`, `/telemetry.csv`, `/alarms.csv`, `/report.pdf` |
 | Replay | `GET /voyages/{id}/replay` (lọc `from_time/to_time` hoặc `from_t_sim/to_t_sim`, `limit`, `cursor`) |
@@ -130,7 +131,7 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 | Thông báo (Admin) | `GET /notify/status`, `POST /notify/test` |
 | Hệ thống | `GET /healthz` (công khai) |
 
-Tất cả đường dẫn trên có tiền tố `/api/v1` (trừ `/healthz` và `/ws/alarms`). Chi tiết ở Swagger hoặc `contracts/openapi.yaml`.
+Tất cả đường dẫn trên có tiền tố `/api/v1` (trừ `/healthz`, `/ws/alarms` và `/ws/telemetry`). Chi tiết ở Swagger hoặc `contracts/openapi.yaml`.
 
 ## Luồng dữ liệu MQTT
 
@@ -138,6 +139,8 @@ Topic `svmg/{device_id}/…` theo `contracts/mqtt_topics.md`.
 
 - `telemetry`, `event`, `status` (kể cả LWT), `health`, `cmd/ack` đi vào `ingest/service.py`: kiểm tra topic → JSON → **JSON Schema** → `device_id` trong payload phải trùng topic → chống trùng theo `(device_id, boot_id, seq)` → lưu + gắn `server_rx_time`.
 - `event` cập nhật vòng đời cảnh báo (`alarms/service.py`); `cmd/ack` cập nhật vòng đời lệnh.
+- **Khớp thiết bị thật (M1):** thiết bị không gửi `voyage_id` → backend gán theo chuyến đang chạy của thiết bị lúc nhận bản tin (cả telemetry lẫn cảnh báo mới). `seq` dùng chung giữa telemetry và event nên tỉ lệ nhận trừ số `seq` do event chiếm (`data_quality.seq_used_by_events`). `cmd_id = "cfg-<ver>"` là ack cấu hình (không có bản ghi lệnh): `APPLIED` → `applied=true`, `REJECTED` → `rejected_reason` (cột mới, migration 0006), không bao giờ coi là đã áp dụng. Số thực nguyên (`20.0`) được gửi dạng số nguyên (`20`) để CRC khớp cách thiết bị dựng lại chuỗi (`4fa6` ≠ `0902`).
+- **Lệnh:** `start_voyage`/`stop_voyage` bị chặn (thiết bị không hỗ trợ; dùng `POST /voyages`); `mute_alarm.duration_s` ≤ 300; `calibrate_zero` mặc định TTL 60 s, tối thiểu 45 s (thiết bị hiệu chuẩn ~30 s). `ack_alarm` chỉ do backend dùng nội bộ: `POST /alarms/{id}/ack` thử báo xuống thiết bị (`device_ack`: `sent` / `not_applicable` / `unsupported` / `failed`), **không bao giờ** làm hỏng ACK đã ghi; hiện `unsupported` vì `contracts/schemas/command.json` chưa có `ack_alarm`.
 - Lệnh và cấu hình đi xuống qua `commands/` (`cmd` QoS 1; `config` QoS 1 + retained).
 
 ## Quy tắc an toàn đã cài đặt (đều có test)
@@ -218,7 +221,7 @@ Mọi mốc thời gian lưu và trả về là **UTC, có ký hiệu múi giờ
 ## Giám sát mô hình (G6)
 
 - `GET /monitor/agreement?device_id=…[&voyage_id=…][&limit=…]`: tỉ lệ Random Forest **trùng** Baseline B trên `limit` mẫu gần nhất (theo giờ nhận) có đủ cả hai nhãn. Đây là độ **nhất quán** giữa hai mô hình, không phải độ chính xác (không có nhãn thật) và không phải dự báo nguy hiểm. Mẫu `sensor_ok=false` bị loại và đếm riêng (`excluded_sensor_fault`); kết quả luôn có `source_label` (`SIMULATION`/`SENSOR`/`MIXED`); chia theo **lớp RF** (`by_rf_class`), không đổi tên thành mức cảnh báo. `agreement_rate = null` khi chưa có mẫu.
-- `GET /monitor/drift?device_id=…[&window_hours=…]`: **hiện chưa khả dụng**. PSI cần vector 14 đặc trưng (`contracts/features.md`), trong khi telemetry chỉ lưu 3 đặc trưng tóm tắt. Endpoint trả `available=false`, `reason`, `expected_features` (14 tên đúng thứ tự hợp đồng, có test đối chiếu), và `window_samples` thật. **Không trả PSI nào.** Khi M2 giao `ml/monitor/` và nguồn đặc trưng, thay phần trả về trong `monitor/service.py`.
+- `GET /monitor/drift?device_id=…[&window_hours=…]`: **hiện chưa khả dụng**. PSI cần vector đặc trưng đầy đủ do thiết bị/M2 cung cấp, trong khi telemetry chỉ lưu 3 đặc trưng tóm tắt. Endpoint trả `available=false`, `reason`, `window_samples` thật và **không trả PSI nào**. `expected_features` được **đọc từ `contracts/features23.json`** (đường dẫn đổi bằng `FEATURE_CONTRACT_PATH`); thiếu file hoặc file tự mâu thuẫn thì trả danh sách rỗng và `feature_contract_available=false`, không đoán. Thiết bị tự báo `feature_schema_version`/`preprocessing_version`/`feature_count` (status/health); `schema_match` so với hợp đồng (`false` khi lệch, ví dụ firmware cũ 14 đặc trưng; `null` khi thiết bị chưa báo). Khi M2 giao `ml/monitor/`, thay phần trả về trong `monitor/service.py`.
 
 ## Quản lý thiết bị (Admin)
 
@@ -258,7 +261,7 @@ Từ thư mục gốc repo (nên dùng venv riêng + `pip install -r backend/req
 python -m pytest tests/backend -q
 ```
 
-**375 test, độ phủ ~97%.** Thiếu `amqtt` hoặc `pdfplumber` thì test tương ứng tự bỏ qua (không lỗi). Đã chạy đủ trong một môi trường sạch dựng từ `requirements-dev.txt`.
+**408 test (+1 xfail có chủ đích), độ phủ 97%** trong môi trường sạch dựng từ `requirements-dev.txt` (gồm test MQTT thật; môi trường thiếu `amqtt` chạy 396 và bỏ qua phần đó). Thiếu `amqtt` hoặc `pdfplumber` thì test tương ứng tự bỏ qua (không lỗi). Đã chạy đủ trong một môi trường sạch dựng từ `requirements-dev.txt`.
 
 - **Test đơn vị/API:** SQLite trong bộ nhớ, publisher MQTT giả, mạng giả (`httpx.MockTransport`). Không gửi tin nhắn thật, không dùng dữ liệu của thành viên khác: chỉ `contracts/examples/` và payload tối thiểu trong chính file test.
 - **Test tích hợp MQTT thật** (`tests/backend/test_mqtt_integration.py`): `consumer.py` kết nối tới một broker `amqtt` qua **TCP thật** (không cần Docker), cùng một "thiết bị giả" dùng paho. Phủ: nhận telemetry/event/status, khử trùng khi gửi lại sau mất mạng (T06), payload xấu, thiết bị bị vô hiệu hóa, **LWT**, lệnh khứ hồi (PUBACK → `DELIVERED` → ACK → `APPLIED`), mute bị chặn khi CRITICAL không bao giờ tới thiết bị, cấu hình **retained** tới thiết bị bật sau, **broker chết rồi sống lại** (tự kết nối lại, subscribe lại, không xếp hàng lệnh hỏng). Mỗi test dùng một broker riêng để không rò rỉ tin retained.
@@ -271,7 +274,7 @@ python -m pytest tests/backend -q
 - MQTT TLS đã có cấu hình nhưng chưa được thử với broker thật (cần chứng chỉ).
 - Chưa có refresh token và đăng xuất phía server (token sống `JWT_EXPIRE_MINUTES`; muốn thu hồi sớm thì khóa tài khoản).
 - Bộ đếm khóa đăng nhập và bộ đếm ingest nằm trong bộ nhớ tiến trình (mất khi khởi động lại, không chia sẻ giữa nhiều worker).
-- Token WebSocket nằm trong URL (có thể vào log của proxy); phiên WebSocket không tự ngắt khi token hết hạn. WebSocket chỉ đẩy cảnh báo và lệnh, **chưa đẩy telemetry** (trang Live Motion đang cần polling hoặc cần thêm kênh, chờ M4 quyết định).
+- Token WebSocket nằm trong URL (có thể vào log của proxy); phiên WebSocket không tự ngắt khi token hết hạn. `/ws/telemetry` đẩy mẫu mới và trạng thái thiết bị nhưng **không phát lại dữ liệu cũ** (client lấy lịch sử qua REST rồi nghe tiếp).
 - MTTA tính theo giờ server nhận bản tin, nên có thể bị phóng đại khi thiết bị gửi lại dữ liệu đệm sau mất mạng.
 - Báo cáo đọc toàn bộ telemetry của chuyến trong một lượt (bộ nhớ ~ số mẫu). Đã thử 6000 mẫu; chuyến rất dài (hàng trăm nghìn mẫu) chưa kiểm chứng.
 - Retention chỉ xóa `device_health` và telemetry không thuộc chuyến; telemetry của chuyến đã kết thúc giữ mãi.
@@ -286,6 +289,9 @@ python -m pytest tests/backend -q
 3. **`DELIVERED`** nghĩa là broker đã nhận (PUBACK), không phải thiết bị đã nhận; chỉ `cmd/ack` mới xác nhận thiết bị.
 4. **`voyage_id` trong lệnh `start_voyage`**: thiết bị nhận từ lệnh hay tự sinh rồi báo ngược lên? Hiện `POST /voyages` cho phép truyền sẵn `voyage_id` để khớp với giá trị thiết bị đang phát.
 5. **Ý nghĩa của `t_sim_s`**: có đếm lại sau mỗi lần khởi động không? Với dữ liệu thật (`SENSOR`) nó mang nghĩa gì? Replay hiện sắp xếp theo giờ server vì chưa chốt điều này.
-6. **Drift PSI (G6):** cần M2 cung cấp vector 14 đặc trưng (qua topic/trường nào, tần suất) và `ml/monitor/`. Trước khi có, endpoint chỉ trả `available=false`.
+6. **Drift PSI (G6):** cần M2 cung cấp vector 23 đặc trưng (qua topic/trường nào, tần suất) và `ml/monitor/`. Trước khi có, endpoint chỉ trả `available=false`.
 7. **Thời gian giữ dữ liệu** (retention) và việc "báo cáo tự động" khi kết thúc chuyến nghĩa là gì (chỉ tải được bất kỳ lúc nào, hay tự tạo và lưu file).
 8. **Tên giá trị nhãn cảnh báo** (`TRUE_ALARM`/`FALSE_ALARM`/`UNCLEAR`) và các trường `summary.json` do backend đặt, cần M4 xác nhận khi làm giao diện.
+9. **`contracts/examples/config_sample.json`** có `crc: "9c1e"` nhưng CRC đúng của nội dung đó là `4fa6` (khớp vector vàng của M1). Test `test_contract_example_config_crc_is_correct` đang `xfail(strict)`, sẽ báo khi file được sửa. Thuộc M1 sửa (PR ghi rõ module bị ảnh hưởng).
+10. **Lệnh `ack_alarm`** cần thêm vào enum `contracts/schemas/command.json` (và firmware xử lý) thì backend mới báo ACK xuống thiết bị được.
+11. **Cấu hình gửi dạng "bản vá":** thiết bị nhận cấu hình chỉ gồm các trường đã đặt (không tự điền mặc định). Cần M1 xác nhận thiết bị chấp nhận cấu hình một phần.

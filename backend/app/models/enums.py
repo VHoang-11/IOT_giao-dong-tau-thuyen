@@ -43,6 +43,7 @@ class CommandName(str, enum.Enum):
     start_voyage = "start_voyage"
     stop_voyage = "stop_voyage"
     restart_device = "restart_device"
+    ack_alarm = "ack_alarm"  # backend -> thiet bi khi nguoi truc ACK tren dashboard (M1 de xuat A2); chi gui qua POST /alarms/{id}/ack
 
 
 class CommandState(str, enum.Enum):

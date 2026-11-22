@@ -211,13 +211,13 @@ def test_calibration_fields_are_null_when_never_calibrated(client, db):
 def test_calibration_reports_last_applied_and_last_attempt(client, db, pub):
     db.add(Device(device_id=DEV))
     db.commit()
-    c1, _ = cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", now=T0)
+    c1, _ = cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", now=T0)
     handle_message(db, f"svmg/{DEV}/cmd/ack", json.dumps({"cmd_id": c1.cmd_id, "result": "APPLIED"}).encode(),
                    rx_time=T0 + timedelta(seconds=3))
     d = fleet(client)
     assert d["last_calibration_state"] == "APPLIED" and d["last_calibrated_at"].startswith("2026-01-01T12:00:03")
     # lan thu hai bi tu choi: 'lan hieu chuan gan nhat' van la lan APPLIED, nhung trang thai lan gui gan nhat la REJECTED
-    c2, _ = cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", now=T0 + timedelta(hours=1))
+    c2, _ = cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", now=T0 + timedelta(hours=1))
     handle_message(db, f"svmg/{DEV}/cmd/ack", json.dumps({"cmd_id": c2.cmd_id, "result": "REJECTED"}).encode(),
                    rx_time=T0 + timedelta(hours=1, seconds=2))
     d = fleet(client)
@@ -230,7 +230,7 @@ def test_calibration_ignores_other_commands_and_other_devices(client, db, pub):
     db.commit()
     c, _ = cmd_service.create_command(db, DEV, CommandName.restart_device, {}, 30, "admin01", now=T0)
     handle_message(db, f"svmg/{DEV}/cmd/ack", json.dumps({"cmd_id": c.cmd_id, "result": "APPLIED"}).encode())
-    c2, _ = cmd_service.create_command(db, "other", CommandName.calibrate_zero, {}, 30, "sup01", now=T0)
+    c2, _ = cmd_service.create_command(db, "other", CommandName.calibrate_zero, {}, 60, "sup01", now=T0)
     handle_message(db, "svmg/other/cmd/ack", json.dumps({"cmd_id": c2.cmd_id, "result": "APPLIED"}).encode())
     assert fleet(client)["last_calibrated_at"] is None                                  # restart khong phai hieu chuan
     assert fleet(client, "other")["last_calibrated_at"] is not None
@@ -239,6 +239,6 @@ def test_calibration_ignores_other_commands_and_other_devices(client, db, pub):
 def test_calibration_pending_command_shows_state_but_no_calibrated_time(client, db, pub):
     db.add(Device(device_id=DEV))
     db.commit()
-    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", now=T0)    # chua co ACK
+    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", now=T0)    # chua co ACK
     d = fleet(client)
     assert d["last_calibration_state"] == "DELIVERED" and d["last_calibrated_at"] is None

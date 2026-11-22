@@ -8,14 +8,6 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-# 14 dac trung theo contracts/features.md (thu tu co dinh, khop firmware C va ml/features.py)
-FEATURE_NAMES = [
-    "rms_roll", "p95_roll", "rms_pitch", "p95_pitch", "max_abs_roll", "energy_roll", "zero_crossing_rate",
-    "mean_roll", "mean_pitch", "std_roll", "trend_rms_slope", "heel_duration_s",
-    "data_quality_pct", "sensor_ok",
-]
-
-
 # --------------------------------------------------------------------- agreement
 
 class ClassAgreement(BaseModel):
@@ -60,6 +52,12 @@ class DriftStatus(BaseModel):
     available: bool                  # false -> khong co PSI nao; doc `reason`
     reason: Optional[str] = None
     source: Literal["unavailable", "ml"] = "unavailable"
-    expected_features: list[str]     # 14 ten dac trung theo hop dong, de giao dien dung san khung
+    expected_features: list[str]     # ten dac trung doc tu contracts/features23.json; rong neu chua co hop dong
+    feature_contract_available: bool = False
+    feature_schema_version: Optional[str] = None      # cua hop dong
+    feature_count: Optional[int] = None
+    device_feature_schema_version: Optional[str] = None   # thiet bi tu bao (status/health)
+    device_feature_count: Optional[int] = None
+    schema_match: Optional[bool] = None   # None = chua du thong tin de so (khong phai true)
     features: list[DriftReport] = []
     flagged_count: Optional[int] = None   # None khi khong co PSI (khong phai 0)

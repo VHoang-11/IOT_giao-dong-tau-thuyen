@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models as _models  # noqa: F401  (dang ky bang cho create_all; ten rieng de khong che ten `app` = FastAPI)
-from alarms.realtime import hub
+from alarms.realtime import hub, telemetry_hub
 from alarms.service import escalate_overdue
 from app.core.config import settings
 from app.core.db import Base, SessionLocal, engine
@@ -74,6 +74,7 @@ async def lifespan(_: FastAPI):
         bootstrap_admin(db)  # chi tao khi bang users rong va ADMIN_PASSWORD duoc dat
     log.info("backend started", extra={"database": engine.url.render_as_string(hide_password=True)})
     hub.bind_loop(asyncio.get_running_loop())  # de luong MQTT day tin sang WebSocket
+    telemetry_hub.bind_loop(asyncio.get_running_loop())
     task = asyncio.create_task(_escalation_loop()) if settings.alarm_escalation_enabled else None
     retention_task = asyncio.create_task(_retention_loop()) if retention_enabled() else None  # mac dinh khong chay
     if settings.mqtt_enabled:

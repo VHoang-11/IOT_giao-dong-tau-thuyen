@@ -1,7 +1,7 @@
 """Giam sat mo hinh (G6): nhat quan RF vs Baseline B, va (khi co nguon) drift PSI.
 
 NGUYEN TAC:
-- Khong tra ve so khong do duoc. PSI can vector 14 dac trung (contracts/features.md) do thiet bi/M2 cung cap;
+- Khong tra ve so khong do duoc. PSI can vector dac trung day du (contracts/features23.json) do thiet bi/M2 cung cap;
   telemetry hien chi luu 3 dac trung tom tat nen drift tra `available=false`, KHONG dien 0.
 - Luon kem source_mode (SENSOR/SIMULATION); mau sensor_ok = false bi loai khoi thong ke va duoc dem rieng.
 - Lop RF khong bi doi ten thanh 'muc canh bao': lop chuyen dong khac muc canh bao.
@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Device, Telemetry
 from app.models.enums import MotionClass
-from app.schemas.monitor import AgreementStats, ClassAgreement, DriftStatus, FEATURE_NAMES
+from app.schemas.monitor import AgreementStats, ClassAgreement, DriftStatus
+from monitor.feature_contract import load_contract
 from reports.csvexport import utc
 
 
@@ -78,19 +79,31 @@ def get_agreement(db: Session, device_id: str, voyage_id: Optional[str], limit: 
 
 
 def get_drift(db: Session, device_id: str, window_hours: int) -> DriftStatus:
-    """PSI tung dac trung. Hien CHUA KHA DUNG: can vector 14 dac trung + ml/monitor/ tu M2.
+    """PSI tung dac trung. Hien CHUA KHA DUNG: can vector dac trung + ml/monitor/ tu M2.
 
-    Van tra ve so mau thuc co trong cua so de giao dien biet du lieu co dang chay hay khong.
+    Van tra ve so mau thuc co trong cua so de giao dien biet du lieu co dang chay hay khong, kem hop dong dac trung
+    va viec thiet bi bao cung phien ban hay khong (firmware cu 14 dac trung vs hop dong 23 -> schema_match=false).
     Khi M2 giao ml/monitor/: thay phan 'unavailable' bang ket qua PSI that (available=True, source='ml')."""
     _require_device(db, device_id)
+    dev = db.scalar(select(Device).where(Device.device_id == device_id))
     since = datetime.now(tz=timezone.utc) - timedelta(hours=window_hours)
     where = [Telemetry.device_id == device_id, Telemetry.server_rx_time >= since]
     n = db.scalar(select(func.count()).select_from(Telemetry).where(*where)) or 0
     modes = sorted(m.value for m in db.scalars(select(Telemetry.source_mode).where(*where).distinct()))
+    fc = load_contract()
+    match: Optional[bool] = None
+    if fc is not None and dev.feature_schema_version is not None:
+        match = (dev.feature_schema_version == fc.schema_version
+                 and (dev.feature_count is None or dev.feature_count == fc.count)
+                 and (dev.preprocessing_version is None or dev.preprocessing_version == fc.preprocessing_version))
+    count = fc.count if fc else "?"
     return DriftStatus(
         device_id=device_id, window_hours=window_hours, window_samples=n, source_modes=modes,
         available=False, source="unavailable",
-        reason=("Chưa có nguồn đặc trưng để tính PSI: telemetry chỉ lưu 3 đặc trưng tóm tắt "
-                "(rms_roll_deg, heel_offset_deg, trend_rms_deg_per_min), trong khi hợp đồng có 14 đặc trưng. "
+        reason=(f"Chưa có nguồn đặc trưng để tính PSI: telemetry chỉ lưu 3 đặc trưng tóm tắt "
+                f"(rms_roll_deg, heel_offset_deg, trend_rms_deg_per_min), trong khi hợp đồng có {count} đặc trưng. "
                 "Cần M2 cung cấp vector đặc trưng đầy đủ và module ml/monitor/."),
-        expected_features=list(FEATURE_NAMES), features=[], flagged_count=None)
+        expected_features=list(fc.names) if fc else [], feature_contract_available=fc is not None,
+        feature_schema_version=fc.schema_version if fc else None, feature_count=fc.count if fc else None,
+        device_feature_schema_version=dev.feature_schema_version, device_feature_count=dev.feature_count,
+        schema_match=match, features=[], flagged_count=None)

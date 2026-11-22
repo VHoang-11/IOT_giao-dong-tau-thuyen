@@ -232,9 +232,9 @@ def busy_voyage(client, db, voyage):
     event(db, 103, "A-2", "CRITICAL", T0 + timedelta(seconds=10))   # dung moc dau trang 2
     event(db, 104, "A-2", "NORMAL", T0 + timedelta(seconds=10))     # cung moc voi event truoc
     event(db, 105, "A-X", "WARNING", T0 + timedelta(seconds=5))     # canh bao cua CHUYEN KHAC (se doi voyage ben duoi)
-    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", cmd_id="c-1", now=T0 + timedelta(seconds=9))
-    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", cmd_id="c-2", now=T0 + timedelta(seconds=10))
-    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", cmd_id="c-3", now=T0 + timedelta(seconds=28))
+    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", cmd_id="c-1", now=T0 + timedelta(seconds=9))
+    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", cmd_id="c-2", now=T0 + timedelta(seconds=10))
+    cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", cmd_id="c-3", now=T0 + timedelta(seconds=28))
     other = db.scalar(select(Alarm).where(Alarm.alarm_id == "A-X"))
     other.voyage_id = "V-OTHER"
     db.commit()

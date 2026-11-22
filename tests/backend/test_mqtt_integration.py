@@ -317,7 +317,7 @@ def test_command_rejected_by_device_is_recorded(device, sess):
     device.pub("telemetry", tele(1))
     eventually(lambda: one(sess, select(Device)), what="dang ky")
     with sess() as db:
-        cmd, _ = cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01")
+        cmd, _ = cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01")
     eventually(lambda: device.cmds, what="nhan lenh")
     device.pub("cmd/ack", {"cmd_id": cmd.cmd_id, "result": "REJECTED", "reason": "FORBIDDEN_STATE"}, qos=1)
     c = eventually(lambda: (lambda x: x if x.state == CommandState.REJECTED else None)(one(sess, select(Command))), what="REJECTED")
