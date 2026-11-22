@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy.sql.expression import true
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +49,8 @@ class Device(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(128))
+    # false = Admin vo hieu hoa: ingest tu choi ban tin, khong nhan lenh/cau hinh/chuyen moi (lich su van giu nguyen)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode), default=SourceMode.SIMULATION)
     state: Mapped[DeviceState] = mapped_column(_enum(DeviceState), default=DeviceState.offline)
     last_seen: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
@@ -55,6 +58,10 @@ class Device(Base):
     boot_id: Mapped[Optional[str]] = mapped_column(String(64))
     model_version: Mapped[Optional[str]] = mapped_column(String(32))
     config_version: Mapped[Optional[int]] = mapped_column(Integer)
+    # Thiet bi tu bao trong status/health (M1): dung de phat hien lech hop dong dac trung (vd. firmware 14 vs contract 23)
+    feature_schema_version: Mapped[Optional[str]] = mapped_column(String(64))
+    preprocessing_version: Mapped[Optional[str]] = mapped_column(String(64))
+    feature_count: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
@@ -160,6 +167,7 @@ class DeviceConfigVersion(Base):
     created_by: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     applied: Mapped[bool] = mapped_column(Boolean, default=False)
+    rejected_reason: Mapped[Optional[str]] = mapped_column(String(256))  # thiet bi tu choi ban nay (ack cfg-<ver> REJECTED)
 
 
 class DeviceHealth(Base):

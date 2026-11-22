@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alarms import service
-from alarms.realtime import hub
+from alarms.realtime import hub, telemetry_hub
 from app.core.db import SessionLocal, get_db
 from app.core.security import current_actor, get_current_user, require_role, user_from_token
 from app.models import Alarm, User
@@ -71,7 +71,29 @@ async def ack_alarm(alarm_pk: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail=str(e))
     except service.AlarmConflict as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return AckResult(alarm=AlarmOut.model_validate(alarm), already_acked=already)
+    status, detail = ("not_applicable", None) if already else _push_ack_to_device(db, alarm, actor)
+    return AckResult(alarm=AlarmOut.model_validate(alarm), already_acked=already,
+                     device_ack=status, device_ack_detail=detail)
+
+
+def _push_ack_to_device(db: Session, alarm: Alarm, actor: str) -> tuple[str, Optional[str]]:
+    """Bao thiet bi la nguoi truc da ACK (de coi/ho tro dong bo), neu thiet bi con cung lan khoi dong voi canh bao.
+    Best-effort: loi o day KHONG lam hong ACK da ghi. ack_alarm khong bao gio tat canh bao cuc bo."""
+    from app.models import Device
+    from app.models.enums import CommandName
+    from commands import service as cmd_service
+    from commands.params import CommandInvalid
+    dev = db.scalar(select(Device).where(Device.device_id == alarm.device_id))
+    if dev is None or dev.boot_id != alarm.boot_id:
+        return "not_applicable", "Thiết bị đã khởi động lại: cảnh báo này không còn trên thiết bị"
+    try:
+        cmd_service.create_command(db, alarm.device_id, CommandName.ack_alarm, {"alarm_id": alarm.alarm_id},
+                                   None, actor, internal=True)
+        return "sent", None
+    except CommandInvalid as e:
+        return "unsupported", str(e)
+    except Exception as e:  # noqa: BLE001 - broker mat ket noi, thiet bi vo hieu hoa...
+        return "failed", str(e)
 
 
 @router.put("/api/v1/alarms/{alarm_pk}/label", response_model=AlarmOut)
@@ -101,3 +123,22 @@ async def ws_alarms(ws: WebSocket, token: Optional[str] = Query(None)) -> None:
             await ws.receive_text()  # giu ket noi; client khong can gui gi
     except WebSocketDisconnect:
         hub.disconnect(ws)
+
+
+@ws_router.websocket("/ws/telemetry")
+async def ws_telemetry(ws: WebSocket, token: Optional[str] = Query(None),
+                       device_id: Optional[str] = Query(None, max_length=64)) -> None:
+    """Do thoi gian thuc: ws://host/ws/telemetry?token=<JWT>[&device_id=...].
+    Tin: {"type":"telemetry",...} (moi mau da luu) va {"type":"device_status",...} (online/offline/lech phien ban).
+    Khong gui lai du lieu cu: client lay lich su qua REST roi nghe tiep."""
+    with SessionLocal() as db:
+        user = user_from_token(db, token)
+    if user is None:
+        await ws.close(code=1008)
+        return
+    await telemetry_hub.connect_filtered(ws, device_id)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        telemetry_hub.disconnect(ws)

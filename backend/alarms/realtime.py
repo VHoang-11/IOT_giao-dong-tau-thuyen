@@ -48,4 +48,27 @@ class AlarmHub:
         asyncio.run_coroutine_threadsafe(self._broadcast(message), self.loop)
 
 
+class TelemetryHub(AlarmHub):
+    """Kenh du lieu do/trang thai thiet bi. Moi client co the loc theo device_id (None = tat ca)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.filters: dict[WebSocket, Optional[str]] = {}
+
+    async def connect_filtered(self, ws: WebSocket, device_id: Optional[str]) -> None:
+        await ws.accept()
+        self.clients.add(ws)
+        self.filters[ws] = device_id
+
+    def disconnect(self, ws: WebSocket) -> None:
+        self.clients.discard(ws)
+        self.filters.pop(ws, None)
+
+    async def _broadcast(self, message: dict[str, Any]) -> None:
+        dev = message.get("device_id")
+        targets = [ws for ws in list(self.clients) if self.filters.get(ws) in (None, dev)]
+        await asyncio.gather(*(self._send(ws, message) for ws in targets))
+
+
 hub = AlarmHub()
+telemetry_hub = TelemetryHub()

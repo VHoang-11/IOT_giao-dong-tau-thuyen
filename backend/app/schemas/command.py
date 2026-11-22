@@ -10,7 +10,8 @@ class CommandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     cmd: CommandName
     params: dict[str, Any] = Field(default_factory=dict)
-    ttl_s: int = Field(30, ge=1, le=300)
+    # None = mac dinh theo lenh (calibrate_zero 60 s vi thiet bi hieu chuan ~30 s; con lai 30 s)
+    ttl_s: Optional[int] = Field(None, ge=1, le=300)
     cmd_id: Optional[str] = Field(None, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
 
 
@@ -75,6 +76,7 @@ class ConfigOut(BaseModel):
     created_by: str
     created_at: datetime
     applied: bool
+    rejected_reason: Optional[str] = None
 
 
 class AuditOut(BaseModel):

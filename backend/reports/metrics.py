@@ -3,7 +3,8 @@ va co the tinh lai doc lap).
 
 CONG THUC (de M4/T11 tinh lai):
 - samples            = so ban ghi telemetry co (device_id, voyage_id) cua chuyen
-- expected_samples   = tong tren tung boot_id cua (seq_max - seq_min + 1)        [seq dem lai sau moi lan khoi dong]
+- expected_samples   = tong tren tung boot_id cua (seq_max - seq_min + 1) tru so event co seq nam trong dai do
+                       [seq dem lai sau moi lan khoi dong; seq DUNG CHUNG voi event nen seq cua event khong tinh la mat]
 - received_rate      = samples / expected_samples
 - thong ke chuyen dong (roll/pitch/heel/rms) CHI tren mau sensor_ok = true; mau sensor_ok = false chi duoc DEM rieng
 - p95_abs_roll_deg   = nearest-rank: sorted(|roll|)[ceil(0.95 * n) - 1]
@@ -19,11 +20,11 @@ import math
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alarms.service import compute_stats
-from app.models import Command, Voyage
+from app.models import AlarmEvent, Command, Voyage
 from app.schemas.voyage import (
     CommandSummary, DataQuality, Distribution, MotionStats, ReportSummary, VoyageOut,
 )
@@ -111,7 +112,14 @@ def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None)
     for (t,) in db.execute(telemetry_query(voyage.device_id, voyage.voyage_id)):
         p.add(t)
 
-    expected = sum(b[1] - b[0] + 1 for b in p.boots.values())
+    # seq DUNG CHUNG cho telemetry va event (M1, CONTRACT_PROPOSALS B7): so seq bi event chiem KHONG phai ban tin
+    # telemetry bi mat. Tru chung ra khoi dai seq, neu khong ty le nhan se bi tinh thieu moi khi co canh bao.
+    seq_range = sum(b[1] - b[0] + 1 for b in p.boots.values())
+    event_seqs = sum(
+        db.scalar(select(func.count()).select_from(AlarmEvent).where(
+            AlarmEvent.device_id == voyage.device_id, AlarmEvent.boot_id == boot, AlarmEvent.seq.between(lo, hi))) or 0
+        for boot, (lo, hi, _) in p.boots.items())
+    expected = max(0, seq_range - event_seqs)
     duration = (p.last - p.first).total_seconds() if p.first and p.last else None
     alarms = compute_stats(db, device_id=voyage.device_id, voyage_id=voyage.voyage_id)
     false_n = alarms.by_label.get("FALSE_ALARM", 0)
@@ -154,6 +162,7 @@ def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None)
         first_sample_at=p.first, last_sample_at=p.last, duration_s=duration,
         data_quality=DataQuality(
             samples=p.rows, expected_samples=expected, missing_samples=max(0, expected - p.rows),
+            seq_used_by_events=event_seqs,
             received_rate=(p.rows / expected) if expected else None, boots=len(p.boots),
             sensor_fault_samples=p.fault),
         motion=MotionStats(

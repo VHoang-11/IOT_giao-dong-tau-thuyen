@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from app.models.enums import DeviceState, SourceMode
+from app.models.enums import CommandState, DeviceState, SourceMode
 
 
 class DeviceHealthOut(BaseModel):
@@ -37,3 +37,7 @@ class DeviceHealthSummary(BaseModel):
     # stale = qua health_stale_s khong thay thiet bi gui gi (chua tung thay cung tinh la stale)
     stale: bool
     latest: Optional[DeviceHealthOut] = None
+    # Hieu chuan (G5): chi phan anh lenh `calibrate_zero` da duoc thiet bi xac nhan APPLIED qua backend.
+    # Hieu chuan bang nut/chiet ap tren thiet bi KHONG duoc ghi nhan. None = chua co lan nao (khong phai 'khong can').
+    last_calibrated_at: Optional[datetime] = None
+    last_calibration_state: Optional[CommandState] = None   # ket qua lan gui lenh gan nhat (APPLIED/REJECTED/TIMEOUT/SENT...)

@@ -36,6 +36,15 @@ def compute_crc(payload: dict[str, Any]) -> str:
     return f"{binascii.crc_hqx(canon, 0xFFFF):04x}"
 
 
+def normalize_numbers(body: dict[str, Any]) -> dict[str, Any]:
+    """So thuc nguyen (20.0) -> so nguyen (20) truoc khi tinh CRC va gui.
+
+    Thiet bi dung lai chuoi chuan hoa tu JSON nhan duoc; '20.0' va '20' cho CRC khac nhau (0902 vs 4fa6) va
+    thu vien JSON phia thiet bi khong phan biet duoc hai dang. Gui dang nguyen thi hai ben luon cung mot chuoi.
+    bool giu nguyen (bool la con cua int trong Python)."""
+    return {k: (int(v) if isinstance(v, float) and v.is_integer() else v) for k, v in body.items()}
+
+
 def config_topic(device_id: str) -> str:
     return f"svmg/{device_id}/config"
 
@@ -55,10 +64,12 @@ def _device(db: Session, device_id: str) -> Device:
 
 def _publish_new_version(db: Session, dev: Device, body: dict[str, Any], actor: str,
                          action: str, detail: dict[str, Any]) -> DeviceConfigVersion:
+    if not dev.enabled:
+        raise ConfigConflict("Thiết bị đã bị Admin vô hiệu hóa, không nhận cấu hình")
     existing = history(db, dev.device_id)
     # so phien ban phai vuot ca ban server da tao lan ban thiet bi dang bao cao
     version = max([r.config_version for r in existing] + [dev.config_version or 0]) + 1
-    payload = {**body, "config_version": version}
+    payload = {**normalize_numbers(body), "config_version": version}
     payload["crc"] = compute_crc(payload)
     errs = validate("config", payload)
     if errs:

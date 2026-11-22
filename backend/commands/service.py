@@ -19,12 +19,14 @@ from sqlalchemy.orm import Session
 from alarms.realtime import hub
 from alarms.service import MuteNotAllowed, ensure_mute_allowed
 from app.core.db import SessionLocal
-from app.models import Command, Device
+from app.models import Command, Device, DeviceConfigVersion
 from app.models.enums import CommandName, CommandState, Role
 from app.services.audit import audit
 from commands import config_service
 from commands.config_service import DeviceNotFound  # noqa: F401  (re-export cho router)
-from commands.params import CommandInvalid, validate_params
+from commands.params import (
+    DEVICE_UNSUPPORTED, INTERNAL_ONLY, CommandInvalid, resolve_ttl, validate_params,
+)
 from commands.publisher import PublishFailed, get_publisher
 from ingest.validator import validate
 
@@ -43,6 +45,7 @@ REQUIRED_ROLE: dict[CommandName, Role] = {
     CommandName.start_voyage: Role.SUPERVISOR,
     CommandName.stop_voyage: Role.SUPERVISOR,
     CommandName.restart_device: Role.ADMIN,
+    CommandName.ack_alarm: Role.OPERATOR,
 }
 
 
@@ -88,11 +91,24 @@ def _replay(existing: Command, device_id: str, cmd: CommandName, clean: dict[str
 
 
 def create_command(db: Session, device_id: str, cmd: CommandName, params: dict[str, Any],
-                   ttl_s: int, actor: str, cmd_id: Optional[str] = None,
-                   now: Optional[datetime] = None) -> tuple[Command, bool]:
-    """Tao + gui lenh. Tra ve (command, created); created=False neu la gui lai cmd_id cu."""
-    if db.scalar(select(Device.id).where(Device.device_id == device_id)) is None:
+                   ttl_s: Optional[int], actor: str, cmd_id: Optional[str] = None,
+                   now: Optional[datetime] = None, internal: bool = False) -> tuple[Command, bool]:
+    """Tao + gui lenh. Tra ve (command, created); created=False neu la gui lai cmd_id cu.
+
+    ttl_s=None -> mac dinh theo lenh (calibrate_zero 60 s, con lai 30 s). internal=True chi dung cho backend noi bo (ack_alarm)."""
+    if cmd in DEVICE_UNSUPPORTED:
+        raise CommandInvalid(DEVICE_UNSUPPORTED[cmd])
+    if cmd in INTERNAL_ONLY and not internal:
+        raise CommandInvalid(INTERNAL_ONLY[cmd])
+    ttl_s = resolve_ttl(cmd, ttl_s)
+    dev = db.scalar(select(Device).where(Device.device_id == device_id))
+    if dev is None:
         raise DeviceNotFound(f"Không tìm thấy thiết bị '{device_id}'")
+    if not dev.enabled:
+        msg = "Thiết bị đã bị Admin vô hiệu hóa, không nhận lệnh"
+        audit(db, actor, "CMD_BLOCKED", f"{device_id}:{cmd_id or '-'}", {"cmd": cmd.value, "reason": msg})
+        db.commit()  # lan bi chan van phai de lai dau vet
+        raise CommandBlocked(msg)
     clean = validate_params(cmd, params)
     cmd_id = cmd_id or "c-" + uuid.uuid4().hex[:8]
 
@@ -157,11 +173,46 @@ def mark_delivered(cmd_id: str) -> None:
         db.close()
 
 
+def _config_version_from_ack(p: dict[str, Any]) -> Optional[int]:
+    """Thiet bi ack cau hinh voi cmd_id='cfg-<ver>' (khong co ban ghi Command)."""
+    cid = p.get("cmd_id", "")
+    if not cid.startswith("cfg-") or not cid[4:].isdigit():
+        return None
+    return int(cid[4:])
+
+
+def _handle_config_ack(db: Session, device_id: str, p: dict[str, Any]) -> Optional[str]:
+    """APPLIED -> danh dau da ap dung; REJECTED -> luu ly do + audit (khong bao gio coi la da ap dung).
+    Tra ve None neu khong phai ack cau hinh hop le cua thiet bi nay."""
+    ver = _config_version_from_ack(p)
+    if ver is None:
+        return None
+    row = db.scalar(select(DeviceConfigVersion).where(
+        DeviceConfigVersion.device_id == device_id, DeviceConfigVersion.config_version == ver))
+    if row is None:
+        return None
+    if row.applied or row.rejected_reason is not None:
+        return "duplicate"
+    if p["result"] == CommandState.APPLIED.value:
+        row.applied = True
+        outcome = "applied"
+    else:
+        row.rejected_reason = (p.get("reason") or "thiết bị từ chối")[:256]
+        outcome = "rejected"
+    audit(db, f"device:{device_id}", "CONFIG_ACK", f"{device_id}:cfg-{ver}",
+          {"result": p["result"], "reason": p.get("reason")})
+    db.commit()
+    return outcome
+
+
 def handle_ack(db: Session, device_id: str, p: dict[str, Any], rx: datetime) -> tuple[str, Optional[Command]]:
     """Xu ly bao cao tu thiet bi. Tra ve (ket_qua, command):
     applied|rejected -> da chuyen trang thai; unknown | mismatch | duplicate | late."""
     c = db.scalar(select(Command).where(Command.cmd_id == p["cmd_id"]))
     if c is None:
+        cfg = _handle_config_ack(db, device_id, p)
+        if cfg is not None:
+            return cfg, None
         return "unknown", None
     if c.device_id != device_id:
         return "mismatch", c  # thiet bi nay khong duoc ACK lenh cua tau khac

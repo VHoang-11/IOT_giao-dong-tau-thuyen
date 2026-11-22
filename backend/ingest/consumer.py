@@ -18,6 +18,11 @@ class MqttConsumer:
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="svmg-backend-ingest")
         if settings.mqtt_user:
             self.client.username_pw_set(settings.mqtt_user, settings.mqtt_pass)
+        if settings.mqtt_tls:
+            # xac minh chung chi broker (khong co tuy chon bo qua xac minh); rong = kho CA he dieu hanh
+            self.client.tls_set(ca_certs=settings.mqtt_ca_certs or None)
+        elif settings.env.lower() == "production":
+            log.warning("MQTT dang chay KHONG ma hoa (MQTT_TLS=false) o che do production")
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message

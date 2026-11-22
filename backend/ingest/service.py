@@ -15,15 +15,19 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from alarms.realtime import telemetry_hub
 from alarms.service import apply_event
+from app.core.config import settings
+from app.services.voyages import active_voyage_id
 from commands.config_service import mark_applied as mark_config_applied
 from commands.service import handle_ack as handle_command_ack
 from notify.service import notify_device_offline
 from app.models import AlarmEvent, Device, DeviceHealth, Telemetry
 from app.models.enums import AlarmLevel, DeviceState, MotionClass, SourceMode
+from ingest.stats import stats
 from ingest.validator import validate
 
-log = logging.getLogger("svmg.ingest")
+log =logging.getLogger("svmg.ingest")
 
 MAX_PAYLOAD_BYTES = 16 * 1024
 
@@ -70,21 +74,16 @@ class Result:
     reason: Optional[str] = None
 
 
-class Stats:
-    """Bo dem don gian de do ti le ban tin nhan/trung/loi (T06, T14)."""
-    def __init__(self) -> None:
-        self.counts: dict[str, int] = {}
-
-    def add(self, r: Result) -> None:
-        k = f"{r.kind or 'unknown'}.{r.outcome.value}"
-        self.counts[k] = self.counts.get(k, 0) + 1
-
-
-stats = Stats()
-
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _device_gate(db: Session, dev_id: str) -> Optional[str]:
+    """Ly do tu choi ban tin theo trang thai thiet bi (Admin quan ly), hoac None neu cho qua."""
+    row = db.execute(select(Device.enabled).where(Device.device_id == dev_id)).first()
+    if row is None:
+        return None if settings.auto_register_devices else "thiet bi chua duoc Admin dang ky (AUTO_REGISTER_DEVICES=false)"
+    return None if row[0] else "thiet bi da bi Admin vo hieu hoa"
 
 
 def _get_or_create_device(db: Session, device_id: str) -> Device:
@@ -111,6 +110,11 @@ def _dedup_exists(db: Session, model, device_id: str, boot_id: str, seq: int) ->
         model.device_id == device_id, model.boot_id == boot_id, model.seq == seq)) is not None
 
 
+def _iso(dt: datetime) -> str:
+    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
     if _dedup_exists(db, Telemetry, dev_id, p["boot_id"], p["seq"]):
         return Result(Outcome.DUPLICATE, "telemetry", dev_id)
@@ -121,11 +125,14 @@ def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime)
     dev.config_version = p["config_version"]
     dev.boot_id = p["boot_id"]
     bb = p.get("class_baseline_b")
+    # Thiet bi that khong gui voyage_id -> gan theo chuyen DANG CHAY cua thiet bi luc nhan ban tin.
+    # Neu ban tin tu mang voyage_id (nguon khac) thi giu nguyen.
+    voyage_id = p.get("voyage_id") or active_voyage_id(db, dev_id)
     db.add(Telemetry(
         device_id=dev_id, boot_id=p["boot_id"], seq=p["seq"], t_sim_s=p["t_sim_s"],
         uptime_ms=p["uptime_ms"], timewarp=p.get("timewarp", 1),
         source_mode=SourceMode(p["source_mode"]), synthetic=p.get("synthetic"),
-        scenario_id=p.get("scenario_id"), voyage_id=p.get("voyage_id"),
+        scenario_id=p.get("scenario_id"), voyage_id=voyage_id,
         roll_deg=p["roll_deg"], pitch_deg=p["pitch_deg"], rms_roll_deg=p.get("rms_roll_deg"),
         heel_offset_deg=p.get("heel_offset_deg"), trend_rms_deg_per_min=p.get("trend_rms_deg_per_min"),
         class_rf=MotionClass(p["class_rf"]), class_baseline_b=MotionClass(bb) if bb else None,
@@ -133,6 +140,9 @@ def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime)
         model_version=p["model_version"], config_version=p["config_version"],
         sensor_ok=p["sensor_ok"], server_rx_time=rx))
     ok = _commit_or_duplicate(db)
+    if ok:
+        telemetry_hub.publish({"type": "telemetry", **p, "device_id": dev_id, "voyage_id": voyage_id,
+                               "server_rx_time": _iso(rx)})
     return Result(Outcome.STORED if ok else Outcome.DUPLICATE, "telemetry", dev_id)
 
 
@@ -167,7 +177,12 @@ def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) ->
                      ("config_version", "config_version"), ("boot_id", "boot_id")):
         if src in p:
             setattr(dev, dst, p[src])
+    for k in ("feature_schema_version", "preprocessing_version", "feature_count"):
+        if p.get(k) is not None:
+            setattr(dev, k, p[k])
     db.commit()
+    telemetry_hub.publish({"type": "device_status", "device_id": dev_id, "state": dev.state.value,
+                           "last_seen": _iso(rx)})
     if p.get("state") == "online":
         mark_config_applied(db, dev_id, p.get("config_version"))  # thiet bi bao dang dung phien ban nay
     elif was_online:  # chi bao khi chuyen online -> offline (LWT gui lai khong bao lap)
@@ -178,6 +193,9 @@ def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) ->
 def _handle_health(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
     dev = _get_or_create_device(db, dev_id)
     dev.last_seen = rx
+    for k in ("feature_schema_version", "preprocessing_version", "feature_count"):
+        if p.get(k) is not None:
+            setattr(dev, k, p[k])
     db.add(DeviceHealth(
         device_id=dev_id, free_heap_bytes=p["free_heap_bytes"],
         min_free_heap_bytes=p.get("min_free_heap_bytes"), uptime_ms=p["uptime_ms"],
@@ -196,7 +214,7 @@ def handle_message(db: Session, topic: str, payload: bytes, rx_time: Optional[da
     """Xu ly 1 ban tin. Khong nem exception ra ngoai vi loi du lieu - tra ve Result."""
     rx = rx_time or _utcnow()  # luon gan server_rx_time
     result = _process(db, topic, payload, rx)
-    stats.add(result)
+    stats.add(result.kind, result.outcome.value, result.device_id, topic, result.reason)
     level = logging.INFO if result.outcome in (Outcome.STORED, Outcome.DUPLICATE, Outcome.IGNORED) else logging.WARNING
     log.log(level, "mqtt message", extra={"topic": topic, "device_id": result.device_id,
                                           "kind": result.kind, "outcome": result.outcome.value,
@@ -211,6 +229,9 @@ def _process(db: Session, topic: str, payload: bytes, rx: datetime) -> Result:
     dev_id, kind = m.group(1), m.group(2)
     if len(payload) > MAX_PAYLOAD_BYTES:
         return Result(Outcome.INVALID, kind, dev_id, "payload qua lon")
+    blocked = _device_gate(db, dev_id)
+    if blocked:
+        return Result(Outcome.REJECTED, kind, dev_id, blocked)
     try:
         # parse_constant/parse_float: JSON chuan khong co NaN/Infinity; Python mac dinh van nhan -> phai tu choi
         data = json.loads(payload, parse_constant=_reject_constant, parse_float=_finite_float)

@@ -36,6 +36,34 @@ paths:
                 title: Response List Devices Api V1 Devices Get
       security:
       - OAuth2PasswordBearer: []
+    post:
+      tags:
+      - devices
+      summary: Register Device
+      description: Đăng ký thiết bị trước khi nó gửi bản tin đầu tiên (Admin). Bắt
+        buộc nêu rõ SENSOR hay SIMULATION.
+      operationId: register_device_api_v1_devices_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - OAuth2PasswordBearer: []
   /api/v1/devices/{device_id}:
     get:
       tags:
@@ -51,6 +79,43 @@ paths:
         schema:
           type: string
           title: Device Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - devices
+      summary: Update Device
+      description: 'Đặt tên / bật-tắt thiết bị (Admin). Tắt (`enabled=false`): bản
+        tin bị từ chối, không nhận lệnh, cấu hình,
+
+        chuyến mới. KHÔNG xóa thiết bị để giữ lịch sử và báo cáo.'
+      operationId: update_device_api_v1_devices__device_id__patch
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdate'
       responses:
         '200':
           description: Successful Response
@@ -1187,6 +1252,183 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/monitor/agreement:
+    get:
+      tags:
+      - monitor
+      summary: Monitor Agreement
+      description: 'Tỉ lệ Random Forest trùng Baseline B. Đây là độ **nhất quán**
+        giữa hai mô hình, không phải độ chính xác
+
+        (không có nhãn thật) và không phải dự báo nguy hiểm. Mẫu `sensor_ok=false`
+        bị loại và được đếm riêng.
+
+        `agreement_rate = null` khi chưa có mẫu nào đủ điều kiện (không phải 0%).'
+      operationId: monitor_agreement_api_v1_monitor_agreement_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_.-]+$
+          description: Mã thiết bị (bắt buộc)
+          title: Device Id
+        description: Mã thiết bị (bắt buộc)
+      - name: voyage_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+            pattern: ^[A-Za-z0-9_.-]+$
+          - type: 'null'
+          description: Giới hạn theo một chuyến; bỏ trống = toàn bộ thiết bị
+          title: Voyage Id
+        description: Giới hạn theo một chuyến; bỏ trống = toàn bộ thiết bị
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 10000
+          minimum: 1
+          description: Lấy tối đa N mẫu gần nhất có đủ RF và Baseline
+          default: 1000
+          title: Limit
+        description: Lấy tối đa N mẫu gần nhất có đủ RF và Baseline
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgreementStats'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/monitor/drift:
+    get:
+      tags:
+      - monitor
+      summary: Monitor Drift
+      description: 'Drift PSI từng đặc trưng. **Hiện chưa khả dụng** (`available=false`,
+        kèm `reason`): cần M2 cung cấp
+
+        vector 14 đặc trưng và module `ml/monitor/`. Endpoint không bao giờ trả PSI
+        giả.'
+      operationId: monitor_drift_api_v1_monitor_drift_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_.-]+$
+          description: Mã thiết bị (bắt buộc)
+          title: Device Id
+        description: Mã thiết bị (bắt buộc)
+      - name: window_hours
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 168
+          minimum: 1
+          description: Cửa sổ thời gian (giờ; mặc định 24, tối đa 168)
+          default: 24
+          title: Window Hours
+        description: Cửa sổ thời gian (giờ; mặc định 24, tối đa 168)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriftStatus'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/ingest/stats:
+    get:
+      tags:
+      - ingest
+      summary: Ingest Stats
+      description: Số đếm bản tin MQTT đã nhận (đo T06/T14) và 50 bản tin bị từ chối
+        gần nhất kèm lý do.
+      operationId: ingest_stats_api_v1_ingest_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestStatsOut'
+      security:
+      - OAuth2PasswordBearer: []
+  /api/v1/ingest/stats/reset:
+    post:
+      tags:
+      - ingest
+      summary: Reset Ingest Stats
+      description: Đặt lại bộ đếm (dùng trước mỗi lần chạy thí nghiệm). Có ghi nhật
+        ký kiểm toán.
+      operationId: reset_ingest_stats_api_v1_ingest_stats_reset_post
+      responses:
+        '204':
+          description: Successful Response
+      security:
+      - OAuth2PasswordBearer: []
+  /api/v1/retention/status:
+    get:
+      tags:
+      - retention
+      summary: Retention Status
+      description: Chính sách dọn dữ liệu đang áp dụng (mặc định TẮT) và số dòng hiện
+        có.
+      operationId: retention_status_api_v1_retention_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionStatus'
+      security:
+      - OAuth2PasswordBearer: []
+  /api/v1/retention/run:
+    post:
+      tags:
+      - retention
+      summary: Retention Run
+      description: Chạy dọn dữ liệu ngay (theo chính sách trong cấu hình). Chính sách
+        tắt thì không xóa gì.
+      operationId: retention_run_api_v1_retention_run_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionRun'
+      security:
+      - OAuth2PasswordBearer: []
 components:
   schemas:
     AckResult:
@@ -1196,11 +1438,96 @@ components:
         already_acked:
           type: boolean
           title: Already Acked
+        device_ack:
+          type: string
+          title: Device Ack
+          default: not_applicable
+        device_ack_detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Ack Detail
       type: object
       required:
       - alarm
       - already_acked
       title: AckResult
+    AgreementStats:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        voyage_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Voyage Id
+        source_label:
+          type: string
+          title: Source Label
+        source_modes:
+          items:
+            type: string
+          type: array
+          title: Source Modes
+        samples_considered:
+          type: integer
+          title: Samples Considered
+        excluded_sensor_fault:
+          type: integer
+          title: Excluded Sensor Fault
+        matched:
+          type: integer
+          title: Matched
+        agreement_rate:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Agreement Rate
+          description: None neu samples_considered = 0
+        by_rf_class:
+          additionalProperties:
+            $ref: '#/components/schemas/ClassAgreement'
+          type: object
+          title: By Rf Class
+        limit:
+          type: integer
+          title: Limit
+        first_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: First Sample At
+        last_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sample At
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - device_id
+      - source_label
+      - source_modes
+      - samples_considered
+      - excluded_sensor_fault
+      - matched
+      - by_rf_class
+      - limit
+      - notes
+      title: AgreementStats
+      description: 'Ty le Random Forest trung Baseline B. Day la do NHAT QUAN giua
+        hai mo hinh, KHONG phai do chinh xac
+
+        (khong co nhan that) va khong phai du bao nguy hiem.'
     AlarmLabel:
       type: string
       enum:
@@ -1466,6 +1793,26 @@ components:
       - name
       - configured
       title: ChannelStatus
+    ClassAgreement:
+      properties:
+        rf_total:
+          type: integer
+          title: Rf Total
+        matched:
+          type: integer
+          title: Matched
+        rate:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Rate
+      type: object
+      required:
+      - rf_total
+      - matched
+      title: ClassAgreement
     CommandName:
       type: string
       enum:
@@ -1476,6 +1823,7 @@ components:
       - start_voyage
       - stop_voyage
       - restart_device
+      - ack_alarm
       title: CommandName
     CommandOut:
       properties:
@@ -1549,11 +1897,12 @@ components:
           type: object
           title: Params
         ttl_s:
-          type: integer
-          maximum: 300.0
-          minimum: 1.0
+          anyOf:
+          - type: integer
+            maximum: 300.0
+            minimum: 1.0
+          - type: 'null'
           title: Ttl S
-          default: 30
         cmd_id:
           anyOf:
           - type: string
@@ -1648,6 +1997,11 @@ components:
         applied:
           type: boolean
           title: Applied
+        rejected_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Rejected Reason
       type: object
       required:
       - device_id
@@ -1720,6 +2074,10 @@ components:
         missing_samples:
           type: integer
           title: Missing Samples
+        seq_used_by_events:
+          type: integer
+          title: Seq Used By Events
+          default: 0
         received_rate:
           anyOf:
           - type: number
@@ -1739,6 +2097,29 @@ components:
       - boots
       - sensor_fault_samples
       title: DataQuality
+    DeviceCreate:
+      properties:
+        device_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          pattern: ^[A-Za-z0-9_.-]+$
+          title: Device Id
+        name:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Name
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+      additionalProperties: false
+      type: object
+      required:
+      - device_id
+      - source_mode
+      title: DeviceCreate
+      description: Dang ky thiet bi truoc khi no gui ban tin dau tien (Admin).
     DeviceHealthOut:
       properties:
         device_id:
@@ -1829,6 +2210,16 @@ components:
           anyOf:
           - $ref: '#/components/schemas/DeviceHealthOut'
           - type: 'null'
+        last_calibrated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Calibrated At
+        last_calibration_state:
+          anyOf:
+          - $ref: '#/components/schemas/CommandState'
+          - type: 'null'
       type: object
       required:
       - device_id
@@ -1846,6 +2237,10 @@ components:
           - type: string
           - type: 'null'
           title: Name
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
         source_mode:
           $ref: '#/components/schemas/SourceMode'
         state:
@@ -1888,6 +2283,22 @@ components:
       - online
       - offline
       title: DeviceState
+    DeviceUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Name
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+      additionalProperties: false
+      type: object
+      title: DeviceUpdate
     Distribution:
       properties:
         counts:
@@ -1904,6 +2315,117 @@ components:
           default: {}
       type: object
       title: Distribution
+    DriftReport:
+      properties:
+        feature_index:
+          type: integer
+          title: Feature Index
+        feature_name:
+          type: string
+          title: Feature Name
+        psi:
+          type: number
+          minimum: 0.0
+          title: Psi
+          description: Population Stability Index
+        flagged:
+          type: boolean
+          title: Flagged
+          description: Theo nguong do M2 dinh nghia (nguong chi la tham so demo)
+      type: object
+      required:
+      - feature_index
+      - feature_name
+      - psi
+      - flagged
+      title: DriftReport
+      description: PSI cua mot dac trung. CHI xuat hien khi DriftStatus.available
+        = true.
+    DriftStatus:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        window_hours:
+          type: integer
+          title: Window Hours
+        window_samples:
+          type: integer
+          title: Window Samples
+        source_modes:
+          items:
+            type: string
+          type: array
+          title: Source Modes
+        available:
+          type: boolean
+          title: Available
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        source:
+          type: string
+          enum:
+          - unavailable
+          - ml
+          title: Source
+          default: unavailable
+        expected_features:
+          items:
+            type: string
+          type: array
+          title: Expected Features
+        feature_contract_available:
+          type: boolean
+          title: Feature Contract Available
+          default: false
+        feature_schema_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Feature Schema Version
+        feature_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Feature Count
+        device_feature_schema_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Feature Schema Version
+        device_feature_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Device Feature Count
+        schema_match:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Schema Match
+        features:
+          items:
+            $ref: '#/components/schemas/DriftReport'
+          type: array
+          title: Features
+          default: []
+        flagged_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Flagged Count
+      type: object
+      required:
+      - device_id
+      - window_hours
+      - window_samples
+      - source_modes
+      - available
+      - expected_features
+      title: DriftStatus
     HTTPValidationError:
       properties:
         detail:
@@ -1922,6 +2444,88 @@ components:
       required:
       - status
       title: HealthOut
+    IngestRates:
+      properties:
+        stored:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Stored
+        duplicate:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Duplicate
+        invalid:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Invalid
+        rejected:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rejected
+        ignored:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Ignored
+      type: object
+      title: IngestRates
+      description: Ty le tren TONG so ban tin da nhan; None khi chua co ban tin nao
+        (khong phai 0).
+    IngestStatsOut:
+      properties:
+        since:
+          type: string
+          format: date-time
+          title: Since
+        total_messages:
+          type: integer
+          title: Total Messages
+        totals:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Totals
+        rates:
+          $ref: '#/components/schemas/IngestRates'
+        by_kind:
+          additionalProperties:
+            additionalProperties:
+              type: integer
+            type: object
+          type: object
+          title: By Kind
+        by_device:
+          additionalProperties:
+            additionalProperties:
+              type: integer
+            type: object
+          type: object
+          title: By Device
+        recent_errors:
+          items:
+            $ref: '#/components/schemas/RecentError'
+          type: array
+          title: Recent Errors
+        note:
+          type: string
+          title: Note
+          default: 'Bo dem nam trong bo nho tien trinh: mat khi khoi dong lai, khong
+            chia se giua nhieu worker. Ti le nhan theo tung chuyen (dua tren seq)
+            xem trong bao cao chuyen di.'
+      type: object
+      required:
+      - since
+      - total_messages
+      - totals
+      - rates
+      - by_kind
+      - by_device
+      - recent_errors
+      title: IngestStatsOut
     MotionClass:
       type: string
       enum:
@@ -2004,6 +2608,40 @@ components:
       - old_password
       - new_password
       title: PasswordChange
+    RecentError:
+      properties:
+        ts:
+          type: string
+          format: date-time
+          title: Ts
+        topic:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Topic
+        device_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Id
+        kind:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+        outcome:
+          type: string
+          title: Outcome
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      required:
+      - ts
+      - outcome
+      title: RecentError
     ReplayAlarmEvent:
       properties:
         boot_id:
@@ -2385,6 +3023,83 @@ components:
       - telemetry_rows
       - telemetry_csv_sha256
       title: ReportSummary
+    RetentionPolicy:
+      properties:
+        health_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Health Days
+        telemetry_without_voyage_days:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Telemetry Without Voyage Days
+        interval_s:
+          type: integer
+          title: Interval S
+        batch:
+          type: integer
+          title: Batch
+      type: object
+      required:
+      - interval_s
+      - batch
+      title: RetentionPolicy
+    RetentionRun:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+        deleted:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Deleted
+        cutoffs:
+          additionalProperties:
+            type: string
+          type: object
+          title: Cutoffs
+      type: object
+      required:
+      - enabled
+      - deleted
+      - cutoffs
+      title: RetentionRun
+    RetentionStatus:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+        policy:
+          $ref: '#/components/schemas/RetentionPolicy'
+        rows:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Rows
+        oldest:
+          additionalProperties:
+            anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          type: object
+          title: Oldest
+        never_deleted:
+          items:
+            type: string
+          type: array
+          title: Never Deleted
+      type: object
+      required:
+      - enabled
+      - policy
+      - rows
+      - oldest
+      - never_deleted
+      title: RetentionStatus
     Role:
       type: string
       enum:

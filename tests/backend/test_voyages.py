@@ -288,8 +288,8 @@ def test_alarms_commands_and_false_alarm_rate_per_hour(client, db, voyage, auth)
         ids = {a["alarm_id"]: a["id"] for a in a1}
         client.put(f"/api/v1/alarms/{ids['A-1']}/label", json={"label": "FALSE_ALARM"})
         client.put(f"/api/v1/alarms/{ids['A-2']}/label", json={"label": "TRUE_ALARM"})
-        cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", now=T0 + timedelta(seconds=60))
-        cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 30, "sup01", now=T0 + timedelta(hours=5))
+        cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", now=T0 + timedelta(seconds=60))
+        cmd_service.create_command(db, DEV, CommandName.calibrate_zero, {}, 60, "sup01", now=T0 + timedelta(hours=5))
         s = summary(client)
         assert s["duration_s"] == 3600
         assert s["alarms"]["total"] == 2 and s["alarms"]["by_max_level"] == {"WARNING": 1, "CRITICAL": 1}

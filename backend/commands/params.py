@@ -41,7 +41,12 @@ class SetThresholdParams(_Strict):
 
 
 class MuteParams(_Strict):
-    duration_s: Optional[int] = Field(None, ge=1, le=600)
+    # Thiet bi tu choi duration_s > 300 (BAD_PARAM; mac dinh 60 s theo Bang 3.1 de cuong) -> backend chan truoc (M1 A3)
+    duration_s: Optional[int] = Field(None, ge=1, le=300)
+
+
+class AckAlarmParams(_Strict):
+    alarm_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")   # ma do THIET BI cap (vd. A-0001)
 
 
 _MODELS: dict[CommandName, type[BaseModel]] = {
@@ -52,7 +57,34 @@ _MODELS: dict[CommandName, type[BaseModel]] = {
     CommandName.start_voyage: NoParams,
     CommandName.stop_voyage: NoParams,
     CommandName.restart_device: NoParams,
+    CommandName.ack_alarm: AckAlarmParams,
 }
+
+# --- Quy tac theo THIET BI THAT (M1: firmware/docs/CONTRACT_PROPOSALS.md) ---------------------------------------
+# start/stop_voyage: thiet bi tra UNSUPPORTED vi chuyen di do BACKEND quan ly (POST /voyages), khong gui xuong thiet bi.
+DEVICE_UNSUPPORTED = {
+    CommandName.start_voyage: "Chuyến đi do backend quản lý (dùng POST /api/v1/voyages và /voyages/{id}/end); "
+                              "thiết bị không xử lý lệnh này (trả UNSUPPORTED)",
+    CommandName.stop_voyage: "Chuyến đi do backend quản lý (dùng POST /api/v1/voyages và /voyages/{id}/end); "
+                             "thiết bị không xử lý lệnh này (trả UNSUPPORTED)",
+}
+# ack_alarm chi duoc gui kem viec ACK tren backend (POST /alarms/{id}/ack) de DB va thiet bi khong lech nhau
+INTERNAL_ONLY = {CommandName.ack_alarm: "Dùng POST /api/v1/alarms/{id}/ack (backend vừa ghi nhận ACK vừa báo xuống thiết bị)"}
+
+DEFAULT_TTL_S = 30
+# calibrate_zero tra ACK bat dong bo sau ~30 s => TTL phai >= 45 s, neu khong lenh het han trong luc thiet bi dang hieu chuan (M1 B14)
+CALIBRATE_MIN_TTL_S = 45
+CALIBRATE_DEFAULT_TTL_S = 60
+
+
+def resolve_ttl(cmd: CommandName, ttl_s: Optional[int]) -> int:
+    """TTL hieu luc: mac dinh theo lenh; calibrate_zero bat buoc >= 45 s."""
+    if ttl_s is None:
+        return CALIBRATE_DEFAULT_TTL_S if cmd == CommandName.calibrate_zero else DEFAULT_TTL_S
+    if cmd == CommandName.calibrate_zero and ttl_s < CALIBRATE_MIN_TTL_S:
+        raise CommandInvalid(f"calibrate_zero cần ttl_s ≥ {CALIBRATE_MIN_TTL_S} giây "
+                             "(thiết bị hiệu chuẩn mất khoảng 30 giây rồi mới trả ACK)")
+    return ttl_s
 
 
 def validate_params(cmd: CommandName, params: dict[str, Any]) -> dict[str, Any]:

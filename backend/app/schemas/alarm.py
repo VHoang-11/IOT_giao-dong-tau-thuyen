@@ -43,6 +43,10 @@ class AlarmLabelRequest(BaseModel):
 class AckResult(BaseModel):
     alarm: AlarmOut
     already_acked: bool
+    # Day lenh ack_alarm xuong thiet bi (best-effort, KHONG anh huong ket qua ACK tren server):
+    # sent | not_applicable (da ACK truoc do / thiet bi khoi dong lai) | unsupported (hop dong chua co lenh) | failed
+    device_ack: str = "not_applicable"
+    device_ack_detail: Optional[str] = None
 
 
 class AlarmStats(BaseModel):

@@ -1,1 +1,1 @@
-"""Module notify — TODO (M3). Xem backend/README.md."""
+"""Thông báo Telegram / email webhook (chạy nền, không chặn luồng nhận MQTT)."""

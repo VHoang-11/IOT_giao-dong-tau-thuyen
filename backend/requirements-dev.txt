@@ -1,3 +1,7 @@
 -r requirements.txt
-# Chi dung cho test: doc nguoc chu tu PDF de kiem tra tieng Viet hien thi dung (test tu bo qua neu thieu)
-pdfplumber>=0.11
+# Chi dung cho test. Thieu cac goi nay thi test tuong ung tu bo qua (khong loi).
+# pdfplumber: doc nguoc chu tu PDF de kiem tra tieng Viet hien thi dung.
+pdfplumber==0.11.10
+# amqtt: broker MQTT thuan Python chay trong test (tests/backend/test_mqtt_integration.py), khong can Docker/Mosquitto.
+# Nen cai trong venv rieng: goi nay keo theo nhieu thu vien phu thuoc.
+amqtt==0.12.2

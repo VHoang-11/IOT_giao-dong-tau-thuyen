@@ -2,14 +2,12 @@
 import asyncio
 import json
 import threading
-from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 import pytest
 from conftest import NOAUTH, PASSWORD
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
 
 from alarms.realtime import AlarmHub, hub
 from app.core.config import settings
@@ -92,7 +90,7 @@ def test_oversized_alarm_id_rejected(db):
 # ============ C. race: hai request cung luc -> 500 ============
 
 def test_cmd_id_race_is_handled_as_idempotent_not_500(client, db, pub, device, monkeypatch):
-    first, _ = service.create_command(db, DEV, service.CommandName.calibrate_zero, {}, 30, "sup01", cmd_id="c-race")
+    first, _ = service.create_command(db, DEV, service.CommandName.calibrate_zero, {}, 60, "sup01", cmd_id="c-race")
     n_sent = len(pub.sent)
     real = service._find_command
     calls = {"n": 0}
@@ -102,7 +100,7 @@ def test_cmd_id_race_is_handled_as_idempotent_not_500(client, db, pub, device, m
         return None if calls["n"] == 1 else real(db_, cmd_id)
 
     monkeypatch.setattr(service, "_find_command", racy)
-    c, created = service.create_command(db, DEV, service.CommandName.calibrate_zero, {}, 30, "sup01", cmd_id="c-race")
+    c, created = service.create_command(db, DEV, service.CommandName.calibrate_zero, {}, 60, "sup01", cmd_id="c-race")
     assert created is False and c.cmd_id == "c-race"
     assert len(pub.sent) == n_sent                      # khong gui lan hai
     assert len(list(db.scalars(select(Command)))) == 1

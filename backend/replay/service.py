@@ -10,7 +10,7 @@ import base64
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session

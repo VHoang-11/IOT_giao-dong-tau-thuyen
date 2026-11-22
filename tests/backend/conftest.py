@@ -41,8 +41,10 @@ def db():
     s.add_all(User(username=n, password_hash=_HASH, role=r) for n, r in USERS.items())
     s.commit()
     from app.services.auth import limiter
+    from ingest.stats import stats
     limiter._fails.clear()
     limiter._locked_until.clear()
+    stats.reset()  # bo dem ingest la trang thai toan cuc: dat lai de cac test khong anh huong nhau
     yield s
     s.close()
 
