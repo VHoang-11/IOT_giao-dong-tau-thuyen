@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from ml.parity import esp32_verify as v
+from ml.parity import compare, esp32_target, esp32_verify as v, golden
 from ml.parity.contract import FEATURE_ORDER, FEATURE_SCHEMA_VERSION, SCHEMA_VERSION, SEMANTIC_CONTRACT_VERSION, VALIDITY_POLICY_VERSION
 
 def wire(kind,seq,payload=b""):
@@ -86,6 +86,15 @@ def capture(tmp_path_factory):
 
 def clone(capture,tmp_path):
     path=tmp_path/"capture"; shutil.copytree(capture,path); return path
+
+@pytest.mark.parametrize("suite,sender_path,golden_root",[("synthetic",esp32_target.SYNTHETIC_CASES,golden.SYNTHETIC_ROOT),("real",esp32_target.REAL_CASES,golden.REAL_ROOT)])
+def test_fixture_path_mapping_matches_sender_comparator_and_golden(suite,sender_path,golden_root):
+    case_path=v._case_path(suite)
+    assert case_path.resolve()==sender_path.resolve()==(v.ROOT/golden_root/"cases.json").resolve()
+    assert case_path.resolve()==(v.ROOT/compare.suite_root(suite)/"cases.json").resolve()
+    if suite=="real":
+        if not case_path.is_file(): pytest.skip("Real fixtures NOT_AVAILABLE trong worktree này")
+        _,cases=v._fixture("real"); assert len(cases)==5
 
 def refresh(path,renumber=False):
     tp=path/"serial_transcript.jsonl"; events=[json.loads(x) for x in tp.read_text().splitlines()]

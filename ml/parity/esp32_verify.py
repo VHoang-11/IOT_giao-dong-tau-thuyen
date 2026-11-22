@@ -5,6 +5,7 @@ import argparse, csv, hashlib, json, math, struct, zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ml.parity.compare import suite_root
 from ml.parity.contract import FEATURE_ORDER, FEATURE_SCHEMA_VERSION, SCHEMA_VERSION, SEMANTIC_CONTRACT_VERSION, VALIDITY_POLICY_VERSION
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -12,6 +13,9 @@ TYPES={1:"RUN_BEGIN",2:"CASE_BEGIN",3:"SAMPLES",4:"CASE_END",5:"RUN_END",
        128:"HELLO",129:"ACK",130:"RESULT",131:"CASE_DONE",132:"RUN_DONE",143:"ERROR"}
 TX={1,2,3,4,5}; RX={128,129,130,131,132,143}
 STATUSES={"OK","FRAME_ERROR","TIMEOUT","READ_ERROR","WRITE_COUNT_UNKNOWN","PARTIAL_WRITE","WRITE_COUNT_INVALID","WRITE_ERROR"}
+
+def _case_path(suite: str) -> Path:
+    return ROOT/suite_root(suite)/"cases.json"
 
 class VerifyError(ValueError): pass
 
@@ -45,7 +49,7 @@ def _fixture(suite: str) -> tuple[str,dict]:
     _need(suite in ("synthetic","real","all"),"Suite không hợp lệ")
     cases={}
     for name in names:
-        case_path=ROOT/f"ml/parity/fixtures/{name}/cases.json"; cbytes=case_path.read_bytes(); rel=case_path.relative_to(ROOT).as_posix()
+        case_path=_case_path(name); cbytes=case_path.read_bytes(); rel=case_path.relative_to(ROOT).as_posix()
         entry=manifest.get("files",{}).get(rel)
         _need(entry and entry.get("sha256")==hashlib.sha256(cbytes).hexdigest() and entry.get("bytes")==len(cbytes),f"Manifest cases sai: {name}")
         spec=json.loads(cbytes)
