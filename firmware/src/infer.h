@@ -11,6 +11,13 @@
 void infer_begin(svmg_engine_t *e);          // đăng ký RF vào engine nếu không phải stub
 bool infer_available();                      // có mô hình RF thật hay không
 const char *infer_model_version();           // "rf_v1" hoặc "none"
+const char *infer_model_status();            // AVAILABLE, STUB, hoặc lý do không tương thích
+bool infer_model_is_stub();
+int infer_model_feature_count();
+const char *infer_model_feature_schema_version();
+const char *infer_model_preprocessing_version();
+bool infer_model_schema_compatible();
+bool infer_model_preprocessing_compatible();
 svmg_class_t infer_predict(void *ctx, const float *features, int n);   // dùng làm svmg_rf_fn
 struct InferStats { uint32_t calls, last_us, max_us; uint64_t sum_us; uint32_t avg_us() const { return calls ? (uint32_t)(sum_us / calls) : 0; } };
 const InferStats &infer_stats();
