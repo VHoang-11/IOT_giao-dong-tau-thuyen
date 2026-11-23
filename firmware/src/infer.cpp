@@ -29,15 +29,33 @@
 #include <string.h>
 static InferStats s_stats = {0, 0, 0, 0};
 
-bool infer_available() {
-  return !SVMG_MODEL_IS_STUB && SVMG_MODEL_N_FEATURES == SVMG_N_FEATURES &&
-         !strcmp(SVMG_MODEL_FEATURE_SCHEMA_VERSION,
-                 SVMG_FEATURE_SCHEMA_VERSION) &&
-         !strcmp(SVMG_MODEL_PREPROCESSING_VERSION,
-                 SVMG_PREPROCESSING_VERSION) &&
-         SVMG_MODEL_VERSION[0] && strcmp(SVMG_MODEL_VERSION, "rf_unversioned");
+const char *infer_model_status() {
+  if (SVMG_MODEL_IS_STUB)
+    return "STUB";
+  if (SVMG_MODEL_N_FEATURES != SVMG_N_FEATURES)
+    return "FEATURE_COUNT_MISMATCH";
+  if (strcmp(SVMG_MODEL_FEATURE_SCHEMA_VERSION,
+             SVMG_FEATURE_SCHEMA_VERSION))
+    return "FEATURE_SCHEMA_MISMATCH";
+  if (strcmp(SVMG_MODEL_PREPROCESSING_VERSION,
+             SVMG_PREPROCESSING_VERSION))
+    return "PREPROCESSING_MISMATCH";
+  if (!SVMG_MODEL_VERSION[0] || !strcmp(SVMG_MODEL_VERSION, "rf_unversioned"))
+    return "MODEL_VERSION_MISSING";
+  return "AVAILABLE";
 }
+bool infer_available() { return !strcmp(infer_model_status(), "AVAILABLE"); }
 const char *infer_model_version() { return SVMG_MODEL_VERSION; }
+bool infer_model_is_stub() { return SVMG_MODEL_IS_STUB != 0; }
+int infer_model_feature_count() { return SVMG_MODEL_N_FEATURES; }
+const char *infer_model_feature_schema_version() { return SVMG_MODEL_FEATURE_SCHEMA_VERSION; }
+const char *infer_model_preprocessing_version() { return SVMG_MODEL_PREPROCESSING_VERSION; }
+bool infer_model_schema_compatible() {
+  return !strcmp(SVMG_MODEL_FEATURE_SCHEMA_VERSION, SVMG_FEATURE_SCHEMA_VERSION);
+}
+bool infer_model_preprocessing_compatible() {
+  return !strcmp(SVMG_MODEL_PREPROCESSING_VERSION, SVMG_PREPROCESSING_VERSION);
+}
 const InferStats &infer_stats() { return s_stats; }
 
 void infer_begin(svmg_engine_t *e) {
