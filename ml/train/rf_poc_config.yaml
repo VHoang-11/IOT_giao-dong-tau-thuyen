@@ -37,3 +37,11 @@ feature_sets:
 baseline_quantile_from_rule: true   # baseline feature-rule dùng cùng positive_quantile với proxy rule
 bootstrap_replicates: 2000
 permutation_repeats: 5
+
+# M2-R1: export C cho demo replay cô lập (KHÔNG phải model firmware). Dùng nguyên compact_model ở trên, ngưỡng 0.5.
+demo_export:
+  target: RELATIVE_HIGH_ROLL
+  holdout_group: hohai|T9            # fold LOGO có sẵn: nhóm này không dùng để train lẫn hiệu chuẩn nhãn model demo
+  model_version: rf_proxy_demo_m2r1_v0.1.0
+  c_name: svmg_rf_proxy_demo
+  output_root: ml/data/models/rf_demo_m2r1   # gitignored
