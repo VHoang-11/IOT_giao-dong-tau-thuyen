@@ -394,13 +394,22 @@ void app_setup() {
 #endif
   infer_begin(&E);
   Serial.printf("[FEATURES] schema=%s preprocessing=%s count=%d input=%dHz update=%ds\n",SVMG_FEATURE_SCHEMA_VERSION,SVMG_PREPROCESSING_VERSION,SVMG_N_FEATURES,SVMG_FEATURE_HZ,SVMG_FEATURE_UPDATE_S);
+  bool rf_active = E.cfg.primary_model == SVMG_MODEL_RF && infer_available();
+  Serial.printf("[MODEL] status=%s version=%s kind=%s features=%d schema=%s schema_ok=%s preprocessing=%s preprocessing_ok=%s requested=%s active=%s\n",
+                infer_model_status(), infer_model_version(),
+                infer_model_is_stub() ? "stub" : "generated",
+                infer_model_feature_count(), infer_model_feature_schema_version(),
+                infer_model_schema_compatible() ? "yes" : "no",
+                infer_model_preprocessing_version(), infer_model_preprocessing_compatible() ? "yes" : "no",
+                svmg_model_name(E.cfg.primary_model),
+                rf_active ? "RF" : "BASELINE_B");
   svmg_evbuf_init(&BUF);
   svmg_cmd_init(&CMDC);
 
   memset(&ID, 0, sizeof ID);
   ID.device_id = SVMG_DEVICE_ID; ID.fw = SVMG_FW_VERSION; ID.model_version = infer_model_version();
   make_boot_id(ID.boot_id);
-  Serial.printf("[ID] boot_id=%s model=%s RF=%s sim=%s\n", ID.boot_id, ID.model_version, infer_available() ? "that" : "STUB->Baseline B", sim_is_stub() ? "STUB" : "M2");
+  Serial.printf("[ID] boot_id=%s model=%s RF=%s sim=%s\n", ID.boot_id, ID.model_version, infer_available() ? "AVAILABLE" : "UNAVAILABLE", sim_is_stub() ? "STUB" : "M2");
 
   push_sys_event(SVMG_EV_BOOT, 0, (uint16_t)esp_reset_reason());
   net_begin(ID);
