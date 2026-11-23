@@ -109,11 +109,14 @@ def verify_capture(capture: Path) -> dict:
     capture=Path(capture); errors=[]; counts={"tx":0,"rx":0,"cases":0,"endpoints":0,"results":0}
     try:
         meta=json.loads((capture/"metadata.json").read_text()); summary=json.loads((capture/"transport_summary.json").read_text())
+        scope=meta.get("session_scope","full_session"); initial=meta.get("initial_rx_sequence",0)
+        _need(scope in ("full_session","attached_partial_boot") and isinstance(initial,int) and 0<=initial<=0xffffffff,"Session scope/initial RX sequence sai")
+        _need((scope=="full_session" and initial==0) or (scope=="attached_partial_boot" and meta.get("execution_kind")=="wokwi_simulation" and initial>0),"Attach chỉ hợp lệ cho Wokwi sequence > 0; boot scope không khớp")
         raw_bytes=(capture/"serial_transcript.jsonl").read_bytes(); transcript=_jsonl(capture/"serial_transcript.jsonl")
         sha=hashlib.sha256(raw_bytes).hexdigest()
         _need(meta.get("serial_transcript_sha256")==sha and summary.get("serial_transcript_sha256")==sha,"Transcript SHA không khớp metadata/summary")
         _need(meta.get("serial_transcript_event_count")==len(transcript),"Transcript event count sai")
-        monotonic=-1; wall=None; frames=[]; incomplete=False; seqs={"TX":0,"RX":0}
+        monotonic=-1; wall=None; frames=[]; incomplete=False; seqs={"TX":0,"RX":initial}
         for i,e in enumerate(transcript):
             _need(e.get("event_index")==i and e.get("direction") in seqs and e.get("status") in STATUSES,f"Event index/direction/status sai tại {i}")
             stamp=datetime.fromisoformat(e["timestamp_utc"].replace("Z","+00:00")); _need(stamp.tzinfo is not None and stamp.utcoffset()==timezone.utc.utcoffset(stamp) and (wall is None or stamp>=wall),f"Timestamp UTC sai/thụt lùi tại {i}"); wall=stamp
@@ -136,8 +139,10 @@ def verify_capture(capture: Path) -> dict:
             return _report("TRANSCRIPT_INCOMPLETE",capture,sha,counts,errors+["Transcript có frame/transport event chưa hoàn chỉnh"],False,meta)
         _need(meta.get("protocol_version")==1 and meta.get("feature_schema_version")==FEATURE_SCHEMA_VERSION and meta.get("semantic_contract_version")==SEMANTIC_CONTRACT_VERSION and meta.get("validity_policy_version")==VALIDITY_POLICY_VERSION and meta.get("parity_schema_version")==SCHEMA_VERSION,"Metadata contract version sai")
         manifest_sha,cases=_fixture(meta.get("suite")); _need(meta.get("manifest_sha256")==manifest_sha,"Golden manifest SHA sai")
-        _need(meta.get("execution_kind") in ("serial_target","host_mock"),"execution_kind thiếu/sai")
-        _need(meta.get("capture_status")==("HOST_MOCK_VERIFIED" if meta["execution_kind"]=="host_mock" else "TARGET_CAPTURE_COLLECTED") and meta.get("target_evidence_status")=="TARGET_EVIDENCE_NOT_VERIFIED" and meta.get("numerical_parity")=="NUMERICAL_PARITY_NOT_RUN","Capture/evidence status metadata sai")
+        _need(meta.get("execution_kind") in ("serial_target","host_mock","wokwi_simulation"),"execution_kind thiếu/sai")
+        evidence="WOKWI_SIMULATION_ONLY" if meta["execution_kind"]=="wokwi_simulation" else "TARGET_EVIDENCE_NOT_VERIFIED"
+        capture_status={"host_mock":"HOST_MOCK_VERIFIED","serial_target":"TARGET_CAPTURE_COLLECTED","wokwi_simulation":"WOKWI_SIMULATION_CAPTURED"}[meta["execution_kind"]]
+        _need(meta.get("capture_status")==capture_status and meta.get("target_evidence_status")==evidence and meta.get("numerical_parity")=="NUMERICAL_PARITY_NOT_RUN","Capture/evidence status metadata sai")
         cap_cases=meta.get("cases") or []; _need([c.get("case_id") for c in cap_cases]==list(cases),"Metadata case order/count không khớp fixture")
         for c in cap_cases:
             g=cases[c["case_id"]]; _need(c.get("input_sha256")==g["sha"] and c.get("sample_count")==g["count"] and c.get("endpoints")==g["endpoints"] and c.get("source_sample_index")==g["source"] and c.get("provenance")==g["provenance"],f"Metadata fixture case sai: {c.get('case_id')}")
@@ -145,7 +150,7 @@ def verify_capture(capture: Path) -> dict:
         _cross(capture,frames,meta,summary,cases,manifest_sha)
         _need(summary.get("transport_status")=="TRANSPORT_COMPLETE" and summary.get("numerical_parity")=="NUMERICAL_PARITY_NOT_RUN" and summary.get("cases_expected")==len(cases) and summary.get("cases_completed")==len(cases) and summary.get("result_count")==counts["results"] and summary.get("serial_transcript_complete") is True and summary.get("capture_status")==meta.get("capture_status") and summary.get("target_evidence_status")==meta.get("target_evidence_status") and not summary.get("error"),"Transport summary không khớp replay")
         _need(meta.get("serial_transcript_complete") is True,"Metadata không công bố transcript hoàn chỉnh")
-        verdict="TRANSCRIPT_VERIFIED" if meta.get("execution_kind")=="serial_target" else "TARGET_EVIDENCE_NOT_VERIFIED"
+        verdict="TRANSCRIPT_VERIFIED" if meta.get("execution_kind") in ("serial_target","wokwi_simulation") else "TARGET_EVIDENCE_NOT_VERIFIED"
         return _report(verdict,capture,sha,counts,errors,True,meta)
     except (VerifyError,OSError,KeyError,ValueError,TypeError,struct.error,json.JSONDecodeError) as exc:
         errors.append(str(exc)); return _report("TRANSCRIPT_FAILED",capture,locals().get("sha","NOT_AVAILABLE"),counts,errors,False,locals().get("meta",{}))
@@ -235,7 +240,10 @@ def _cross(capture: Path,frames: list,meta: dict,summary: dict,cases: dict,manif
 def _report(verdict: str,capture: Path,sha: str,counts: dict,errors: list,transport_complete: bool,meta: dict) -> dict:
     return dict(verdict=verdict,transcript_sha256=sha,tx_frames=counts["tx"],rx_frames=counts["rx"],cases=counts["cases"],endpoints=counts["endpoints"],results=counts["results"],
         frame_crc_sequence_valid=not errors,transport_complete=transport_complete,capture_execution_kind=meta.get("execution_kind","NOT_AVAILABLE"),
-        target_evidence_status="TARGET_EVIDENCE_NOT_VERIFIED",physical_board_verified=False,numerical_parity="NUMERICAL_PARITY_NOT_RUN",errors=errors)
+        session_scope=meta.get("session_scope","full_session"),initial_rx_sequence=meta.get("initial_rx_sequence",0),
+        full_session_evidence=transport_complete and meta.get("session_scope","full_session")=="full_session",
+        target_evidence_status="WOKWI_SIMULATION_ONLY" if meta.get("execution_kind")=="wokwi_simulation" else "TARGET_EVIDENCE_NOT_VERIFIED",
+        physical_board_verified=False,numerical_parity="NUMERICAL_PARITY_NOT_RUN",errors=errors)
 
 def main(argv: list[str] | None=None) -> int:
     ap=argparse.ArgumentParser(description="Xác minh độc lập transcript Serial HV01; không so sánh numerical parity.")
