@@ -19,6 +19,7 @@ class MockSerial:
         self.rx=bytearray(); self.mode=mode; self.tx=0; self.rxseq=0; self.sent=[]; self.written=[]
         self.rx_frames=[]; self.tx_frames=[]
         self.run=""; self.manifest=b""; self.case=None; self.received=0; self.expected_cases=1; self.completed=0
+        if mode=="seq65": self.rxseq=65
         self.push(128,hello("wrong" if mode=="bad_hello" else None))
         if mode=="repeat_hello": self.push(128,hello())
 
@@ -64,8 +65,8 @@ class MockSerial:
 
     def flush(self): pass
 
-def ready(mode="ok",endpoints=(0,1),transcript_path=None):
-    io=MockSerial(mode); s=p.TargetSession(io,0.005,transcript_path=transcript_path); s.wait_hello()
+def ready(mode="ok",endpoints=(0,1),transcript_path=None,**session_options):
+    io=MockSerial(mode); s=p.TargetSession(io,0.005,transcript_path=transcript_path,**session_options); s.wait_hello()
     s.begin_run("run_1",1,"ab"*32)
     records=struct.pack("<ffBB",float("nan"),0.1,2,1)+struct.pack("<ffBB",1.0,-2.0,2,1)
     crc=zlib.crc32(records)&0xffffffff; sha="cd"*32
@@ -94,6 +95,37 @@ def test_hello_contract_and_repeated_hello_during_run_start():
     s.begin_run("run_1",1,"ab"*32)
     assert s.state=="IN_RUN" and io.sent[:2]==[128,128]
     with pytest.raises(p.ProtocolError,match="contract mismatch"): p.parse_hello(hello("bad"))
+
+def test_explicit_attach_accepts_observed_hello_sequence_but_keeps_continuity():
+    with pytest.raises(p.ProtocolError,match="sequence"): p.TargetSession(MockSerial("seq65"),.005).wait_hello()
+    io=MockSerial("seq65"); s=p.TargetSession(io,.005,allow_initial_rx_sequence=True)
+    s.wait_hello(); assert s.initial_rx_sequence==65 and s.rx_seq==66
+    s.begin_run("run_1",1,"ab"*32); assert s.state=="IN_RUN"
+    io=MockSerial("seq65"); s=p.TargetSession(io,.005,allow_initial_rx_sequence=True); s.wait_hello()
+    io.push(128,hello()); bad=bytearray(io.rx); struct.pack_into("<I",bad,4,67)
+    bad[-4:]=struct.pack("<I",zlib.crc32(bad[2:-4])&0xffffffff); io.rx=bad
+    with pytest.raises(p.ProtocolError,match="sequence"): s.begin_run("run_1",1,"ab"*32)
+
+def test_serial_url_and_usb_open_without_rfc_write_timeout():
+    class SerialAPI:
+        def __init__(self): self.call=None
+        def serial_for_url(self,*args,**kwargs): self.call=("url",args,kwargs); return self
+        def Serial(self,*args,**kwargs): self.call=("usb",args,kwargs); return self
+    api=SerialAPI(); p._open_serial(api,"rfc2217://localhost:4000",115200,8)
+    assert api.call==("url",("rfc2217://localhost:4000",),{"baudrate":115200,"timeout":8})
+    p._open_serial(api,"/dev/cu.usbserial",115200,8)
+    assert api.call==("usb",("/dev/cu.usbserial",),{"baudrate":115200,"timeout":8,"write_timeout":8})
+
+def test_wokwi_capture_provenance_and_partial_boot_metadata(tmp_path):
+    io,s,records,_,_=ready("seq65",transcript_path=tmp_path/"serial_transcript.jsonl",
+        execution_kind="wokwi_simulation",allow_initial_rx_sequence=True)
+    s.send_samples(0,records); s.end_case(); s.end_run()
+    p.save_capture(tmp_path,"run_1","synthetic","ab"*32,[],s,"TRANSPORT_COMPLETE")
+    import json
+    meta=json.loads((tmp_path/"metadata.json").read_text())
+    assert (meta["execution_kind"],meta["session_scope"],meta["initial_rx_sequence"])==("wokwi_simulation","attached_partial_boot",65)
+    assert meta["capture_status"]=="WOKWI_SIMULATION_CAPTURED" and meta["target_evidence_status"]=="WOKWI_SIMULATION_ONLY"
+    assert meta["numerical_parity"]=="NUMERICAL_PARITY_NOT_RUN"
 
 def test_ack_result_terminal_and_error_payload_decoders():
     assert p.parse_ack(struct.pack("<IBI",3,0,99))["samples_received"]==99
@@ -273,6 +305,7 @@ def test_cli_help_and_argument_errors_without_pyserial():
     with pytest.raises(SystemExit) as help_exit: p.main(["--help"])
     assert help_exit.value.code==0
     with pytest.raises(SystemExit): p.main(["--port","mock","--run-id","bad id"])
+    with pytest.raises(SystemExit): p.main(["--port","/dev/ttyUSB0","--run-id","attach","--attach-running-target"])
 
 
 def test_cli_missing_pyserial_fails_closed(tmp_path,monkeypatch,capsys):

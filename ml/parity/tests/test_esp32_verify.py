@@ -117,6 +117,26 @@ def test_happy_path_replays_multicase_batches_and_never_promotes_mock(capture):
     assert report["cases"]==31 and report["results"]==488 and report["tx_frames"]>31
     assert report["target_evidence_status"]=="TARGET_EVIDENCE_NOT_VERIFIED" and not report["physical_board_verified"]
 
+def test_wokwi_attach_verifies_observed_sequence_without_claiming_full_boot_or_hardware(capture,tmp_path):
+    path=clone(capture,tmp_path); events=[json.loads(x) for x in (path/"serial_transcript.jsonl").read_text().splitlines()]
+    def shift(raw):
+        b=bytearray.fromhex(raw); struct.pack_into("<I",b,4,struct.unpack_from("<I",b,4)[0]+65)
+        b[-4:]=struct.pack("<I",zlib.crc32(b[2:-4])&0xffffffff); return b.hex()
+    for event in events:
+        if event["direction"]=="RX": event["raw_frame_hex"]=shift(event["raw_frame_hex"]); event["sequence"]+=65
+    (path/"serial_transcript.jsonl").write_text("".join(json.dumps(e)+"\n" for e in events))
+    rows=[json.loads(x) for x in (path/"raw_results.jsonl").read_text().splitlines()]
+    for row in rows: row["raw_frame_hex"]=shift(row["raw_frame_hex"])
+    (path/"raw_results.jsonl").write_text("".join(json.dumps(r)+"\n" for r in rows))
+    for filename in ("metadata.json","transport_summary.json"):
+        p=path/filename; d=json.loads(p.read_text()); d["capture_status"]="WOKWI_SIMULATION_CAPTURED"; d["target_evidence_status"]="WOKWI_SIMULATION_ONLY"
+        if filename=="metadata.json": d.update(execution_kind="wokwi_simulation",session_scope="attached_partial_boot",initial_rx_sequence=65)
+        p.write_text(json.dumps(d))
+    refresh(path); report=v.verify_capture(path)
+    assert report["verdict"]=="TRANSCRIPT_VERIFIED" and report["initial_rx_sequence"]==65
+    assert not report["full_session_evidence"] and report["target_evidence_status"]=="WOKWI_SIMULATION_ONLY"
+    assert not report["physical_board_verified"] and report["numerical_parity"]=="NUMERICAL_PARITY_NOT_RUN"
+
 @pytest.mark.parametrize("mutation",["crc","tx_sequence","rx_sequence","ack_host_seq","ack_samples","nack","missing_case_done","missing_run_done","case_crc","run_manifest","duplicate_result","missing_result","raw_result","sha","partial","frame_type"])
 def test_corruption_or_incomplete_transaction_is_rejected(capture,tmp_path,mutation):
     path=clone(capture,tmp_path); events=[json.loads(x) for x in (path/"serial_transcript.jsonl").read_text().splitlines()]
