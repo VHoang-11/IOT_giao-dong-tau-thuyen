@@ -129,6 +129,13 @@ def test_mock_is_never_reported_as_target_parity(capture,tmp_path):
     assert result["verdict"]=="MOCK_VERIFIED"
     assert all(not summary["is_c_parity_evidence"] for summary in result["comparisons"])
 
+def test_wokwi_comparison_is_labeled_simulation_only(capture,tmp_path):
+    meta,_,_=mock_capture(capture); meta.update(execution_kind="wokwi_simulation",session_scope="attached_partial_boot",initial_rx_sequence=65)
+    (capture/"metadata.json").write_text(json.dumps(meta))
+    result=ec.compare_capture(capture,"synthetic",tmp_path/"out")
+    assert result["verdict"]=="WOKWI_SIMULATION_ONLY"
+    assert all(not s["is_c_parity_evidence"] and s["target_evidence_status"]=="WOKWI_SIMULATION_ONLY" and not s["full_session_evidence"] for s in result["comparisons"])
+
 
 def test_b1b_capture_without_independent_execution_evidence_is_unverified(capture,tmp_path):
     meta,_,_=mock_capture(capture); meta.pop("execution_kind")

@@ -168,15 +168,19 @@ def compare_capture(capture: Path, suite: str, out_dir: Path, repo_root: Path=RO
             "firmware_sha256":source.get("firmware_sha256","NOT_AVAILABLE"),
             "status_adapter":c_host.STATUS_ADAPTER["name"],
             "not_evaluable_reason":c_host.NE_NO_TIMESTAMP,
-            "target_evidence_status":"TARGET_EVIDENCE_NOT_VERIFIED"}
+            "execution_kind":source.get("execution_kind","NOT_AVAILABLE"),
+            "target_evidence_status":"WOKWI_SIMULATION_ONLY" if source.get("execution_kind")=="wokwi_simulation" else "TARGET_EVIDENCE_NOT_VERIFIED"}
         metadata_path.write_text(json.dumps(metadata,indent=2)+"\n",encoding="utf-8")
         result=compare.run_comparison(repo_root,name,candidate,metadata_path)
         s=result["summary"]; numerical_counts=s["outcome_counts"]
         s["numerical_fail_records"]=s["fail_records"]
         s["numerical_review_records"]=s["review_records"]
         s["numerical_not_evaluable_records"]=s["not_evaluable_records"]
-        evidence="MOCK_VERIFIED" if source.get("execution_kind")=="host_mock" else "TARGET_EVIDENCE_NOT_VERIFIED"
+        evidence={"host_mock":"MOCK_VERIFIED","wokwi_simulation":"WOKWI_SIMULATION_ONLY"}.get(source.get("execution_kind"),"TARGET_EVIDENCE_NOT_VERIFIED")
         s["numerical_outcome_counts"]=numerical_counts; s["verdict"]=evidence; s["is_c_parity_evidence"]=False
+        s["execution_kind"]=source.get("execution_kind","NOT_AVAILABLE")
+        s["session_scope"]=source.get("session_scope","full_session"); s["initial_rx_sequence"]=source.get("initial_rx_sequence",0)
+        s["full_session_evidence"]=s["session_scope"]=="full_session"
         s["transport_status"]=transport["transport_status"]; s["target_evidence_status"]=evidence
         result["summary"]=s
         dest=Path(out_dir)/name; dest.mkdir(parents=True,exist_ok=True)
@@ -184,7 +188,7 @@ def compare_capture(capture: Path, suite: str, out_dir: Path, repo_root: Path=RO
         (dest/"comparison_summary.json").write_text(json.dumps(s,indent=2,ensure_ascii=False,default=compare._json_default)+"\n",encoding="utf-8")
         (dest/"comparison_report.md").write_text(compare.markdown_report(result,f"ESP32 target comparator — {name}"),encoding="utf-8")
         results.append(result)
-    return {"verdict":results[0]["summary"]["verdict"] if len(results)==1 else "TARGET_EVIDENCE_NOT_VERIFIED",
+    return {"verdict":results[0]["summary"]["verdict"] if all(r["summary"]["verdict"]==results[0]["summary"]["verdict"] for r in results) else "TARGET_EVIDENCE_NOT_VERIFIED",
             "comparisons":[r["summary"] for r in results]}
 
 
