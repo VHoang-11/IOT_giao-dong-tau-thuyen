@@ -122,13 +122,14 @@ def parse_error(p: bytes) -> dict:
 class TargetSession:
     """Transport transactions only; fixture loading, CLI, and parity comparison live outside B1a."""
     def __init__(self, serial, timeout: float=8.0, transcript_path: Path | None=None,
-                 execution_kind: str="host_mock"):
+                 execution_kind: str="host_mock", allow_initial_rx_sequence: bool=False):
         self.serial,self.timeout=serial,timeout
         self.tx_seq=self.rx_seq=0; self.state="WAIT_HELLO"; self.hello=None
         self.run_id=None; self.manifest_sha=None; self.expected_cases=0; self.completed_cases=0; self.seen_case_ids=set()
         self.case=None; self.results=[]; self.raw_results=[]; self.transport_complete=False
         self.transcript=[]; self.transcript_path=Path(transcript_path) if transcript_path else None
         self.execution_kind=execution_kind; self.transcript_complete=False; self.transcript_integrity=True
+        self.allow_initial_rx_sequence=allow_initial_rx_sequence; self.initial_rx_sequence=None
 
     def _record(self, direction: str, raw: bytes, status: str="OK", detail: str | None=None) -> None:
         kind=seq=declared=None
@@ -168,7 +169,13 @@ class TargetSession:
             if sync!=b"\x53\x56": raise ProtocolError("sync sai")
             h=self._read(8,raw); _,kind,_,n=struct.unpack("<BBIH",h)
             if n>MAX_PAYLOAD: raise ProtocolError("payload vượt 384 byte")
-            tail=self._read(n+4,raw); f=decode_frame(sync+h+tail,self.rx_seq)
+            tail=self._read(n+4,raw); f=decode_frame(sync+h+tail)
+            if self.initial_rx_sequence is None:
+                if self.allow_initial_rx_sequence:
+                    if f.kind!=128: raise ProtocolError("attach yêu cầu HELLO đầu tiên")
+                    self.rx_seq=f.seq
+                self.initial_rx_sequence=self.rx_seq
+            if f.seq!=self.rx_seq: raise ProtocolError(f"sequence sai: {f.seq}, cần {self.rx_seq}")
             parsers={128:parse_hello,129:parse_ack,130:parse_result,131:parse_case_done,132:parse_run_done,143:parse_error}
             if f.kind not in parsers: raise ProtocolError(f"unexpected target message {f.kind}")
             value=parsers[f.kind](f.payload)
@@ -402,6 +409,11 @@ def _source_metadata() -> dict:
     except (OSError,subprocess.CalledProcessError): dirty=None
     return dict(source_commit=commit,source_worktree_dirty=dirty)
 
+def _open_serial(serial_module,port: str,baud: int,timeout: float):
+    if port.startswith("rfc2217://"):
+        return serial_module.serial_for_url(port,baudrate=baud,timeout=timeout)
+    return serial_module.Serial(port,baudrate=baud,timeout=timeout,write_timeout=timeout)
+
 
 def save_capture(output: Path, run_id: str, suite: str, manifest_sha: str,
                  cases: list[dict], session: TargetSession, status: str,
@@ -425,24 +437,27 @@ def save_capture(output: Path, run_id: str, suite: str, manifest_sha: str,
     transcript_complete=bool(status=="TRANSPORT_COMPLETE" and session.transcript_complete
                              and session.transcript_integrity)
     firmware_sha=_sha(firmware_bin.read_bytes()) if firmware_bin else "NOT_AVAILABLE"
-    has_serial_bytes=any(e["direction"] in ("TX","RX") and e["raw_frame_hex"] for e in session.transcript)
-    capture_status=("HOST_MOCK_VERIFIED" if session.execution_kind=="host_mock" else
-                    "TARGET_CAPTURE_COLLECTED" if has_serial_bytes else "TARGET_EVIDENCE_NOT_VERIFIED")
     rows=[]
     for raw in session.raw_results:
         rows.append(dict(raw_frame_hex=raw["wire_hex"],payload_hex=raw["payload_hex"],
                          result=_safe_result(raw["decoded"]),provisional=status!="TRANSPORT_COMPLETE"))
     with (output/"raw_results.jsonl").open("x",encoding="utf-8") as stream:
         stream.write("".join(json.dumps(r,allow_nan=False,sort_keys=True)+"\n" for r in rows))
+    has_serial_bytes=any(e["direction"] in ("TX","RX") and e["raw_frame_hex"] for e in session.transcript)
+    scope="attached_partial_boot" if session.initial_rx_sequence not in (None,0) else "full_session"
+    capture_status=("HOST_MOCK_VERIFIED" if session.execution_kind=="host_mock" else
+        "WOKWI_SIMULATION_CAPTURED" if session.execution_kind=="wokwi_simulation" and has_serial_bytes else
+        "WOKWI_SIMULATION_NOT_CAPTURED" if session.execution_kind=="wokwi_simulation" else
+        "TARGET_CAPTURE_COLLECTED" if has_serial_bytes else "TARGET_EVIDENCE_NOT_VERIFIED")
+    evidence_status="WOKWI_SIMULATION_ONLY" if session.execution_kind=="wokwi_simulation" else "TARGET_EVIDENCE_NOT_VERIFIED"
     metadata=dict(run_id=run_id,suite=suite,**_source_metadata(),manifest_sha256=manifest_sha,
         protocol_version=VERSION,feature_schema_version=FEATURE_SCHEMA_VERSION,
         semantic_contract_version=SEMANTIC_CONTRACT_VERSION,validity_policy_version=VALIDITY_POLICY_VERSION,
         parity_schema_version=SCHEMA_VERSION,firmware_sha256=firmware_sha,
         firmware_sha256_source="host_file" if firmware_bin else "NOT_AVAILABLE",
         firmware_sha256_scope="host file only; not attestation of the binary running on the device" if firmware_bin else "NOT_AVAILABLE",
-        execution_kind=session.execution_kind,
-        capture_status=capture_status,
-        target_evidence_status="TARGET_EVIDENCE_NOT_VERIFIED",
+        execution_kind=session.execution_kind,session_scope=scope,initial_rx_sequence=session.initial_rx_sequence,
+        capture_status=capture_status,target_evidence_status=evidence_status,
         numerical_parity="NUMERICAL_PARITY_NOT_RUN",
         serial_transcript_sha256=transcript_sha,serial_transcript_complete=transcript_complete,
         serial_transcript_event_count=len(session.transcript),
@@ -451,7 +466,7 @@ def save_capture(output: Path, run_id: str, suite: str, manifest_sha: str,
         cases_expected=len(cases),cases_completed=session.completed_cases,
         result_count=len(session.raw_results),error=error,reset_target_before_retry=status!="TRANSPORT_COMPLETE",
         serial_transcript_sha256=transcript_sha,serial_transcript_complete=transcript_complete,
-        capture_status=capture_status,target_evidence_status="TARGET_EVIDENCE_NOT_VERIFIED")
+        capture_status=capture_status,target_evidence_status=evidence_status)
     with (output/"metadata.json").open("x",encoding="utf-8") as stream:
         stream.write(json.dumps(metadata,allow_nan=False,indent=2,sort_keys=True)+"\n")
     with (output/"transport_summary.json").open("x",encoding="utf-8") as stream:
@@ -464,9 +479,12 @@ def main(argv: list[str] | None=None) -> int:
     parser.add_argument("--suite",choices=("synthetic","real","all"),default="synthetic")
     parser.add_argument("--run-id",required=True); parser.add_argument("--output",type=Path)
     parser.add_argument("--firmware-bin",type=Path); parser.add_argument("--timeout",type=float,default=8.0)
+    parser.add_argument("--attach-running-target",action="store_true",help="neo sequence tại HELLO đầu; transcript không bao phủ boot trước đó")
     args=parser.parse_args(argv)
     if not ID.fullmatch(args.run_id) or args.run_id in (".","..") or len(args.run_id)>32 or args.baud<=0 or args.timeout<=0:
         parser.error("run-id, baud hoặc timeout không hợp lệ")
+    if args.attach_running_target and not args.port.startswith("rfc2217://"):
+        parser.error("--attach-running-target hiện chỉ dành cho endpoint RFC2217/Wokwi")
     output=args.output or ROOT/"ml/data/parity/esp32_target"/args.run_id
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
         parser.error(f"thư mục output đã có dữ liệu, không ghi đè: {output}")
@@ -477,15 +495,18 @@ def main(argv: list[str] | None=None) -> int:
         if args.firmware_bin and not args.firmware_bin.is_file(): raise FileNotFoundError(args.firmware_bin)
         try: import serial
         except ImportError as e: raise RuntimeError("Thiếu pyserial; cài bằng: python -m pip install pyserial") from e
-        with serial.Serial(args.port,args.baud,timeout=args.timeout,write_timeout=args.timeout) as port:
-            session=TargetSession(port,args.timeout,output/"serial_transcript.jsonl","serial_target")
+        execution_kind="wokwi_simulation" if args.port.startswith("rfc2217://") else "serial_target"
+        with _open_serial(serial,args.port,args.baud,args.timeout) as port:
+            session=TargetSession(port,args.timeout,output/"serial_transcript.jsonl",execution_kind,
+                                  allow_initial_rx_sequence=args.attach_running_target)
             run_suite(session,cases,args.run_id,manifest_sha)
         save_capture(output,args.run_id,args.suite,manifest_sha,cases,session,"TRANSPORT_COMPLETE",args.firmware_bin)
         print(f"TRANSPORT_COMPLETE; NUMERICAL_PARITY_NOT_RUN; capture: {output}"); return 0
     except Exception as exc:
         if session is None:
+            kind="wokwi_simulation" if args.port.startswith("rfc2217://") else "serial_target"
             session=TargetSession(type("NoSerial",(),{})(),transcript_path=output/"serial_transcript.jsonl",
-                                  execution_kind="serial_target")
+                                  execution_kind=kind,allow_initial_rx_sequence=args.attach_running_target)
         try:
             save_capture(output,args.run_id,args.suite,locals().get("manifest_sha","NOT_AVAILABLE"),
                          cases,session,"FAIL_TRANSPORT",args.firmware_bin,str(exc))
