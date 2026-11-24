@@ -1,0 +1,6 @@
+# M2-R4: diag + task lấy mẫu riêng (SVMG_ACQ_TASK). Build trước: pio run -e esp32dev_diag_acq
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32dev_diag_acq/firmware.bin'
+elf = '../.pio/build/esp32dev_diag_acq/firmware.elf'
+rfc2217ServerPort = 4000

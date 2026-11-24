@@ -14,3 +14,6 @@ void     i2c_begin();                              // Wire 400 kHz, timeout 20 m
 void     i2c_bus_recover();                        // 9 xung SCL + STOP khi bus treo
 uint32_t i2c_recovery_count();
 void     i2c_scan_report(bool *found_mpu, bool *found_lcd);   // in địa chỉ tìm thấy (kỳ vọng 0x68 và 0x27)
+#ifdef SVMG_DIAG_FEATURES
+bool     mpu_last_raw(svmg_imu_raw_t *raw);  // chỉ chẩn đoán M2-R4: bản sao mẫu thanh ghi I2C đọc thành công gần nhất
+#endif
