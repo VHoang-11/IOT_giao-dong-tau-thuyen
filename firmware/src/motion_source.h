@@ -11,6 +11,17 @@ double motion_sim_time_abs();
 void   motion_sim_clock_reset();
 bool   motion_sensor_present();
 uint32_t motion_saturation_count();
+#ifdef SVMG_ACQ_TASK
+// M2-R4 (cần M1 duyệt trước khi bật cho production): task 20 Hz riêng đọc MPU6050 (timestamp = millis() lúc đọc) vào hàng đợi
+// có giới hạn, để việc tính đặc trưng ở loop không làm trễ mẫu > max_gap_s. Hàng đợi đầy -> mẫu bị bỏ và đếm overflow;
+// mẫu kế tiếp lộ khoảng trống thật nên pipeline tự reset (không bịa timestamp, không coi mẫu mất là hợp lệ).
+void motion_acq_start();
+void motion_acq_enable(bool on);                     // chỉ chạy ở SENSOR; đổi chế độ thì xả hàng đợi
+bool motion_acq_pop(svmg_motion_sample_t *s);
+void motion_acq_stats(uint32_t *overflow, uint32_t *queue_max);
+void motion_i2c_lock();                              // LCD dùng chung bus I2C với task lấy mẫu
+void motion_i2c_unlock();
+#endif
 #ifdef SVMG_FAULT_INJECT
 void motion_inject(char c);   // 'i' mất I2C, 'z' bus trả 0, 'n' NaN, 'd' mất 30 %, 's' bão hòa, 'x' bỏ lỗi
 #endif

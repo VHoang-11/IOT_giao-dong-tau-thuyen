@@ -183,6 +183,78 @@ void log_update(uint32_t now) {
                 svmg_level_name(E.alarm.level), E.alarm.acked, (unsigned long)now);
 }
 
+#ifdef SVMG_DIAG_FEATURES
+// M2-R4 (chỉ env esp32dev_diag): chẩn đoán đường MPU6050 -> Core C -> 23 đặc trưng. Chỉ ĐỌC trạng thái engine.
+#define DIAG(x) x
+const char *mode_name() { return MODE == SVMG_SRC_SIMULATION ? "SIM" : "SENSOR"; }
+// Thời gian (µs, cực đại trong mỗi giây): khoảng giữa hai lần lấy mẫu, giữa hai lần vào loop, và từng phần của loop.
+struct DiagTiming { float last_t; uint32_t last_loop_us, late, max_sample_us, max_loop_gap_us, max_sampling_us, max_lcd_us, max_net_us; };
+DiagTiming DT = {};
+void diag_max(uint32_t &m, uint32_t v) { if (v > m) m = v; }
+void diag_sample_interval(float t) {   // khoảng giữa timestamp mẫu mà pipeline thấy; > max_gap_s (75 ms) sẽ làm pipeline reset
+  if (DT.last_t > 0 && t > DT.last_t) {
+    uint32_t d = (uint32_t)((t - DT.last_t) * 1e6f);
+    diag_max(DT.max_sample_us, d);
+    if (d > 75000) DT.late++;
+  }
+  DT.last_t = t;
+}
+void diag_gap_event(uint32_t gaps_before) {   // in ngay khi lõi đếm thêm gap: liên kết reset với khoảng mẫu đo được
+  if (E.pipe.cnt_gap == gaps_before) return;
+  Serial.printf("[DIAG] GAP t=%.2f cnt_gap=%lu sample_dt_ms=%.1f loop_gap_max_ms=%.1f sampling_max_ms=%.1f lcd_max_ms=%.1f net_max_ms=%.1f"
+                " feature_update_last_ms=%.1f n60=%u\n", t_now_abs(), (unsigned long)E.pipe.cnt_gap, DT.max_sample_us / 1000.0,
+                DT.max_loop_gap_us / 1000.0, DT.max_sampling_us / 1000.0, DT.max_lcd_us / 1000.0, DT.max_net_us / 1000.0,
+                feature_update_us_last / 1000.0, E.dec.feat.n_valid_60);
+}
+void diag_timing_1hz(uint32_t now) {   // G,t,cnt_gap,cnt_invalid,overruns,late,max_ms(sample_dt,loop_gap,sampling,lcd,net),feat_upd_last/max_ms,acq_ovf,acq_qmax
+  static uint32_t last = 0;
+  if (now - last < 1000) return;
+  last = now;
+  uint32_t ovf = 0, qmax = 0;   // hàng đợi task lấy mẫu (0 nếu không có SVMG_ACQ_TASK)
+#ifdef SVMG_ACQ_TASK
+  motion_acq_stats(&ovf, &qmax);
+#endif
+  Serial.printf("G,%.1f,%lu,%lu,%lu,%lu,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%lu,%lu\n", t_now_abs(), (unsigned long)E.pipe.cnt_gap,
+                (unsigned long)E.pipe.cnt_invalid, (unsigned long)loop_overruns, (unsigned long)DT.late, DT.max_sample_us / 1000.0,
+                DT.max_loop_gap_us / 1000.0, DT.max_sampling_us / 1000.0, DT.max_lcd_us / 1000.0, DT.max_net_us / 1000.0,
+                feature_update_us_last / 1000.0, feature_update_us_max / 1000.0, (unsigned long)ovf, (unsigned long)qmax);
+  DT.max_sample_us = DT.max_loop_gap_us = DT.max_sampling_us = DT.max_lcd_us = DT.max_net_us = 0;
+}
+#else
+#define DIAG(x)
+#endif
+#ifdef SVMG_DIAG_FEATURES
+void diag_raw_1hz(uint32_t now) {   // I,t,mode,who_am_i_ok,have_raw,ax,ay,az,gx,gy,gz (LSB thanh ghi),i2c_err,consec_err,sat
+  static uint32_t last = 0;
+  if (MODE != SVMG_SRC_SENSOR || now - last < 1000) return;
+  last = now;
+  svmg_imu_raw_t r; memset(&r, 0, sizeof r);
+  bool have = mpu_last_raw(&r);
+  Serial.printf("I,%.1f,%s,%d,%d,%d,%d,%d,%d,%d,%d,%lu,%lu,%lu\n", t_now_abs(), mode_name(), motion_sensor_present() ? 1 : 0, have ? 1 : 0,
+                r.ax, r.ay, r.az, r.gx, r.gy, r.gz,
+                (unsigned long)mpu_error_count(), (unsigned long)mpu_consecutive_errors(), (unsigned long)motion_saturation_count());
+}
+void diag_features() {   // F,t,mode,update,status,reason,mask,n_valid,ready_s,ready_l,n60,n180,consec_inv,dq_pct,23 giá trị (nan nếu INVALID)
+  const svmg_features_t &f = E.dec.feat;
+  float v[SVMG_N_FEATURES];
+  svmg_features_to_vector(&f, v);
+  Serial.printf("F,%.1f,%s,%lu,%d,0x%02x,0x%06lx,%d,%u,%u,%u,%u,%u,%.1f", t_now_abs(), mode_name(), (unsigned long)UPDATES, (int)E.dec.status,
+                E.dec.status_reason, (unsigned long)f.valid_mask, __builtin_popcount(f.valid_mask), f.ready_short, f.ready_long,
+                f.n_valid_60, f.n_valid_180, f.consec_invalid, (double)f.data_quality_pct);
+  for (int i = 0; i < SVMG_N_FEATURES; i++) {
+    if (f.valid_mask & (1u << i)) Serial.printf(",%.6g", (double)v[i]); else Serial.print(",nan");
+  }
+  Serial.println();
+  static uint32_t prev_mask = 0xffffffffu;
+  if (f.valid_mask != prev_mask) {   // chỉ in khi mask đổi: tên đặc trưng INVALID (lõi không phát mã lý do theo từng đặc trưng)
+    prev_mask = f.valid_mask;
+    Serial.print("[DIAG] invalid:");
+    for (int i = 0; i < SVMG_N_FEATURES; i++) if (!(f.valid_mask & (1u << i))) Serial.printf(" %s", SVMG_FEATURE_NAMES[i]);
+    Serial.println();
+  }
+}
+#endif
+
 void handle_out(const svmg_engine_out_t &o, uint32_t now) {
   for (int i = 0; i < o.n_ev; i++) push_event(o.ev[i]);
   if (o.calib_done) finish_calibration(o.calib_result);
@@ -194,10 +266,16 @@ void handle_out(const svmg_engine_out_t &o, uint32_t now) {
     if (MODE == SVMG_SRC_SENSOR)                            // T01: giá trị thật đọc từ MPU6050 (10 Hz) và tình trạng cảm biến
       Serial.printf("R,%.1f,%.2f,%.2f,i2c_err=%lu,sat=%lu,valid=%u\n", t_now_abs(), E.dec.roll_deg, E.dec.pitch_deg,
                     (unsigned long)mpu_error_count(), (unsigned long)motion_saturation_count(), (unsigned)(E.pipe.cnt_invalid == 0));
+#ifdef SVMG_DIAG_FEATURES
+    diag_raw_1hz(now);
+#endif
   }
   if (o.got_update) {
     UPDATES++;
     log_update(now);
+#ifdef SVMG_DIAG_FEATURES
+    diag_features();
+#endif
   }
 }
 
@@ -209,6 +287,9 @@ void change_mode(svmg_source_t m) {
   if (m == SVMG_SRC_SENSOR) TIMEWARP = 1;
   if (m == SVMG_SRC_SIMULATION) motion_sim_clock_reset();
   svmg_engine_restart_signal(&E);       // đổi chế độ xóa bộ đệm cửa sổ (đề cương 8.2); KHÔNG xóa trạng thái cảnh báo
+#ifdef SVMG_ACQ_TASK
+  motion_acq_enable(m == SVMG_SRC_SENSOR);   // xả mẫu cũ; SIMULATION vẫn sinh mẫu trong loop như trước
+#endif
   trace_clear();
   push_sys_event(SVMG_EV_MODE_CHANGE, (uint8_t)m, 0);
   Serial.printf("[MODE] %s\n", m == SVMG_SRC_SIMULATION ? "SIMULATION" : "SENSOR");
@@ -394,6 +475,11 @@ void app_setup() {
 #endif
   infer_begin(&E);
   Serial.printf("[FEATURES] schema=%s preprocessing=%s count=%d input=%dHz update=%ds\n",SVMG_FEATURE_SCHEMA_VERSION,SVMG_PREPROCESSING_VERSION,SVMG_N_FEATURES,SVMG_FEATURE_HZ,SVMG_FEATURE_UPDATE_S);
+#ifdef SVMG_DIAG_FEATURES
+  Serial.print("[DIAG] M2-R4 sensor diagnostics ON; F columns after dq_pct:");
+  for (int i = 0; i < SVMG_N_FEATURES; i++) Serial.printf(" %s", SVMG_FEATURE_NAMES[i]);
+  Serial.println();
+#endif
   bool rf_active = E.cfg.primary_model == SVMG_MODEL_RF && infer_available();
   Serial.printf("[MODEL] status=%s version=%s kind=%s features=%d schema=%s schema_ok=%s preprocessing=%s preprocessing_ok=%s requested=%s active=%s\n",
                 infer_model_status(), infer_model_version(),
@@ -421,11 +507,27 @@ void app_setup() {
   if (esp_task_wdt_init(&wc) == ESP_ERR_INVALID_STATE) esp_task_wdt_reconfigure(&wc);
   esp_task_wdt_add(nullptr);
   next_tick_ms = millis();
+#ifdef SVMG_ACQ_TASK
+  motion_acq_start();
+  Serial.println("[ACQ] SENSOR: task lay mau 20 Hz rieng (SVMG_ACQ_TASK)");
+#endif
+}
+
+// Một mẫu vào engine (dùng chung cho mẫu lấy trong loop và mẫu từ task lấy mẫu); thứ tự xử lý giữ như cũ.
+static void process_sample(const svmg_motion_sample_t &s, uint32_t now) {
+  DIAG(diag_sample_interval(s.t); uint32_t gaps_before = E.pipe.cnt_gap;)
+  svmg_engine_out_t o;
+  uint32_t update_started=micros();
+  svmg_engine_push(&E, &s, now, &o);
+  if(o.got_update){feature_update_us_last=micros()-update_started;if(feature_update_us_last>feature_update_us_max)feature_update_us_max=feature_update_us_last;}
+  handle_out(o, now);
+  DIAG(diag_gap_event(gaps_before);)
 }
 
 void app_loop() {
   esp_task_wdt_reset();
   uint32_t now = millis();
+  DIAG({ uint32_t lu = micros(); if (DT.last_loop_us) diag_max(DT.max_loop_gap_us, lu - DT.last_loop_us); DT.last_loop_us = lu; })
 #ifdef SVMG_FAULT_INJECT
   handle_serial_inject();
 #endif
@@ -446,15 +548,13 @@ void app_loop() {
     if (now - next_tick_ms > 3 * SVMG_TICK_MS) { loop_overruns++; next_tick_ms = now; }
     next_tick_ms += SVMG_TICK_MS;
     int n = (MODE == SVMG_SRC_SIMULATION) ? TIMEWARP : 1;
-    for (int i = 0; i < n; i++) {
-      svmg_motion_sample_t s = acquireMotionSample(MODE);
-      svmg_engine_out_t o;
-      uint32_t update_started=micros();
-      svmg_engine_push(&E, &s, now, &o);
-      if(o.got_update){feature_update_us_last=micros()-update_started;if(feature_update_us_last>feature_update_us_max)feature_update_us_max=feature_update_us_last;}
-      handle_out(o, now);
-    }
+#ifdef SVMG_ACQ_TASK
+    if (MODE == SVMG_SRC_SENSOR) n = 0;   // mẫu cảm biến do task lấy mẫu đưa vào hàng đợi (xả ở dưới)
+#endif
+    DIAG(uint32_t sampling_us = micros();)
+    for (int i = 0; i < n; i++) process_sample(acquireMotionSample(MODE), now);
     { svmg_engine_out_t o; svmg_engine_tick(&E, now, &o); handle_out(o, now); }
+    DIAG(diag_max(DT.max_sampling_us, micros() - sampling_us);)
 
     static uint32_t last_pot = 0;
     if (MODE == SVMG_SRC_SIMULATION && now - last_pot > 200) {
@@ -471,7 +571,13 @@ void app_loop() {
   { svmg_alarm_out_t ao; svmg_alarm_outputs(&E.alarm, now, &ao); io_apply_outputs(ao, now); }
 
   static uint32_t last_lcd = 0, last_health = 0;
-  if (now - last_lcd >= 250) { last_lcd = now; update_lcd(now); }
+#ifdef SVMG_ACQ_TASK
+  { svmg_motion_sample_t s; while (MODE == SVMG_SRC_SENSOR && motion_acq_pop(&s)) process_sample(s, now); }
+#define LCD_LOCK(x) motion_i2c_lock(); x; motion_i2c_unlock();
+#else
+#define LCD_LOCK(x) x;
+#endif
+  if (now - last_lcd >= 250) { last_lcd = now; DIAG(uint32_t lcd_us = micros();) LCD_LOCK(update_lcd(now)) DIAG(diag_max(DT.max_lcd_us, micros() - lcd_us);) }
   if (now - last_health >= 30000) { last_health = now; send_health(); }
 
   // ---- mạng
@@ -482,11 +588,13 @@ void app_loop() {
     delay(200);
     ESP.restart();
   }
+  DIAG(uint32_t net_us = micros();)
   net_service(now, &BUF, E.cfg.config_version);
   RxItem it;
   for (int k = 0; k < 2 && net_pop_rx(&it); k++) {
     if (it.kind == RX_CMD) handle_cmd(it, now); else handle_config(it);
   }
+  DIAG(diag_max(DT.max_net_us, micros() - net_us); diag_timing_1hz(now);)
 #ifdef SVMG_EXT_TRACE
   if (snap_window) {
     if (net_connected()) { send_snapshot(snap_window); snap_window = 0; }

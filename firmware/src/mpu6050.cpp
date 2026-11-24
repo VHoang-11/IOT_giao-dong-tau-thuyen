@@ -5,6 +5,10 @@
 static uint32_t s_err = 0, s_consec = 0, s_recoveries = 0;
 static bool s_ready = false;
 static uint32_t s_last_reinit_ms = 0;
+#ifdef SVMG_DIAG_FEATURES
+static svmg_imu_raw_t s_last_raw;
+static bool s_have_raw = false;
+#endif
 
 static bool wr(uint8_t reg, uint8_t val) {
   Wire.beginTransmission(I2C_ADDR_MPU);
@@ -91,8 +95,15 @@ bool mpu_read(svmg_imu_raw_t *raw) {
   s_consec = 0;
   raw->ax = (int16_t)((b[0] << 8) | b[1]);  raw->ay = (int16_t)((b[2] << 8) | b[3]);  raw->az = (int16_t)((b[4] << 8) | b[5]);
   raw->gx = (int16_t)((b[8] << 8) | b[9]);  raw->gy = (int16_t)((b[10] << 8) | b[11]); raw->gz = (int16_t)((b[12] << 8) | b[13]);
+#ifdef SVMG_DIAG_FEATURES
+  s_last_raw = *raw; s_have_raw = true;
+#endif
   return true;
 }
+
+#ifdef SVMG_DIAG_FEATURES
+bool mpu_last_raw(svmg_imu_raw_t *raw) { if (s_have_raw) *raw = s_last_raw; return s_have_raw; }
+#endif
 
 uint32_t mpu_error_count() { return s_err; }
 uint32_t mpu_consecutive_errors() { return s_consec; }

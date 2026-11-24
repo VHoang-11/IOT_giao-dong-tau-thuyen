@@ -1,0 +1,6 @@
+# M2-R4 A/B: như wokwi.diag.toml nhưng firmware tắt WiFi/MQTT. Build trước: pio run -e esp32dev_diag_nonet
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32dev_diag_nonet/firmware.bin'
+elf = '../.pio/build/esp32dev_diag_nonet/firmware.elf'
+rfc2217ServerPort = 4000

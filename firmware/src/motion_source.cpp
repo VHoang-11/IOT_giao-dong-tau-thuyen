@@ -55,3 +55,42 @@ svmg_motion_sample_t acquireMotionSample(svmg_source_t mode) {
 #endif
   return s;
 }
+
+#ifdef SVMG_ACQ_TASK
+#include <esp_task_wdt.h>
+#include "svmg_build.h"
+static QueueHandle_t s_q = nullptr;
+static SemaphoreHandle_t s_i2c = nullptr;
+static volatile bool s_acq_on = true;
+static volatile uint32_t s_acq_overflow = 0, s_acq_qmax = 0;
+static const UBaseType_t ACQ_QUEUE_LEN = 64;   // 3,2 s ở 20 Hz: dư cho một lần tính đặc trưng dài trên Wokwi (~0,35 s ở n=1800)
+
+void motion_i2c_lock() { if (s_i2c) xSemaphoreTake(s_i2c, portMAX_DELAY); }
+void motion_i2c_unlock() { if (s_i2c) xSemaphoreGive(s_i2c); }
+
+static void acq_task(void *) {
+  esp_task_wdt_add(nullptr);   // cùng watchdog 8 s như loop: task lấy mẫu treo -> khởi động lại, không để engine đứng ở trạng thái cũ
+  TickType_t last = xTaskGetTickCount();
+  for (;;) {
+    vTaskDelayUntil(&last, pdMS_TO_TICKS(SVMG_TICK_MS));
+    esp_task_wdt_reset();
+    if (!s_acq_on) continue;
+    motion_i2c_lock();
+    svmg_motion_sample_t s = acquireMotionSample(SVMG_SRC_SENSOR);   // timestamp thật lúc đọc I2C
+    motion_i2c_unlock();
+    if (xQueueSend(s_q, &s, 0) != pdTRUE) s_acq_overflow = s_acq_overflow + 1;          // bỏ mẫu, không bịa: khoảng trống lộ ở mẫu kế tiếp
+    UBaseType_t depth = uxQueueMessagesWaiting(s_q);
+    if (depth > s_acq_qmax) s_acq_qmax = depth;
+  }
+}
+
+void motion_acq_start() {
+  s_i2c = xSemaphoreCreateMutex();
+  s_q = xQueueCreate(ACQ_QUEUE_LEN, sizeof(svmg_motion_sample_t));
+  // Cùng core với loop nhưng ưu tiên cao hơn: lấy mẫu chen ngang lúc loop đang tính đặc trưng; engine chỉ chạy ở loop.
+  xTaskCreatePinnedToCore(acq_task, "svmg_acq", 4096, nullptr, 3, nullptr, ARDUINO_RUNNING_CORE);
+}
+void motion_acq_enable(bool on) { s_acq_on = on; if (s_q) xQueueReset(s_q); }
+bool motion_acq_pop(svmg_motion_sample_t *s) { return s_q && xQueueReceive(s_q, s, 0) == pdTRUE; }
+void motion_acq_stats(uint32_t *overflow, uint32_t *queue_max) { *overflow = s_acq_overflow; *queue_max = s_acq_qmax; }
+#endif
