@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import time
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +61,15 @@ def summarize(text: str) -> dict:
         "acq_task": any(l.startswith("[ACQ]") for l in lines) or any(len(r) == 15 and (r[13] != "0" or r[14] != "0") for r in g),
         "acq_queue_overflow_last": int(g[-1][13]) if g and len(g[-1]) == 15 else None,
         "acq_queue_max": max((int(r[14]) for r in g if len(r) == 15), default=None)}
+    m = [l.split(",") for l in lines if l.startswith("M,") and len(l.split(",")) == 10]   # M2-R7: RF bốn lớp shadow
+    if m:
+        model = next((l for l in lines if l.startswith("[MODEL]")), "")
+        count = lambda i: dict(Counter(r[i] for r in m))  # noqa: E731
+        s["rf_shadow"] = {"model_line": model, "updates": len(m), "rf": count(3), "baseline_b": count(4), "primary": count(5),
+                          "infer_calls": int(m[-1][9]), "infer_last_us_max": max(int(r[7]) for r in m), "infer_max_us": int(m[-1][8])}
+        checks.update(rf_model_available="status=AVAILABLE" in model and "svmg-rf-four-class-m2r6a-0.1.0" in model,
+                      rf_shadow_only="active=BASELINE_B" in model and all(r[5] == r[4] for r in m),
+                      rf_inference_ran=int(m[-1][9]) > 0)
     s["checks"] = checks
     s["result"] = "WOKWI_SENSOR_PASS" if all(checks.values()) else ("PARTIAL" if any(checks.values()) else "NO_EVIDENCE")
     return s

@@ -1,0 +1,6 @@
+# M2-R7: RF bon lop shadow + diag + task lay mau. Build truoc: pio run -e esp32dev_rf4_shadow. Cong 4001 (4000 = HV01)
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32dev_rf4_shadow/firmware.bin'
+elf = '../.pio/build/esp32dev_rf4_shadow/firmware.elf'
+rfc2217ServerPort = 4001
