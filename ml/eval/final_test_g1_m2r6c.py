@@ -133,6 +133,27 @@ def run(verify: bool = False, out: Path = OUT, report: Path | None = REPORT, rep
     return result
 
 
+SUMMARY = ROOT / "ml/reports/ml/m2_r6c_test_g1_metrics_summary.json"
+
+
+def export_summary(out: Path = OUT, path: Path = SUMMARY) -> dict:
+    """Tóm tắt gọn, commit được, từ kết quả Test-G1 ĐÃ KHÓA (chỉ đọc results.json; KHÔNG đánh giá lại) cho bản clone sạch."""
+    locked = out / "results.json"
+    r = json.loads(locked.read_text(encoding="utf-8"))
+    pick = lambda d, keys: {k: d[k] for k in keys}  # noqa: E731
+    base = ("n", "accuracy", "macro_f1", "weighted_f1", "confusion_labels", "confusion", "per_class", "pred_counts")
+    s = {"source": "ml/data/models/rf_four_class_m2r6/v03/test_g1/results.json (M2-R6c, locked, read-only)",
+         "source_sha256": _sha(locked), "model_version": R.MODEL_VERSION, "dataset_sha256": R.DATASETS["v0.3"][1], "tau": r["tau"],
+         "test_g1_sessions": r["test_g1_sessions"], "labeled_windows": r["labeled_windows"],
+         "before_tau": pick(r["before_tau"], (*base, "macro_f1_session_bootstrap_95", "sessions_per_class", "sessions_majority_correct",
+                                              "by_coverage", "growth", "failures")),
+         "after_tau": r["after_tau"], "baseline_b": pick(r["baseline_b"], (*base, "coverage")), "c99_parity": r["c99_parity"],
+         "sessions_after_tau": r["sessions_after_tau"], "growth_failures": r["growth_failures"]}
+    path.write_text("{\n" + ",\n".join(f" {json.dumps(k)}: {json.dumps(v, ensure_ascii=False, default=float)}" for k, v in s.items())
+                    + "\n}\n", encoding="utf-8")
+    return s
+
+
 def demo_ready(r: dict) -> bool:
     """Tiêu chí khai báo TRƯỚC khi mở Test-G1 (cùng cổng M2-R6a, tính SAU tau): macro-F1 hiệu dụng >= 0,80, recall hiệu dụng mọi lớp
     >= 0,5 và parity C99 không lệch. Chỉ nói về demo Wokwi trên dữ liệu mô phỏng, không phải triển khai an toàn."""
@@ -213,7 +234,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="M2-R6c: đánh giá Test-G1 một lần cho RF bốn lớp đóng băng.")
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--report-only", action="store_true")
+    parser.add_argument("--export-summary", action="store_true", help="chỉ đọc kết quả đã khóa, ghi tóm tắt commit được")
     args = parser.parse_args()
+    if args.export_summary:
+        print(export_summary()["source_sha256"])
+        return
     r = run(args.verify, report_only=args.report_only)
     print(json.dumps({"before_tau": {k: r["before_tau"][k] for k in ("accuracy", "macro_f1")},
                       "after_tau": {k: r["after_tau"][k] for k in ("accuracy", "macro_f1", "coverage", "unknown")},
