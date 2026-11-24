@@ -68,7 +68,7 @@ Kết quả: `ml/data/parity/wokwi_mpu6050/<run-id>/summary.json` (gitignored), 
 | Chi phí RF so với `esp32dev_diag_acq` | `.flash.rodata` +3 360 B, `.flash.text` +668 B, RAM +0 |
 | Production `esp32dev`, `esp32dev_diag_acq` | Mọi section không phải debug trùng bản build HEAD |
 | `infer.cpp` thật + `model.h` (host, replay vector) | 773/773 khớp sklearn + tau trên Validation/S0b (đủ 4 lớp + UNKNOWN); 22 giá trị, NaN, inf → UNKNOWN |
-| Wokwi end-to-end (MPU6050 → RF trên ESP32) | **PENDING**: lần ghi `rf4_01` nhận 0 byte (cổng 4000 do simulator khác giữ); chưa có số đo thời gian suy luận/đặc trưng/hàng đợi trên Wokwi cho env này |
+| Wokwi end-to-end (MPU6050 → RF trên ESP32) | `rf4_01` nhận 0 byte (cổng 4000 do simulator khác giữ). Sau đó (cổng 4001): SIMULATION stub `rf4_sim_01` RF chạy, tối đa 719 µs; SENSOR đứng yên `rf4_02` chỉ 20/23 đặc trưng nên RF không được gọi. Chi tiết: `ml/docs/M2_handover.md` §7 |
 
 ## Cần M1 duyệt
 
