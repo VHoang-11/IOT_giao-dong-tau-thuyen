@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Scenario, AlarmLevel } from './domain';
 import { samples } from './mock';
 
@@ -29,6 +29,27 @@ export function LiveMotionChart({
   const [isFrozen, setIsFrozen] = useState<boolean>(false);
   const [frozenTick, setFrozenTick] = useState<number>(tick);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(700);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const update = () => {
+      if (containerRef.current) {
+        const cw = containerRef.current.clientWidth - 28;
+        if (cw > 0) setContainerWidth(Math.round(cw));
+      }
+    };
+    update();
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setContainerWidth(Math.round(entry.contentRect.width));
+        }
+      }
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   // Toggle freeze frame
   const handleToggleFreeze = () => {
@@ -55,7 +76,7 @@ export function LiveMotionChart({
     return samples(scenario, activeTick, sampleCount);
   }, [scenario, activeTick, sampleCount]);
 
-  const w = 700;
+  const w = Math.max(340, containerWidth);
   const h = height;
   const padY = 22;
   const padX = 38;
@@ -96,8 +117,7 @@ export function LiveMotionChart({
     if (offline || !rawData.length) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clientX = e.clientX - rect.left;
-    const chartW = rect.width;
-    const normX = Math.max(0, Math.min(1, (clientX - (padX / w) * chartW) / ((w - padX - 10) / w * chartW)));
+    const normX = Math.max(0, Math.min(1, (clientX - padX) / Math.max(1, rect.width - padX - 10)));
     const idx = Math.round(normX * (rawData.length - 1));
     if (idx >= 0 && idx < rawData.length) {
       setHoverIdx(idx);
@@ -132,30 +152,19 @@ export function LiveMotionChart({
   }, [rawData]);
 
   return (
-    <div className="live-motion-chart-container" ref={containerRef} style={{ background: 'var(--panel-bg)', borderRadius: 8, padding: 12, border: '1px solid var(--border-color)', boxShadow: 'var(--card-shadow)' }}>
+    <div className="live-motion-chart-container" ref={containerRef} style={{ background: 'var(--panel-bg)', borderRadius: 12, padding: 14, border: '1px solid var(--border-color)', boxShadow: 'var(--card-shadow)' }}>
       {/* Top Chart Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
         {/* Time Window Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cửa sổ (Buffer):</span>
-          <div style={{ display: 'flex', background: 'var(--panel-alt)', borderRadius: 6, padding: 2, border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>Cửa sổ (Buffer):</span>
+          <div className="segmented-control">
             {(['10s', '30s', '1m', '5m'] as const).map(tr => (
               <button
                 key={tr}
                 type="button"
                 onClick={() => setTimeRange(tr)}
-                style={{
-                  padding: '3px 9px',
-                  fontSize: '0.72rem',
-                  fontWeight: timeRange === tr ? 700 : 500,
-                  color: timeRange === tr ? 'var(--sidebar-active-text)' : 'var(--text-muted)',
-                  background: timeRange === tr ? 'var(--sidebar-active-bg)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 4,
-                  boxShadow: timeRange === tr ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
+                className={`range-btn ${timeRange === tr ? 'active' : ''}`}
               >
                 {tr}
               </button>
@@ -168,23 +177,20 @@ export function LiveMotionChart({
           <button
             type="button"
             onClick={handleToggleFreeze}
+            className={`btn ${isFrozen ? 'secondary' : 'ghost'}`}
             style={{
-              padding: '3px 10px',
+              padding: '4px 10px',
               fontSize: '0.72rem',
-              fontWeight: 700,
-              background: isFrozen ? 'var(--status-amber-text)' : 'var(--secondary-btn-bg)',
-              color: isFrozen ? '#FFFFFF' : 'var(--secondary-btn-color)',
-              border: isFrozen ? '1px solid var(--status-amber-text)' : '1px solid var(--border-color)',
-              borderRadius: 4,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
+              minHeight: 28,
+              borderRadius: 6,
+              background: isFrozen ? 'var(--status-amber-text)' : undefined,
+              color: isFrozen ? '#FFFFFF' : undefined,
+              borderColor: isFrozen ? 'var(--status-amber-text)' : undefined,
             }}
-            title={isFrozen ? 'Tiếp tục luồng dữ liệu thời gian thực' : 'Dừng khung hình để soi biên độ'}
+            title={isFrozen ? 'Tiếp tục luồng dữ liệu thời gian thực' : 'Đóng băng khung hình để soi biên độ dao động'}
           >
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: isFrozen ? '#FFFFFF' : 'var(--accent-color)' }} />
-            {isFrozen ? 'PAUSED (GIỮ KHUNG)' : 'FREEZE FRAME'}
+            {isFrozen ? '❚❚ Tiếp tục' : '❄ Đóng băng khung hình'}
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--panel-alt)', borderRadius: 6, padding: 2, border: '1px solid var(--border-color)' }}>
@@ -216,7 +222,7 @@ export function LiveMotionChart({
           </div>
 
           <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: 'var(--note-info-bg)', color: 'var(--note-info-text)', border: '1px solid var(--note-info-border)' }}>
-            DEMO SIMULATION
+            DỮ LIỆU MÔ PHỎNG
           </span>
         </div>
       </div>
@@ -224,22 +230,22 @@ export function LiveMotionChart({
       {/* Main SVG Oscilloscope Viewport */}
       <div style={{ position: 'relative', width: '100%', minHeight: height, overflow: 'hidden' }}>
         {offline ? (
-          <div style={{ height, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--note-danger-bg)', border: '1.5px dashed var(--note-danger-border)', borderRadius: 6, padding: 20 }}>
-            <b style={{ color: 'var(--note-danger-text)', fontSize: '0.95rem', letterSpacing: '0.5px' }}>NO LIVE TELEMETRY STREAM</b>
+          <div style={{ height, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--note-danger-bg)', border: '1.5px dashed var(--note-danger-border)', borderRadius: 8, padding: 20 }}>
+            <b style={{ color: 'var(--note-danger-text)', fontSize: '0.95rem', letterSpacing: '0.5px' }}>KHÔNG CÓ TÍN HIỆU VIỄN TRẮC THỜI GIAN THỰC</b>
             <p style={{ color: 'var(--note-danger-text)', fontSize: '0.78rem', margin: '6px 0 0', textAlign: 'center', maxWidth: 460 }}>
               {scenario === 'OFFLINE'
                 ? 'Mất kết nối MQTT (>30s). Hệ thống không tự tạo dữ liệu thay thế; dữ liệu cảm biến đang được lưu vào bộ đệm Flash ngoại tuyến.'
-                : 'Mất liên lạc cảm biến MPU6050 (I2C NACK). Góc nghiêng không khả dụng, không suy diễn trạng thái NORMAL.'}
+                : 'Mất liên lạc cảm biến MPU6050 (I2C NACK). Góc nghiêng không khả dụng, không suy diễn trạng thái BÌNH THƯỜNG.'}
             </p>
           </div>
         ) : (
           <>
             <svg
               viewBox={`0 0 ${w} ${h}`}
-              preserveAspectRatio="none"
               width="100%"
               height={h}
-              style={{ cursor: 'crosshair', display: 'block' }}
+              style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+              onPointerDown={handlePointerMove}
               onPointerMove={handlePointerMove}
               onPointerLeave={handlePointerLeave}
               aria-label="Biểu đồ tương tác dao động Roll và Pitch theo thời gian thực"
@@ -247,13 +253,79 @@ export function LiveMotionChart({
               <defs>
                 <linearGradient id="rollAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#0284C7" stopOpacity="0.22" />
-                  <stop offset="50%" stopColor="#0284C7" stopOpacity="0.05" />
+                  <stop offset="50%" stopColor="#0284C7" stopOpacity="0.04" />
                   <stop offset="100%" stopColor="#0284C7" stopOpacity="0.22" />
                 </linearGradient>
+                <filter id="glowHalo" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="2" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
               </defs>
 
-              {/* Background Rect */}
-              <rect x="0" y="0" width={w} height={h} fill="#FBFDFF" />
+              {/* Background Rect - Theme Adaptive */}
+              <rect x="0" y="0" width={w} height={h} fill="var(--panel-bg)" rx={6} />
+
+              {/* Safety Threshold Translucent Bands */}
+              {/* Trip Band (+tripDeg to +maxDeg) */}
+              {tripDeg < maxDeg && (
+                <rect
+                  x={padX}
+                  y={scaleY(maxDeg)}
+                  width={w - padX - 10}
+                  height={Math.max(0, scaleY(tripDeg) - scaleY(maxDeg))}
+                  fill="#EF4444"
+                  fillOpacity="0.08"
+                />
+              )}
+              {/* Trip Band (-maxDeg to -tripDeg) */}
+              {tripDeg < maxDeg && (
+                <rect
+                  x={padX}
+                  y={scaleY(-tripDeg)}
+                  width={w - padX - 10}
+                  height={Math.max(0, scaleY(-maxDeg) - scaleY(-tripDeg))}
+                  fill="#EF4444"
+                  fillOpacity="0.08"
+                />
+              )}
+
+              {/* Warning Band (+warningDeg to +tripDeg) */}
+              {warningDeg < maxDeg && (
+                <rect
+                  x={padX}
+                  y={scaleY(Math.min(maxDeg, tripDeg))}
+                  width={w - padX - 10}
+                  height={Math.max(0, scaleY(warningDeg) - scaleY(Math.min(maxDeg, tripDeg)))}
+                  fill="#F59E0B"
+                  fillOpacity="0.06"
+                />
+              )}
+              {/* Warning Band (-tripDeg to -warningDeg) */}
+              {warningDeg < maxDeg && (
+                <rect
+                  x={padX}
+                  y={scaleY(-warningDeg)}
+                  width={w - padX - 10}
+                  height={Math.max(0, scaleY(Math.max(-maxDeg, -tripDeg)) - scaleY(-warningDeg))}
+                  fill="#F59E0B"
+                  fillOpacity="0.06"
+                />
+              )}
+
+              {/* Safe Operating Band (-warningDeg to +warningDeg) */}
+              {warningDeg <= maxDeg && (
+                <rect
+                  x={padX}
+                  y={scaleY(Math.min(maxDeg, warningDeg))}
+                  width={w - padX - 10}
+                  height={Math.max(0, scaleY(-Math.min(maxDeg, warningDeg)) - scaleY(Math.min(maxDeg, warningDeg)))}
+                  fill="#10B981"
+                  fillOpacity="0.02"
+                />
+              )}
 
               {/* Horizontal Degree Gridlines & Y-Axis Labels */}
               {[-20, -10, 0, 10, 20].map(deg => {
@@ -265,20 +337,21 @@ export function LiveMotionChart({
                     <line
                       x1={padX}
                       y1={y}
-                      x2={w}
+                      x2={w - 10}
                       y2={y}
-                      stroke={isZero ? '#183E65' : '#DCE5EE'}
-                      strokeWidth={isZero ? 1.4 : 0.8}
+                      stroke={isZero ? 'var(--accent-color)' : 'var(--border-subtle)'}
+                      strokeWidth={isZero ? 1.5 : 0.8}
                       strokeDasharray={isZero ? undefined : '3 4'}
+                      opacity={isZero ? 0.6 : 0.7}
                     />
                     <text
-                      x={padX - 6}
+                      x={padX - 8}
                       y={y + 3.5}
                       textAnchor="end"
-                      fill={isZero ? '#102B49' : '#718EA6'}
+                      fill={isZero ? 'var(--text-main)' : 'var(--text-muted)'}
                       fontSize="9"
-                      fontFamily="monospace"
-                      fontWeight={isZero ? 'bold' : 'normal'}
+                      fontFamily="'Be Vietnam Pro', sans-serif"
+                      fontWeight={isZero ? 600 : 400}
                     >
                       {deg > 0 ? `+${deg}°` : `${deg}°`}
                     </text>
@@ -292,9 +365,9 @@ export function LiveMotionChart({
                   <line
                     x1={padX}
                     y1={scaleY(warningDeg)}
-                    x2={w}
+                    x2={w - 10}
                     y2={scaleY(warningDeg)}
-                    stroke="#D97706"
+                    stroke="#F59E0B"
                     strokeWidth={1.2}
                     strokeDasharray="5 4"
                     opacity={0.85}
@@ -302,18 +375,18 @@ export function LiveMotionChart({
                   <line
                     x1={padX}
                     y1={scaleY(-warningDeg)}
-                    x2={w}
+                    x2={w - 10}
                     y2={scaleY(-warningDeg)}
-                    stroke="#D97706"
+                    stroke="#F59E0B"
                     strokeWidth={1.2}
                     strokeDasharray="5 4"
                     opacity={0.85}
                   />
-                  <text x={w - 6} y={scaleY(warningDeg) - 4} textAnchor="end" fill="#D97706" fontSize="8.5" fontFamily="monospace" fontWeight="bold">
-                    WARN +{warningDeg}°
+                  <text x={w - 14} y={scaleY(warningDeg) - 4} textAnchor="end" fill="#F59E0B" fontSize="8.5" fontFamily="'Be Vietnam Pro', sans-serif" fontWeight="600">
+                    CẢNH BÁO +{warningDeg}°
                   </text>
-                  <text x={w - 6} y={scaleY(-warningDeg) + 11} textAnchor="end" fill="#D97706" fontSize="8.5" fontFamily="monospace" fontWeight="bold">
-                    WARN -{warningDeg}°
+                  <text x={w - 14} y={scaleY(-warningDeg) + 11} textAnchor="end" fill="#F59E0B" fontSize="8.5" fontFamily="'Be Vietnam Pro', sans-serif" fontWeight="600">
+                    CẢNH BÁO -{warningDeg}°
                   </text>
                 </>
               )}
@@ -324,9 +397,9 @@ export function LiveMotionChart({
                   <line
                     x1={padX}
                     y1={scaleY(tripDeg)}
-                    x2={w}
+                    x2={w - 10}
                     y2={scaleY(tripDeg)}
-                    stroke="#DC2626"
+                    stroke="#EF4444"
                     strokeWidth={1.4}
                     strokeDasharray="4 3"
                     opacity={0.9}
@@ -334,18 +407,18 @@ export function LiveMotionChart({
                   <line
                     x1={padX}
                     y1={scaleY(-tripDeg)}
-                    x2={w}
+                    x2={w - 10}
                     y2={scaleY(-tripDeg)}
-                    stroke="#DC2626"
+                    stroke="#EF4444"
                     strokeWidth={1.4}
                     strokeDasharray="4 3"
                     opacity={0.9}
                   />
-                  <text x={w - 6} y={scaleY(tripDeg) - 4} textAnchor="end" fill="#DC2626" fontSize="8.5" fontFamily="monospace" fontWeight="bold">
-                    TRIP +{tripDeg}°
+                  <text x={w - 14} y={scaleY(tripDeg) - 4} textAnchor="end" fill="#EF4444" fontSize="8.5" fontFamily="'Be Vietnam Pro', sans-serif" fontWeight="600">
+                    NGUY CẤP +{tripDeg}°
                   </text>
-                  <text x={w - 6} y={scaleY(-tripDeg) + 11} textAnchor="end" fill="#DC2626" fontSize="8.5" fontFamily="monospace" fontWeight="bold">
-                    TRIP -{tripDeg}°
+                  <text x={w - 14} y={scaleY(-tripDeg) + 11} textAnchor="end" fill="#EF4444" fontSize="8.5" fontFamily="'Be Vietnam Pro', sans-serif" fontWeight="600">
+                    NGUY CẤP -{tripDeg}°
                   </text>
                 </>
               )}
@@ -353,19 +426,19 @@ export function LiveMotionChart({
               {/* Roll Area Fill Gradient */}
               <path d={rollArea} fill="url(#rollAreaGrad)" />
 
-              {/* Pitch Curve (Amber) */}
+              {/* Pitch Curve (Pitch Orange #F59E0B) */}
               <polyline
                 points={pitchPoly}
                 fill="none"
-                stroke="#D97706"
-                strokeWidth={2.0}
+                stroke="#F59E0B"
+                strokeWidth={2.2}
                 vectorEffect="non-scaling-stroke"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity={0.85}
+                opacity={0.9}
               />
 
-              {/* Roll Curve (Cyan/Blue Telemetry) */}
+              {/* Roll Curve (Ocean Blue #0284C7) */}
               <polyline
                 points={rollPoly}
                 fill="none"
@@ -379,12 +452,16 @@ export function LiveMotionChart({
               {/* Peak Roll Marker Highlight */}
               {peakSample && Math.abs(peakSample.roll) >= warningDeg && (
                 <g>
-                  <circle
-                    cx={scaleX(peakSample.idx)}
-                    cy={scaleY(peakSample.roll)}
-                    r="5"
-                    fill={Math.abs(peakSample.roll) >= tripDeg ? '#DC2626' : '#D97706'}
-                    stroke="#FFFFFF"
+                  {/* Clean diamond indicator at peak */}
+                  <polygon
+                    points={`
+                      ${scaleX(peakSample.idx)},${scaleY(peakSample.roll) - 5}
+                      ${scaleX(peakSample.idx) + 5},${scaleY(peakSample.roll)}
+                      ${scaleX(peakSample.idx)},${scaleY(peakSample.roll) + 5}
+                      ${scaleX(peakSample.idx) - 5},${scaleY(peakSample.roll)}
+                    `}
+                    fill={Math.abs(peakSample.roll) >= tripDeg ? '#EF4444' : '#F59E0B'}
+                    stroke="var(--panel-bg)"
                     strokeWidth="1.5"
                   />
                   <line
@@ -392,17 +469,18 @@ export function LiveMotionChart({
                     y1={scaleY(peakSample.roll)}
                     x2={scaleX(peakSample.idx)}
                     y2={h / 2}
-                    stroke={Math.abs(peakSample.roll) >= tripDeg ? '#DC2626' : '#D97706'}
+                    stroke={Math.abs(peakSample.roll) >= tripDeg ? '#EF4444' : '#F59E0B'}
                     strokeWidth="1"
                     strokeDasharray="2 2"
+                    opacity={0.8}
                   />
                   {alarms.length > 0 && (
                     <text
-                      x={scaleX(peakSample.idx) + 6}
+                      x={scaleX(peakSample.idx) + 7}
                       y={scaleY(peakSample.roll) - 6}
-                      fill={Math.abs(peakSample.roll) >= tripDeg ? '#DC2626' : '#D97706'}
+                      fill={Math.abs(peakSample.roll) >= tripDeg ? '#EF4444' : '#F59E0B'}
                       fontSize="8.5"
-                      fontFamily="monospace"
+                      fontFamily="'JetBrains Mono', monospace"
                       fontWeight="bold"
                     >
                       {alarms.find(a => a.level === 'CRITICAL' || a.level === 'WARNING')?.id || 'ALM'}
@@ -411,93 +489,131 @@ export function LiveMotionChart({
                 </g>
               )}
 
-              {/* Interactive Scrub / Hover Crosshair Cursor */}
+              {/* Interactive Scrub / Hover Crosshair with Vertical Slice & Clean Solid Dots (No concentric rings) */}
               {activeSample && (
                 <g>
+                  {/* Subtle vertical slice highlight band */}
+                  <rect
+                    x={scaleX(activeSampleIdx) - 8}
+                    y={padY}
+                    width={16}
+                    height={h - 2 * padY}
+                    fill="var(--accent-color)"
+                    fillOpacity={0.06}
+                    rx={2}
+                  />
+
+                  {/* Crisp vertical hairline */}
                   <line
                     x1={scaleX(activeSampleIdx)}
-                    y1={0}
+                    y1={padY}
                     x2={scaleX(activeSampleIdx)}
-                    y2={h}
-                    stroke={hoverIdx !== null ? '#183E65' : '#0284C7'}
-                    strokeWidth={hoverIdx !== null ? 1.5 : 1.2}
-                    strokeDasharray={hoverIdx !== null ? '3 3' : undefined}
-                    opacity={0.9}
+                    y2={h - padY}
+                    stroke="var(--accent-color)"
+                    strokeWidth={hoverIdx !== null ? 1.4 : 1.1}
+                    strokeDasharray={hoverIdx !== null ? '3 3' : '2 2'}
+                    opacity={0.85}
                   />
-                  {/* Point Dots on Curves */}
+
+                  {/* Roll intersection: single small solid dot */}
                   <circle
                     cx={scaleX(activeSampleIdx)}
                     cy={scaleY(activeSample.roll)}
-                    r="4.5"
+                    r="3.5"
                     fill="#0284C7"
-                    stroke="#FFFFFF"
+                    stroke="var(--panel-bg)"
                     strokeWidth="1.5"
                   />
+
+                  {/* Pitch intersection: single small solid dot */}
                   <circle
                     cx={scaleX(activeSampleIdx)}
                     cy={scaleY(activeSample.pitch)}
-                    r="4"
-                    fill="#D97706"
-                    stroke="#FFFFFF"
+                    r="3"
+                    fill="#F59E0B"
+                    stroke="var(--panel-bg)"
                     strokeWidth="1.5"
                   />
                 </g>
               )}
             </svg>
 
-            {/* Floating Telemetry HUD Tag (Top Right of Viewport) */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 12,
-                background: 'var(--panel-bg)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 6,
-                padding: '5px 9px',
-                fontSize: '0.72rem',
-                fontFamily: 'monospace',
-                color: 'var(--text-main)',
-                boxShadow: 'var(--card-shadow)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                pointerEvents: 'none',
-              }}
-            >
-              <div>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{hoverIdx !== null ? 'POINT (SCRUB):' : 'LIVE HEAD:'}</span>{' '}
-                <b style={{ color: 'var(--text-main)' }}>T+{activeSample ? activeSample.t * 5 : 0}s</b>
-              </div>
-              <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-                <span style={{ color: 'var(--accent-color)', fontWeight: 'bold' }}>
-                  ROLL: {activeSample ? (activeSample.roll > 0 ? `+${activeSample.roll.toFixed(1)}°` : `${activeSample.roll.toFixed(1)}°`) : '—'}
-                  <small style={{ marginLeft: 3, fontSize: '0.65rem' }}>{activeSample && activeSample.roll > 0 ? 'STBD' : activeSample && activeSample.roll < 0 ? 'PORT' : 'MID'}</small>
-                </span>
-              </div>
-              <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-                <span style={{ color: 'var(--status-amber-text)', fontWeight: 'bold' }}>
-                  PITCH: {activeSample ? (activeSample.pitch > 0 ? `+${activeSample.pitch.toFixed(1)}°` : `${activeSample.pitch.toFixed(1)}°`) : '—'}
-                  <small style={{ marginLeft: 3, fontSize: '0.65rem' }}>{activeSample && activeSample.pitch > 0 ? 'BOW UP' : 'BOW DOWN'}</small>
-                </span>
-              </div>
-              {peakSample && (
+            {/* Dynamic Boundary-Clamped Floating HUD Tooltip */}
+            {activeSample && (
+              <div
+                className="chart-tooltip"
+                style={{
+                  top: 10,
+                  left: `${Math.max(16, Math.min(84, (scaleX(activeSampleIdx) / w) * 100))}%`,
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+                    {hoverIdx !== null ? 'Điểm chọn:' : 'Mốc thời gian:'}
+                  </span>{' '}
+                  <b style={{ color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
+                    T+{activeSample ? activeSample.t * 5 : 0}s
+                  </b>
+                </div>
                 <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-                  <span style={{ color: Math.abs(peakSample.roll) >= tripDeg ? 'var(--status-red-text)' : 'var(--status-amber-text)', fontWeight: 'bold' }}>
-                    PEAK: {Math.abs(peakSample.roll).toFixed(1)}°
+                  <span style={{ color: '#0284C7', fontWeight: 600 }}>
+                    Roll: {activeSample.roll > 0 ? `+${activeSample.roll.toFixed(1)}°` : `${activeSample.roll.toFixed(1)}°`}
+                    <small style={{ marginLeft: 3, fontSize: '0.65rem' }}>
+                      {activeSample.roll > 0.1 ? 'Mạn phải (STBD)' : activeSample.roll < -0.1 ? 'Mạn trái (PORT)' : 'Cân bằng (EVEN)'}
+                    </small>
                   </span>
                 </div>
-              )}
-            </div>
+                <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
+                  <span style={{ color: '#F59E0B', fontWeight: 600 }}>
+                    Pitch: {activeSample.pitch > 0 ? `+${activeSample.pitch.toFixed(1)}°` : `${activeSample.pitch.toFixed(1)}°`}
+                    <small style={{ marginLeft: 3, fontSize: '0.65rem' }}>
+                      {activeSample.pitch > 0.1 ? 'Ngóc mũi (BOW UP)' : activeSample.pitch < -0.1 ? 'Chúi mũi (BOW DN)' : 'Mức chuẩn (LEVEL)'}
+                    </small>
+                  </span>
+                </div>
+                <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
+                  <span
+                    style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background:
+                        Math.abs(activeSample.roll) >= tripDeg
+                          ? 'var(--note-danger-bg)'
+                          : Math.abs(activeSample.roll) >= warningDeg
+                          ? 'var(--note-warn-bg)'
+                          : 'var(--note-success-bg)',
+                      color:
+                        Math.abs(activeSample.roll) >= tripDeg
+                          ? 'var(--status-red-text)'
+                          : Math.abs(activeSample.roll) >= warningDeg
+                          ? 'var(--status-amber-text)'
+                          : 'var(--status-green-text)',
+                    }}
+                  >
+                    {Math.abs(activeSample.roll) >= tripDeg
+                      ? 'NGUY CẤP (TRIP)'
+                      : Math.abs(activeSample.roll) >= warningDeg
+                      ? 'CẢNH BÁO (WARN)'
+                      : 'BÌNH THƯỜNG'}
+                  </span>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* Timeline X-Axis Time Markers */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', fontFamily: 'monospace', color: 'var(--text-muted)', marginTop: 6, padding: '0 8px 0 38px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', marginTop: 6, padding: '0 8px 0 38px' }}>
         <span>-{timeRange}</span>
         <span>-{timeRange === '5m' ? '2.5m' : timeRange === '1m' ? '30s' : timeRange === '30s' ? '15s' : '5s'}</span>
-        <span style={{ color: 'var(--accent-color)', fontWeight: 'bold' }}>0s (NOW)</span>
+        <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>0s (Hiện tại)</span>
       </div>
 
       {/* Legend & Quick Status Footer */}
@@ -513,15 +629,15 @@ export function LiveMotionChart({
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--status-amber-text)' }}>
             <span style={{ width: 10, height: 0, borderTop: '1.5px dashed var(--status-amber-text)' }} />
-            Warn ±{warningDeg}°
+            Cảnh báo ±{warningDeg}°
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--status-red-text)' }}>
             <span style={{ width: 10, height: 0, borderTop: '1.5px dashed var(--status-red-text)' }} />
-            Trip ±{tripDeg}°
+            Nguy cấp ±{tripDeg}°
           </span>
         </div>
         <div style={{ color: 'var(--text-muted)', fontSize: '0.68rem', fontStyle: 'italic' }}>
-          Di chuột trên biểu đồ để xem chi tiết từng mẫu • Đồng bộ trực tiếp với mô hình tàu 2D
+          Di chuột trên biểu đồ để xem chi tiết từng mẫu • Đồng bộ trực tiếp với mô hình số hóa thân tàu (Digital Twin)
         </div>
       </div>
     </div>

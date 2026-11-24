@@ -1,18 +1,24 @@
 import {useEffect,useMemo,useState} from 'react';
 import type {ReactNode,FormEvent} from 'react';
-import type {Alarm,Command,Page,Scenario,Session,MotionSnapshot,ZeroCalibration,ReplayPoint} from './domain';
+import type {Alarm,Command,Page,Scenario,Session,MotionSnapshot,ZeroCalibration,ReplayPoint,FeatureItem} from './domain';
 import {computeHealth,computeModelInfo,INITIAL_ALARMS,makeTelemetry,mockLogin,mockRegister,mockForgotPassword,MOCK_VOYAGES,REPLAY_SAMPLES,samples,SCENARIOS} from './mock';
+import {exportFeaturesToCSV,CONTRACT_ID,CONTRACT_VERSION,CONTRACT_SOURCE_EXPORT,TOTAL_FEATURES} from './featureRegistry';
 import { ShipMotionVisualizer } from './ShipMotionVisualizer';
 import { LiveMotionChart } from './LiveMotionChart';
 import { MaiAlarmsChart } from './MaiAlarmsChart';
 import { VoyageKinematicDistributionChart, VoyageRfDistributionChart } from './VoyageAnalyticsCharts';
 import { ModelConcordanceChart } from './ModelConcordanceChart';
+import { i18n, getRoleNameVi, getAlarmLevelNameVi, getAlarmStatusNameVi, getRFClassNameVi, getScenarioNameVi, FEATURE_NAMES_VI } from './i18n/vi';
 
 const NAV:{key:Page;label:string;mini:string}[]=[
- {key:'overview',label:'Overview',mini:'Home'}, {key:'motion',label:'Live Motion',mini:'Motion'},
- {key:'alarms',label:'Alarms',mini:'Alarms'}, {key:'control',label:'Control Center',mini:'Control'},
- {key:'reports',label:'Voyage Reports',mini:'Reports'}, {key:'replay',label:'Replay & Review',mini:'Replay'},
- {key:'health',label:'Device Health',mini:'Health'}, {key:'model',label:'Model Monitor',mini:'AI'},
+ {key:'overview',label:i18n.nav.overview,mini:'Tổng quan'},
+ {key:'motion',label:i18n.nav.motion,mini:'Chuyển động'},
+ {key:'alarms',label:i18n.nav.alarms,mini:'Cảnh báo'},
+ {key:'control',label:i18n.nav.control,mini:'Điều khiển'},
+ {key:'reports',label:i18n.nav.reports,mini:'Báo cáo'},
+ {key:'replay',label:i18n.nav.replay,mini:'Phát lại'},
+ {key:'health',label:i18n.nav.health,mini:'Thiết bị'},
+ {key:'model',label:i18n.nav.model,mini:'Mô hình AI'},
 ];
 const format=(n:number|null|undefined,unit='°')=>n==null?'—':`${n>0?'+':''}${n.toFixed(1)}${unit}`;
 const time=(iso?:string)=>iso?new Date(iso).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
@@ -26,7 +32,7 @@ export function MotionChart({s,tick,height=190,offline=false}:{s:Scenario;tick:n
  const arr=samples(s,tick,64),w=650,h=height,pad=15;const scale=(v:number)=>h/2-v*(h-2*pad)/42;
  const poly=(key:'roll'|'pitch')=>arr.map((v,i)=>`${(i/(arr.length-1))*w},${scale(v[key])}`).join(' ');
  return <div className="chart-holder" role="img" aria-label="Biểu đồ DEMO góc lắc ngang roll và lắc dọc pitch theo thời gian">
-   {offline?<div className="chart-empty"><b>NO LIVE DATA</b><small>OFFLINE / SENSOR FAULT – không suy diễn trạng thái NORMAL</small></div>:<>
+   {offline?<div className="chart-empty"><b>KHÔNG CÓ DỮ LIỆU TRỰC TIẾP</b><small>MẤT KẾT NỐI / LỖI CẢM BIẾN – không suy diễn trạng thái BÌNH THƯỜNG</small></div>:<>
    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" width="100%" height={height} aria-hidden="true">
     {[.25,.5,.75].map(y=><line key={y} x1="0" y1={y*h} x2={w} y2={y*h} stroke="var(--border-subtle, #D0DDEB)" strokeDasharray="4 7" />)}
     <line x1="0" y1={h/2} x2={w} y2={h/2} stroke="var(--border-color, #183E65)" strokeWidth="1.2" />
@@ -50,6 +56,13 @@ function ReplayChart({samples,currentIndex,onSeek}:{samples:ReplayPoint[];curren
  const curX=(currentIndex/(samples.length-1))*w;
  const alarmsWithMarkers=samples.filter(s=>s.alarm_id);
 
+ const rollAreaPath = useMemo(() => {
+   if (!samples.length) return '';
+   const pts = samples.map((v, i) => `${(i / (samples.length - 1)) * w},${scale(v.roll)}`);
+   const zeroY = scale(0);
+   return `M 0 ${zeroY} L ${pts.join(' L ')} L ${w} ${zeroY} Z`;
+ }, [samples]);
+
  const handleSeek = (clientX: number, rect: DOMRect) => {
    const ratio=Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
    onSeek(Math.round(ratio*(samples.length-1)));
@@ -58,13 +71,13 @@ function ReplayChart({samples,currentIndex,onSeek}:{samples:ReplayPoint[];curren
  const activeIdx = hoverIdx !== null ? hoverIdx : currentIndex;
  const activeSample = samples[activeIdx] || samples[0];
 
- return <div className="chart-holder" style={{position:'relative',overflow:'hidden',background:'var(--panel-bg)',borderRadius:8,border:'1px solid var(--border-color)',boxShadow:'var(--card-shadow)',padding:'10px 10px 4px'}}>
+ return <div className="chart-holder" style={{position:'relative',overflow:'hidden',background:'var(--panel-bg)',borderRadius:12,border:'1px solid var(--border-color)',boxShadow:'var(--card-shadow)',padding:'12px 14px 8px'}}>
   <svg
    viewBox={`0 0 ${w} ${h}`}
    preserveAspectRatio="none"
    width="100%"
    height={h}
-   style={{cursor:'crosshair',display:'block'}}
+   style={{cursor:'crosshair',display:'block',touchAction:'none'}}
    onPointerDown={(e)=>{
     setIsDragging(true);
     handleSeek(e.clientX, e.currentTarget.getBoundingClientRect());
@@ -83,48 +96,99 @@ function ReplayChart({samples,currentIndex,onSeek}:{samples:ReplayPoint[];curren
     setIsDragging(false);
     setHoverIdx(null);
    }}
+   aria-label="Biểu đồ dao động Roll và Pitch phát lại Replay"
   >
+   <defs>
+    <linearGradient id="replayRollAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stopColor="#0284C7" stopOpacity="0.20" />
+      <stop offset="50%" stopColor="#0284C7" stopOpacity="0.04" />
+      <stop offset="100%" stopColor="#0284C7" stopOpacity="0.20" />
+    </linearGradient>
+   </defs>
+
+   {/* Background Rect */}
+   <rect x="0" y="0" width={w} height={h} fill="var(--panel-bg)" rx={6} />
+
    {/* Degree Gridlines */}
    {[-15, 0, 15].map(deg => (
     <g key={deg}>
-      <line x1="0" y1={scale(deg)} x2={w} y2={scale(deg)} stroke={deg===0?"var(--border-navy, #183E65)":"var(--border-subtle, #DCE5EE)"} strokeWidth={deg===0?1.3:0.8} strokeDasharray={deg===0?undefined:"3 4"} />
-      <text x={w - 6} y={scale(deg) - 3} textAnchor="end" fill={deg===0?"var(--text-main, #102B49)":"var(--text-muted, #718EA6)"} fontSize="8.5" fontFamily="monospace">
+      <line x1="0" y1={scale(deg)} x2={w} y2={scale(deg)} stroke={deg===0?"var(--accent-color)":"var(--border-subtle)"} strokeWidth={deg===0?1.4:0.8} strokeDasharray={deg===0?undefined:"3 4"} opacity={deg===0?0.6:0.7} />
+      <text x={w - 6} y={scale(deg) - 3} textAnchor="end" fill={deg===0?"var(--text-main)":"var(--text-muted)"} fontSize="9" fontFamily="'Be Vietnam Pro', sans-serif" fontWeight={deg===0?600:400}>
         {deg > 0 ? `+${deg}°` : `${deg}°`}
       </text>
     </g>
    ))}
 
-   {/* Alarms with markers */}
+   {/* Roll Area Fill Gradient */}
+   <path d={rollAreaPath} fill="url(#replayRollAreaGrad)" />
+
+   {/* Alarms with beacon markers (No concentric rings) */}
    {alarmsWithMarkers.map(ap=>{
     const ax=(ap.seq/(samples.length-1))*w;
-    const col=ap.alarm_level==='CRITICAL'?'#DC2626':ap.alarm_level==='WARNING'?'#D97706':'#0284C7';
-    return <g key={ap.seq} onClick={(e)=>{ e.stopPropagation(); onSeek(ap.seq); }} style={{cursor:'pointer'}}>
-     <line x1={ax} y1="0" x2={ax} y2={h} stroke={col} strokeWidth="1.5" strokeDasharray="3 3" opacity="0.85" />
-     <rect x={ax - 20} y={4} width={40} height={14} rx={2} fill={col} />
-     <text x={ax} y={14} textAnchor="middle" fill="#FFFFFF" fontSize="8" fontFamily="monospace" fontWeight="bold">{ap.alarm_id}</text>
+    const col=ap.alarm_level==='CRITICAL'?'#EF4444':ap.alarm_level==='WARNING'?'#F59E0B':'#0284C7';
+    return <g key={ap.seq} onClick={(e)=>{ e.stopPropagation(); onSeek(ap.seq); }} style={{cursor:'pointer'}} aria-label={`Sự kiện ${ap.alarm_id}`}>
+     {/* Tether drop-line */}
+     <line x1={ax} y1={22} x2={ax} y2={scale(ap.roll)} stroke={col} strokeWidth="1.1" strokeDasharray="2 2" opacity={0.8} />
+     {/* Single small solid dot on curve */}
+     <circle cx={ax} cy={scale(ap.roll)} r="3.5" fill={col} stroke="var(--panel-bg)" strokeWidth="1.5" />
+     {/* Beacon pill at top */}
+     <rect x={ax - 22} y={6} width={44} height={16} rx={4} fill={col} />
+     <polygon points={`${ax - 3},22 ${ax + 3},22 ${ax},24.5`} fill={col} />
+     <text x={ax} y={17.5} textAnchor="middle" fill="#FFFFFF" fontSize="8" fontFamily="'JetBrains Mono', monospace" fontWeight="600">{ap.alarm_id}</text>
     </g>;
    })}
 
    {/* Waveform curves */}
-   <polyline points={poly('roll')} fill="none" stroke="#0284C7" strokeWidth="2.8" vectorEffect="non-scaling-stroke"/>
-   <polyline points={poly('pitch')} fill="none" stroke="#D97706" strokeWidth="2.0" vectorEffect="non-scaling-stroke"/>
+   <polyline points={poly('pitch')} fill="none" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity="0.9"/>
+   <polyline points={poly('roll')} fill="none" stroke="#0284C7" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
 
-   {/* Playhead vertical needle */}
-   <line x1={curX} y1="0" x2={curX} y2={h} stroke="#10B981" strokeWidth="2.5" />
-   <circle cx={curX} cy={scale(samples[currentIndex]?.roll||0)} r="5" fill="#10B981" stroke="#FFFFFF" strokeWidth="1.5" />
+   {/* Playhead vertical needle with single solid dot (No concentric rings) */}
+   <line x1={curX} y1="0" x2={curX} y2={h} stroke="#10B981" strokeWidth="2" />
+   <circle cx={curX} cy={scale(samples[currentIndex]?.roll||0)} r="3.5" fill="#10B981" stroke="var(--panel-bg)" strokeWidth="1.5" />
 
-   {/* Hover guide line if different */}
+   {/* Hover vertical slice & guide line if different */}
    {hoverIdx !== null && hoverIdx !== currentIndex && (
-    <line x1={(hoverIdx/(samples.length-1))*w} y1="0" x2={(hoverIdx/(samples.length-1))*w} y2={h} stroke="#183E65" strokeWidth="1.2" strokeDasharray="2 2" />
+    <g>
+      <rect x={(hoverIdx/(samples.length-1))*w - 6} y="0" width="12" height={h} fill="var(--accent-color)" fillOpacity="0.05" rx={2} />
+      <line x1={(hoverIdx/(samples.length-1))*w} y1="0" x2={(hoverIdx/(samples.length-1))*w} y2={h} stroke="var(--accent-color)" strokeWidth="1.1" strokeDasharray="2 2" opacity="0.75" />
+    </g>
    )}
   </svg>
 
-  {/* Floating Readout */}
-  <div style={{position:'absolute',top:14,right:16,background:'var(--panel-bg)',border:'1px solid var(--border-color)',borderRadius:6,padding:'4px 10px',fontSize:'0.72rem',display:'flex',gap:10,pointerEvents:'none',color:'var(--text-main)',boxShadow:'var(--card-shadow)'}}>
-   <span>MỐC: <b>T+{activeSample.t_sim_s}s</b></span>
-   <span className="text-info">ROLL: <b>{activeSample.roll>0?`+${activeSample.roll.toFixed(1)}°`:`${activeSample.roll.toFixed(1)}°`}</b></span>
-   <span className="text-warning">PITCH: <b>{activeSample.pitch>0?`+${activeSample.pitch.toFixed(1)}°`:`${activeSample.pitch.toFixed(1)}°`}</b></span>
-   <span className={activeSample.mai>=70?'text-danger':activeSample.mai>=35?'text-warning':'text-success'}>MAI: <b>{activeSample.mai}</b></span>
+  {/* Clamped Floating Readout HUD */}
+  <div
+    className="chart-tooltip"
+    style={{
+      top: 12,
+      left: `${Math.max(16, Math.min(84, (activeIdx / (samples.length - 1)) * 100))}%`,
+      transform: 'translateX(-50%)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+    }}
+  >
+   <div>
+     <span style={{color:'var(--text-muted)',fontSize:'0.68rem'}}>Mốc:</span>{' '}
+     <b style={{color:'var(--text-main)',fontVariantNumeric:'tabular-nums'}}>T+{activeSample.t_sim_s}s</b>
+   </div>
+   <div style={{borderLeft:'1px solid var(--border-color)',paddingLeft:8}}>
+     <span style={{color:'#0284C7',fontWeight:600}}>ROLL: {activeSample.roll>0?`+${activeSample.roll.toFixed(1)}°`:`${activeSample.roll.toFixed(1)}°`}</span>
+   </div>
+   <div style={{borderLeft:'1px solid var(--border-color)',paddingLeft:8}}>
+     <span style={{color:'#F59E0B',fontWeight:600}}>PITCH: {activeSample.pitch>0?`+${activeSample.pitch.toFixed(1)}°`:`${activeSample.pitch.toFixed(1)}°`}</span>
+   </div>
+   <div style={{borderLeft:'1px solid var(--border-color)',paddingLeft:8}}>
+     <span style={{
+       fontSize:'0.65rem',
+       fontWeight:600,
+       padding:'2px 6px',
+       borderRadius:4,
+       background:activeSample.mai>=70?'var(--note-danger-bg)':activeSample.mai>=35?'var(--note-warn-bg)':'var(--note-success-bg)',
+       color:activeSample.mai>=70?'var(--status-red-text)':activeSample.mai>=35?'var(--status-amber-text)':'var(--status-green-text)',
+     }}>
+       MAI {activeSample.mai}
+     </span>
+   </div>
   </div>
 
   <div className="legend" style={{marginTop:6,display:'flex',justifyContent:'space-between',fontSize:'0.72rem'}}>
@@ -167,7 +231,7 @@ export default function App(){
 
  const [forgotIdentifier,setForgotIdentifier]=useState('');
  const [forgotError,setForgotError]=useState('');
- const [forgotPendingNotice,setForgotPendingNotice]=useState('');
+ const [forgotPendingNotice,setForgotPendingNotice]=useState('');const [authLoading,setAuthLoading]=useState(false);
  const [page,setPage]=useState<Page>('overview');const [scenario,setScenario]=useState<Scenario>('S0');const [tick,setTick]=useState(62);const [profile,setProfile]=useState('STANDARD');const [configVersion,setConfigVersion]=useState(7);const [previousProfile,setPreviousProfile]=useState('STANDARD');const [hasPreviousProfile,setHasPreviousProfile]=useState(false);const [timewarp,setTimewarp]=useState(1);const [activeModel,setActiveModel]=useState<'RF'|'BASELINE_B'>('RF');
  const [alarms,setAlarms]=useState<Alarm[]>(INITIAL_ALARMS);const [alarmId,setAlarmId]=useState<string|null>(null);const [alarmFilter,setAlarmFilter]=useState('ALL');
  const [commands,setCommands]=useState<Command[]>([]);const [notice,setNotice]=useState('');const [replayIndex,setReplayIndex]=useState(0);const [playing,setPlaying]=useState(false);const [speed,setSpeed]=useState(1);
@@ -175,11 +239,28 @@ export default function App(){
  const [latestSnapshot,setLatestSnapshot]=useState<MotionSnapshot|null>(null);
  const [zeroCalibration,setZeroCalibration]=useState<ZeroCalibration|null>(null);
  const [hoveredMotionSample, setHoveredMotionSample] = useState<{ roll: number; pitch: number; t: number } | null>(null);
+ const [featureGroupFilter, setFeatureGroupFilter] = useState<'ALL' | 'roll_60s' | 'roll_180s' | 'pitch_60s'>('ALL');
  const thresholds = PROFILE_THRESHOLDS[profile] || PROFILE_THRESHOLDS['STANDARD'];
  const selectedVoyage = useMemo(()=>MOCK_VOYAGES.find(v=>v.id===selectedVoyageId)||MOCK_VOYAGES[0],[selectedVoyageId]);
  const telemetry=useMemo(()=>makeTelemetry(scenario,tick,configVersion),[scenario,tick,configVersion]);
  const health=useMemo(()=>computeHealth(scenario,tick),[scenario,tick]);
- const modelInfo=useMemo(()=>computeModelInfo(activeModel),[activeModel]);
+ const modelInfo=useMemo(()=>computeModelInfo(activeModel,scenario,telemetry?.sensor_ok),[activeModel,scenario,telemetry?.sensor_ok]);
+ const downloadFeaturesCSV=(items:FeatureItem[])=>{
+  const content=exportFeaturesToCSV(items,{voyageId:selectedVoyage.id,isMock:true});
+  const blob=new Blob([content],{type:'text/csv;charset=utf-8'});
+  const u=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=u;
+  a.download=`SVMG_${selectedVoyage.id}_features23_${CONTRACT_VERSION}.csv`;
+  a.click();
+  URL.revokeObjectURL(u);
+  setNotice(`Đã xuất CSV 23 đặc trưng (${CONTRACT_VERSION})`);
+ };
+ useEffect(()=>{
+  if(!notice)return;
+  const t=window.setTimeout(()=>setNotice(''),4500);
+  return()=>window.clearTimeout(t);
+ },[notice]);
  useEffect(()=>{const ms=Math.max(100,Math.round(1100/(timewarp||1)));const id=window.setInterval(()=>setTick(v=>v+1),ms);return()=>clearInterval(id)},[timewarp]);
  useEffect(()=>{
   if(!playing)return;
@@ -195,18 +276,21 @@ export default function App(){
   },interval);
   return()=>clearInterval(id);
  },[playing,speed]);
- const goto=(p:Page)=>{if(p==='model'&&!canOperate(session)){setNotice('Chỉ Supervisor/Admin được truy cập Model Monitor.');return;}setPage(p);setAlarmId(null);window.scrollTo({top:0,behavior:'smooth'})};
+ const goto=(p:Page)=>{setPage(p);setAlarmId(null);window.scrollTo({top:0,behavior:'smooth'})};
  const submitLogin=(e:FormEvent)=>{
   e.preventDefault();
+  setAuthLoading(true);
   const result=mockLogin(loginName,loginPass);
   if(!result){
    setLoginError('Tài khoản hoặc mã truy cập (passcode) chưa đúng. Vui lòng kiểm tra lại.');
+   setAuthLoading(false);
    return;
   }
   setSession(result);
   setPage('overview');
   setLoginError('');
   setNotice(`Đăng nhập thành công • Vai trò: ${result.role} (${result.displayName})`);
+  setAuthLoading(false);
  };
  const submitRegister=(e:FormEvent)=>{
   e.preventDefault();
@@ -352,9 +436,9 @@ export default function App(){
   },780);
  };
  const renderAlarm=(a:Alarm,detail=false)=><div className={`alarm-entry ${a.level.toLowerCase()}`} key={a.id}>
-  <div className="alarm-title"><div><b>{a.id}</b> <span className="muted">• {a.title}</span></div><Pill kind={a.level}>{a.level}</Pill></div>
-  <div className="data-line"><span className="micro">{a.raisedAt.startsWith('2026')?time(a.raisedAt):a.raisedAt} · {a.status}</span>{a.mutedUntil&&<span className="micro">MUTED (DEMO)</span>}</div>
-  {detail&&<div className="button-line"><Button kind="secondary" disabled={a.status!=='RAISED'} onClick={()=>ackAlarm(a.id)}>ACK</Button><Button kind="ghost" disabled={a.status==='CLEARED'||a.level==='CRITICAL'} title={a.level==='CRITICAL'?'Không mute khi CRITICAL':''} onClick={()=>muteAlarm(a.id)}>Mute ≤300s</Button></div>}
+  <div className="alarm-title"><div><b>{a.id}</b> <span className="muted">• {a.title}</span></div><Pill kind={a.level}>{getAlarmLevelNameVi(a.level)}</Pill></div>
+  <div className="data-line"><span className="micro">{a.raisedAt.startsWith('2026')?time(a.raisedAt):a.raisedAt} · {getAlarmStatusNameVi(a.status)}</span>{a.mutedUntil&&<span className="micro">ĐÃ TẮT CÒI (DEMO)</span>}</div>
+  {detail&&<div className="button-line"><Button kind="secondary" disabled={a.status!=='RAISED'} onClick={()=>ackAlarm(a.id)}>{a.status==='ACKED'?'✓ Đã tiếp nhận':'Xác nhận (ACK)'}</Button><Button kind="ghost" disabled={a.status==='CLEARED'||a.level==='CRITICAL'} title={a.level==='CRITICAL'?'Không tắt còi khi mức NGUY CẤP':''} onClick={()=>muteAlarm(a.id)}>{a.mutedUntil?'✓ Đã tắt còi':'Tắt còi ≤300s'}</Button></div>}
   {!detail&&<Button kind="ghost" onClick={()=>{setAlarmId(a.id);setPage('alarms')}}>Xem chi tiết →</Button>}
  </div>;
  const renderPage=()=>{
@@ -368,43 +452,43 @@ export default function App(){
    return <>
     <div className="page-hero">
      <div>
-      <span className="eyebrow">VESSEL DEMO 01 / CẦU TÀU (BRIDGE DASHBOARD)</span>
-      <h1>Vessel Overview</h1>
-      <p>Tổng quan vận hành: Trạng thái an toàn, kết nối thiết bị IoT, mức bất thường MAI và cảnh báo ca trực.</p>
+      <span className="eyebrow">Tàu mô phỏng MV SVMG-01 / Buồng lái (Cầu tàu)</span>
+      <h1>Tổng quan vận hành</h1>
+      <p>Tổng quan an toàn: Trạng thái tàu, kết nối cảm biến IoT, chỉ số bất thường MAI và cảnh báo trực ca.</p>
      </div>
      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <Pill kind={isConnected ? 'normal' : scenario==='OFFLINE' ? 'critical' : 'fault'}>
-       {isConnected ? '● KẾT NỐI ONLINE' : scenario==='OFFLINE' ? 'OFFLINE (>30s)' : 'SENSOR FAULT (I2C)'}
+       {isConnected ? '● TRỰC TUYẾN (ONLINE)' : scenario==='OFFLINE' ? 'MẤT KẾT NỐI (>30s)' : 'LỖI CẢM BIẾN (I2C)'}
       </Pill>
       <Pill kind={activeSeverity}>
-       {activeSeverity}
+       {getAlarmLevelNameVi(activeSeverity)}
       </Pill>
      </div>
     </div>
 
     <div className="metrics">
      <Metric
-      label="MỨC CẢNH BÁO TÀU"
-      value={activeSeverity}
+      label="Mức cảnh báo tàu"
+      value={getAlarmLevelNameVi(activeSeverity)}
       note={activeSeverity === 'CRITICAL' ? 'Nguy cấp: Vượt ngưỡng Trip' : activeSeverity === 'WARNING' ? 'Cảnh báo: Biên độ lắc lớn' : 'An toàn trong giới hạn'}
       tone={activeSeverity === 'CRITICAL' ? 'red' : activeSeverity === 'WARNING' ? 'amber' : 'green'}
      />
      <Metric
-      label="KẾT NỐI THIẾT BỊ"
-      value={isConnected ? 'BÌNH THƯỜNG' : (scenario === 'OFFLINE' ? 'OFFLINE' : 'LỖI CẢM BIẾN')}
+      label="Kết nối thiết bị"
+      value={isConnected ? 'Trực tuyến (Online)' : (scenario === 'OFFLINE' ? 'Mất kết nối' : 'Lỗi cảm biến')}
       note={isConnected ? 'ESP32 • MPU6050 (400kHz)' : 'Mất tín hiệu viễn trắc'}
       tone={isConnected ? 'cyan' : (scenario === 'OFFLINE' ? 'red' : 'amber')}
      />
      <Metric
-      label="CHỈ SỐ BẤT THƯỜNG (MAI)"
+      label="Chỉ số bất thường (MAI)"
       value={isConnected ? `${telemetry.mai} / 100` : '—'}
       note={(telemetry?.mai||0) >= 70 ? 'Vượt ngưỡng cảnh giác (≥70)' : (telemetry?.mai||0) >= 35 ? 'Mức theo dõi (35-70)' : 'Biển êm / Bình thường (<35)'}
       tone={(telemetry?.mai||0) >= 70 ? 'red' : (telemetry?.mai||0) >= 35 ? 'amber' : 'green'}
      />
      <Metric
-      label="CẢNH BÁO CA TRỰC"
-      value={activeSeverity === 'NORMAL' && raisedAlarms.length === 0 ? '0 ĐANG MỞ' : `${raisedAlarms.length} ĐANG MỞ`}
-      note={activeSeverity === 'NORMAL' && raisedAlarms.length === 0 ? 'Toàn bộ hệ thống an toàn' : `${ackedAlarms.length} đã tiếp nhận (ACK)`}
+      label="Cảnh báo ca trực"
+      value={activeSeverity === 'NORMAL' && raisedAlarms.length === 0 ? '0 đang mở' : `${raisedAlarms.length} đang mở`}
+      note={activeSeverity === 'NORMAL' && raisedAlarms.length === 0 ? 'Toàn bộ hệ thống an toàn' : `${ackedAlarms.length} đã xác nhận (ACK)`}
       tone={raisedAlarms.length > 0 ? 'red' : 'green'}
      />
     </div>
@@ -412,12 +496,12 @@ export default function App(){
     <div className="columns">
      <div>
       {/* Panel 1: Kinematics Summary */}
-      <Panel title="TÓM TẮT ĐỘNG HỌC THÂN TÀU (KINEMATICS SNAPSHOT)" tag="TỨC THỜI • FR05">
+      <Panel title="Tóm tắt động học thân tàu (Kinematics Snapshot)" tag="Tức thời • Chu kỳ 5s">
        <div style={{marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:4}}>
-         <span className="micro" style={{fontWeight:600}}>CHỈ SỐ BẤT THƯỜNG MAI HIỆN TẠI</span>
-         <span className={isConnected ? (((telemetry?.mai||0)>=70)?'text-danger':((telemetry?.mai||0)>=35)?'text-warning':'text-success') : 'text-muted'} style={{fontWeight:700,fontFamily:'monospace'}}>
-          {isConnected ? `${telemetry?.mai} / 100` : 'KHÔNG KHẢ DỤNG'}
+         <span className="micro" style={{fontWeight:600}}>Chỉ số bất thường MAI hiện tại</span>
+         <span className={isConnected ? (((telemetry?.mai||0)>=70)?'text-danger':((telemetry?.mai||0)>=35)?'text-warning':'text-success') : 'text-muted'} style={{fontWeight:600,fontVariantNumeric:'tabular-nums'}}>
+          {isConnected ? `${telemetry?.mai} / 100` : 'Không khả dụng'}
          </span>
         </div>
         <div style={{width:'100%',height:8,background:'var(--border-color)',borderRadius:4,overflow:'hidden'}}>
@@ -444,40 +528,40 @@ export default function App(){
         </dd>
         <dt>Góc lắc dọc tức thời (Pitch)</dt>
         <dd className="text-warning" style={{fontWeight:600}}>
-         {isConnected ? `${format(telemetry?.pitch_deg)} (${(telemetry?.pitch_deg||0) > 0.1 ? 'Ngóc mũi / BOW UP' : (telemetry?.pitch_deg||0) < -0.1 ? 'Chúi mũi / BOW DOWN' : 'Mức'})` : '—'}
+         {isConnected ? `${format(telemetry?.pitch_deg)} (${(telemetry?.pitch_deg||0) > 0.1 ? 'Ngóc mũi / BOW UP' : (telemetry?.pitch_deg||0) < -0.1 ? 'Chúi mũi / BOW DN' : 'Mức chuẩn'})` : '—'}
         </dd>
         <dt>Nhận dạng TinyML (Random Forest)</dt>
-        <dd className="text-success" style={{fontWeight:600}}>{telemetry?.class_rf ?? 'UNKNOWN'}</dd>
+        <dd className="text-success" style={{fontWeight:600}}>{getRFClassNameVi(telemetry?.class_rf)} ({telemetry?.class_rf ?? 'UNKNOWN'})</dd>
         <dt>Ngưỡng an toàn mô phỏng</dt>
-        <dd>Warn ±{thresholds.roll_warning_deg}° • Trip ±{thresholds.roll_trip_deg}°</dd>
+        <dd>Cảnh báo ±{thresholds.roll_warning_deg}° • Nguy cấp ±{thresholds.roll_trip_deg}°</dd>
        </dl>
 
        <div style={{marginTop:16,paddingTop:12,borderTop:'1px solid var(--border-subtle)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-        <span className="micro muted">Xem biểu đồ dao động 280px & mô hình tàu 2D</span>
-        <Button kind="primary" onClick={()=>goto('motion')}>Mở Live Motion chi tiết →</Button>
+        <span className="micro muted">Xem biểu đồ dao động trực tiếp & mô hình tàu số hóa</span>
+        <Button kind="primary" onClick={()=>goto('motion')}>Mở Giám sát chuyển động →</Button>
        </div>
       </Panel>
 
       {/* Panel 2: Thông số tàu & kết nối */}
-      <Panel title="THÔNG SỐ TÀU & KẾT NỐI THIẾT BỊ" tag="vessel-demo-01">
+      <Panel title="Thông số tàu & Kết nối thiết bị" tag="vessel-demo-01">
        <dl className="kv">
-        <dt>Tên tàu / Nhận dạng</dt><dd>Smart Vessel Demo 01 (IMO-9876543)</dd>
-        <dt>Chế độ nguồn dữ liệu (Source Mode)</dt><dd>{telemetry?.source_mode ?? 'SIMULATION'}</dd>
-        <dt>Kịch bản kiểm thử hiện hành</dt><dd className="text-info" style={{fontWeight:600}}>{scenario}</dd>
+        <dt>Tên tàu / Nhận dạng</dt><dd>Tàu Container MV SVMG-01 (IMO-9876543)</dd>
+        <dt>Chế độ nguồn dữ liệu (Source Mode)</dt><dd>Mô phỏng (SIMULATION)</dd>
+        <dt>Kịch bản kiểm thử hiện hành</dt><dd className="text-info" style={{fontWeight:600}}>{scenario} — {getScenarioNameVi(scenario)}</dd>
         <dt>Đồng hồ mô phỏng (t_sim_s)</dt><dd>T+{telemetry?.t_sim_s ?? '—'}s (Chu kỳ 5.0s)</dd>
         <dt>Cấu hình Profile / Phiên bản</dt><dd>{profile} (v{configVersion})</dd>
-        <dt>Sĩ quan ca trực hiện tại</dt><dd>{session?.username} ({session?.role})</dd>
+        <dt>Sĩ quan ca trực hiện tại</dt><dd>{session?.username} ({getRoleNameVi(session?.role)})</dd>
        </dl>
        <div className="button-line" style={{marginTop:12}}>
-        <Button kind="ghost" onClick={()=>goto('control')}>Điều chỉnh Profile / Lệnh →</Button>
-        <Button kind="ghost" onClick={()=>goto('health')}>Kiểm tra Device Health →</Button>
+        <Button kind="ghost" onClick={()=>goto('control')}>Điều chỉnh Cấu hình / Lệnh →</Button>
+        <Button kind="ghost" onClick={()=>goto('health')}>Kiểm tra Tình trạng thiết bị →</Button>
        </div>
       </Panel>
      </div>
 
      <div>
       {/* Panel 3: Actionable Alarms */}
-      <Panel title="CẢNH BÁO ĐANG MỞ & CẦN XỬ LÝ (ACTIONABLE ALARMS)" tag={raisedAlarms.length > 0 ? `${raisedAlarms.length} SỰ KIỆN CHỜ XỬ LÝ` : 'AN TOÀN'}>
+      <Panel title="Cảnh báo đang mở & Cần xử lý" tag={raisedAlarms.length > 0 ? `${raisedAlarms.length} sự kiện chờ xử lý` : 'An toàn'}>
        {raisedAlarms.length > 0 ? (
         <>
          <p className="micro" style={{marginBottom:10}}>Các cảnh báo đang mở cần sĩ quan trực ca tiếp nhận (ACK) hoặc kiểm tra an toàn:</p>
@@ -485,7 +569,7 @@ export default function App(){
         </>
        ) : (
         <div className="note success" style={{marginBottom:12}}>
-         <b>✓ TRẠNG THÁI CA TRỰC AN TOÀN:</b> Hiện không có cảnh báo nào ở trạng thái chờ xử lý (RAISED). Mọi dao động thân tàu và chỉ số MAI đều nằm trong ngưỡng an toàn cho phép.
+         <b>✓ Trạng thái ca trực an toàn:</b> Hiện không có cảnh báo nào ở trạng thái chờ xử lý (RAISED). Mọi dao động thân tàu và chỉ số MAI đều nằm trong ngưỡng an toàn cho phép.
         </div>
        )}
 
@@ -495,37 +579,19 @@ export default function App(){
        </div>
       </Panel>
 
-      {/* Panel 4: Lối tắt điều hướng nhanh */}
-      <Panel title="LỐI TẮT VẬN HÀNH CA TRỰC (WORKFLOW SHORTCUTS)" tag="ĐIỀU HƯỚNG NHANH">
-       <div className="more-list">
-        <button type="button" onClick={()=>goto('motion')}>
-         <div>
-          <strong style={{display:'block'}}>1. Giám sát dao động Live Motion</strong>
-          <small className="muted">Biểu đồ Roll/Pitch oscilloscope 4 cửa sổ, Freeze Frame & mô hình tàu 2D</small>
-         </div>
-         <span>→</span>
-        </button>
-        <button type="button" onClick={()=>goto('alarms')}>
-         <div>
-          <strong style={{display:'block'}}>2. Trung tâm cảnh báo Alarms</strong>
-          <small className="muted">Quản lý vòng đời cảnh báo, thời gian phản hồi MTTA & biểu đồ MAI</small>
-         </div>
-         <span>→</span>
-        </button>
-        <button type="button" onClick={()=>goto('control')}>
-         <div>
-          <strong style={{display:'block'}}>3. Trung tâm điều khiển Control Center</strong>
-          <small className="muted">Gửi lệnh cấu hình, đổi profile ngưỡng an toàn và đổi kịch bản</small>
-         </div>
-         <span>→</span>
-        </button>
-        <button type="button" onClick={()=>goto('reports')}>
-         <div>
-          <strong style={{display:'block'}}>4. Báo cáo hành trình & Replay</strong>
-          <small className="muted">Kiểm toán động học T11, xuất CSV 121 mẫu và thẩm định trực ca</small>
-         </div>
-         <span>→</span>
-        </button>
+      {/* Panel 4: Sẵn sàng hệ thống & Quy chuẩn ca trực */}
+      <Panel title="Sẵn sàng hệ thống & Quy chuẩn ca trực" tag="IMO • Bảng 3.1">
+       <dl className="kv">
+        <dt>Độ khả dụng dữ liệu (Availability)</dt>
+        <dd className={isConnected ? 'text-success' : 'text-danger'} style={{fontWeight:600}}>
+         {isConnected ? '100% (MPU6050 Trực tiếp)' : '0% (MẤT TÍN HIỆU)'}
+        </dd>
+        <dt>Mô hình TinyML tại biên</dt><dd>Random Forest v2.4 (10 cây quyết định)</dd>
+        <dt>Chu kỳ làm mới dữ liệu</dt><dd>1.1s / bước (Tương đương 5.0s mô phỏng)</dd>
+        <dt>Tiêu chuẩn cảnh báo nội bộ</dt><dd>Dải an toàn 15°–22° (Cấu hình mô phỏng)</dd>
+       </dl>
+       <div className="note" style={{marginTop:12}}>
+        <b>Quy tắc an toàn buồng lái:</b> Sĩ quan trực ca theo dõi sát chỉ số MAI khi vượt ngưỡng 35. Tuyệt đối không tắt còi báo động khi sự cố đạt mức NGUY CẤP (CRITICAL).
        </div>
       </Panel>
      </div>
@@ -535,74 +601,79 @@ export default function App(){
   case 'motion':return <>
    <div className="page-hero">
     <div>
-     <span className="eyebrow">TELEMETRY DEEP DIVE / FR05 • FR20</span>
-     <h1>Live Motion</h1>
-     <p>Giám sát dao động thân tàu thời gian thực: Đồ thị dao động Roll/Pitch, mô hình chuyển động 2D, đối chiếu TinyML và xu hướng MAI.</p>
+     <span className="eyebrow">Viễn trắc động học chuyên sâu • FR05 / FR20</span>
+     <h1>Giám sát chuyển động</h1>
+     <p>Giám sát dao động thân tàu thời gian thực: Đồ thị dao động Roll/Pitch, mô hình số hóa 3D, đối chiếu TinyML và xu hướng MAI.</p>
     </div>
     <div className="button-line" style={{marginTop:0}}>
-     <Button kind="ghost" onClick={()=>goto('overview')}>← Về Overview</Button>
+     <Button kind="ghost" onClick={()=>goto('overview')}>← Về Tổng quan</Button>
      <Button kind="ghost" onClick={()=>goto('alarms')}>Danh sách cảnh báo →</Button>
     </div>
    </div>
 
-   <div className="metrics">
+   {/* Clean 4-card compact metrics */}
+   <div className="compact-metrics-grid" style={{marginBottom: 16}}>
     <Metric
-     label="ROLL TỨC THỜI"
+     label="Roll tức thời"
      value={telemetry?.sensor_ok?format(telemetry.roll_deg):'—'}
      note={telemetry?.sensor_ok ? (telemetry.roll_deg > 0.1 ? 'Mạn phải (STBD)' : telemetry.roll_deg < -0.1 ? 'Mạn trái (PORT)' : 'Cân bằng (EVEN)') : 'Mất dữ liệu'}
      tone={Math.abs(telemetry?.roll_deg||0)>=thresholds.roll_warning_deg?'red':'cyan'}
     />
     <Metric
-     label="PITCH TỨC THỜI"
+     label="Pitch tức thời"
      value={telemetry?.sensor_ok?format(telemetry.pitch_deg):'—'}
      note={telemetry?.sensor_ok ? (telemetry.pitch_deg > 0.1 ? 'Ngóc mũi (BOW UP)' : telemetry.pitch_deg < -0.1 ? 'Chúi mũi (BOW DOWN)' : 'Mức (LEVEL)') : 'Mất dữ liệu'}
      tone="amber"
     />
     <Metric
-     label="CHỈ SỐ MAI"
+     label="Chỉ số MAI"
      value={telemetry?.sensor_ok?`${telemetry.mai} / 100`:'—'}
      note={(telemetry?.mai||0)>=70?'Nguy cấp (Critical)':(telemetry?.mai||0)>=35?'Cảnh giác (Elevated)':'Bình thường (Safe)'}
      tone={(telemetry?.mai||0)>=70?'red':(telemetry?.mai||0)>=35?'amber':'green'}
     />
     <Metric
-     label="KỊCH BẢN & MỐC GIỜ"
-     value={scenario}
-     note={telemetry?.t_sim_s !== undefined ? `T+${telemetry.t_sim_s}s (Chu kỳ 5.0s)` : '—'}
-     tone="cyan"
+     label="Nhận dạng TinyML & Mốc giờ"
+     value={telemetry?.sensor_ok ? `${getRFClassNameVi(telemetry?.class_rf)} (${telemetry?.class_rf})` : 'MẤT TÍN HIỆU'}
+     note={telemetry?.t_sim_s !== undefined ? `Kịch bản ${scenario} • T+${telemetry.t_sim_s}s` : '—'}
+     tone={!telemetry?.sensor_ok ? 'red' : telemetry?.class_rf === 'NORMAL' ? 'green' : 'amber'}
     />
    </div>
 
-   {/* 2D Vessel Motion Visualizer (Full Interactive Model) */}
-   <Panel title="TRỰC QUAN HÓA DAO ĐỘNG THÂN TÀU (2D MOTION VISUALIZER)" tag="ĐỒNG BỘ CON TRỎ & FREEZE FRAME">
-    <ShipMotionVisualizer
-     rollDeg={hoveredMotionSample ? hoveredMotionSample.roll : (telemetry?.sensor_ok ? telemetry.roll_deg : null)}
-     pitchDeg={hoveredMotionSample ? hoveredMotionSample.pitch : (telemetry?.sensor_ok ? telemetry.pitch_deg : null)}
-     mai={telemetry?.sensor_ok ? telemetry.mai : null}
-     alarmLevel={telemetry?.alarm_level || 'NORMAL'}
-     scenario={scenario}
-     classRf={telemetry?.class_rf || 'NORMAL'}
-     sourceMode={telemetry?.source_mode || 'SIMULATION'}
-     sensorOk={telemetry?.sensor_ok}
-     compact={false}
-    />
-   </Panel>
+   {/* Primary 2-Column Split Monitoring Area (Desktop: 48% Visualizer / 52% Oscilloscope) */}
+   <div className="motion-monitoring-grid">
+    <Panel title="Mô hình số hóa thân tàu (Maritime Digital Twin 3D)" tag="Đồng bộ góc Roll & Pitch thời gian thực">
+     <ShipMotionVisualizer
+      rollDeg={hoveredMotionSample ? hoveredMotionSample.roll : (telemetry?.sensor_ok ? telemetry.roll_deg : null)}
+      pitchDeg={hoveredMotionSample ? hoveredMotionSample.pitch : (telemetry?.sensor_ok ? telemetry.pitch_deg : null)}
+      mai={telemetry?.sensor_ok ? telemetry.mai : null}
+      alarmLevel={telemetry?.alarm_level || 'NORMAL'}
+      scenario={scenario}
+      classRf={telemetry?.class_rf || 'NORMAL'}
+      sourceMode={telemetry?.source_mode || 'SIMULATION'}
+      sensorOk={telemetry?.sensor_ok}
+      variant="split"
+      hoveredSample={hoveredMotionSample}
+      warningDeg={thresholds.roll_warning_deg}
+      tripDeg={thresholds.roll_trip_deg}
+     />
+    </Panel>
 
-   {/* Main Interactive Oscilloscope Waveform */}
-   <Panel title="ĐỒ THỊ DAO ĐỘNG THỜI GIAN THỰC (INTERACTIVE OSCILLOSCOPE)" tag="LIVE MOCK • 1.1s/STEP">
-    <LiveMotionChart
-     scenario={scenario}
-     tick={tick}
-     height={280}
-     offline={!telemetry?.sensor_ok}
-     warningDeg={thresholds.roll_warning_deg}
-     tripDeg={thresholds.roll_trip_deg}
-     alarms={alarms}
-     onHoverSample={setHoveredMotionSample}
-    />
-   </Panel>
+    <Panel title="Đồ thị dao động thời gian thực (Interactive Oscilloscope)" tag="Live Mock • 1.1s/step">
+     <LiveMotionChart
+      scenario={scenario}
+      tick={tick}
+      height={280}
+      offline={!telemetry?.sensor_ok}
+      warningDeg={thresholds.roll_warning_deg}
+      tripDeg={thresholds.roll_trip_deg}
+      alarms={alarms}
+      onHoverSample={setHoveredMotionSample}
+     />
+    </Panel>
+   </div>
 
    {/* MAI Timeline Trend & Alarm Triggers */}
-   <Panel title="XU HƯỚNG CHỈ SỐ BẤT THƯỜNG (MAI TIMELINE & ALARM TRIGGERS)" tag="TINYML ANOMALY TRACKING">
+   <Panel title="Xu hướng chỉ số bất thường (MAI Timeline & Alarms)" tag="TinyML Anomaly Tracking">
     <MaiAlarmsChart
      currentMai={telemetry?.sensor_ok ? telemetry.mai : 0}
      alarms={alarms}
@@ -615,10 +686,10 @@ export default function App(){
    </Panel>
 
    <div className="columns">
-    <Panel title="MÔ HÌNH PHÂN LOẠI & ĐỐI CHIẾU SHADOW (FR20)" tag="RANDOM FOREST VS BASELINE B">
+    <Panel title="Mô hình phân loại & Đối chiếu Shadow (FR20)" tag="Random Forest vs Baseline B">
      <dl className="kv">
-      <dt>Random Forest (Mô hình chính)</dt><dd className="text-info" style={{fontWeight:600}}>{telemetry?.class_rf??'UNKNOWN'}</dd>
-      <dt>Baseline B (Mô hình bóng)</dt><dd className="text-warning" style={{fontWeight:600}}>{telemetry?.class_baseline_b??'UNKNOWN'}</dd>
+      <dt>Random Forest (Mô hình chính)</dt><dd className="text-info" style={{fontWeight:600}}>{getRFClassNameVi(telemetry?.class_rf)} ({telemetry?.class_rf??'UNKNOWN'})</dd>
+      <dt>Baseline B (Mô hình đối chiếu Shadow)</dt><dd className="text-warning" style={{fontWeight:600}}>{getRFClassNameVi(telemetry?.class_baseline_b)} ({telemetry?.class_baseline_b??'UNKNOWN'})</dd>
       <dt>Độ đồng thuận (Concordance)</dt>
       <dd className={!telemetry?.sensor_ok ? 'text-muted' : (telemetry.class_rf === telemetry.class_baseline_b ? 'text-success' : 'text-warning')} style={{fontWeight:600}}>
        {!telemetry?.sensor_ok ? 'N/A (CẢM BIẾN LỖI/OFFLINE)' : (telemetry.class_rf === telemetry.class_baseline_b ? '✓ ĐỒNG THUẬN (CONCORDANT)' : '⚠ BẤT ĐỒNG (DISCREPANCY)')}
@@ -630,22 +701,22 @@ export default function App(){
       </dd>
      </dl>
     </Panel>
-    <Panel title="CHẤT LƯỢNG NGUỒN & CƠ CHẾ ĐỒNG BỘ" tag="NGUYÊN TẮC AN TOÀN">
-     <p>Mô hình 2D phía trên đồng bộ trực tiếp với con trỏ của đồ thị dao động. Khi rê chuột trên biểu đồ hoặc bấm Freeze Frame, thân tàu sẽ xoay theo góc nghiêng của mẫu tương ứng.</p>
+    <Panel title="Chất lượng nguồn & Cơ chế đồng bộ" tag="Nguyên tắc an toàn">
+     <p>Mô hình số hóa thân tàu đồng bộ trực tiếp với con trỏ của đồ thị dao động. Khi rê chuột trên biểu đồ hoặc bấm Freeze Frame, thân tàu sẽ xoay theo góc nghiêng của mẫu tương ứng.</p>
      <p className="note" style={{marginTop:10}}>Khi mất kết nối hoặc lỗi cảm biến, hệ thống tuân thủ nghiêm ngặt nguyên tắc: không hiển thị trạng thái NORMAL giả mạo và không làm mới đường biểu đồ như dữ liệu thực.</p>
     </Panel>
    </div>
   </>;
   case 'alarms':return <>
    <header className="page-heading">
-    <h1>Alarms</h1>
-    <p>Vòng đời RAISED → ACKED → CLEARED, tắt còi mô phỏng có điều kiện.</p>
+    <h1>Quản lý cảnh báo</h1>
+    <p>Vòng đời cảnh báo: PHÁT CẢNH BÁO (RAISED) → ĐÃ XÁC NHẬN (ACKED) → ĐÃ KẾT THÚC (CLEARED), hỗ trợ tắt còi có điều kiện.</p>
    </header>
    <div className="metrics">
-    <Metric label="ACTIVE" value={String(alarms.filter(a=>a.status==='RAISED').length)} tone="red"/>
-    <Metric label="ACKED" value={String(alarms.filter(a=>a.status==='ACKED').length)}/>
-    <Metric label="CLEARED" value={String(alarms.filter(a=>a.status==='CLEARED').length)}/>
-    <Metric label="MTTA (DEMO)" value={(()=>{const list=alarms.filter(a=>a.ackedAt);return list.length?`${Math.round(list.reduce((a,v)=>a+(new Date(v.ackedAt!).getTime()-new Date(v.raisedAt).getTime())/1000,0)/list.length)}s`:'—'})()}/>
+    <Metric label="Đang phát (Active)" value={String(alarms.filter(a=>a.status==='RAISED').length)} tone="red"/>
+    <Metric label="Đã xác nhận (Acked)" value={String(alarms.filter(a=>a.status==='ACKED').length)}/>
+    <Metric label="Đã kết thúc (Cleared)" value={String(alarms.filter(a=>a.status==='CLEARED').length)}/>
+    <Metric label="Thời gian xác nhận TB (MTTA)" value={(()=>{const list=alarms.filter(a=>a.ackedAt);return list.length?`${Math.round(list.reduce((a,v)=>a+(new Date(v.ackedAt!).getTime()-new Date(v.raisedAt).getTime())/1000,0)/list.length)}s`:'—'})()}/>
    </div>
 
    <div style={{marginBottom:18}}>
@@ -660,11 +731,18 @@ export default function App(){
     />
    </div>
 
-   <Panel title="DANH SÁCH CẢNH BÁO" tag="DEMO"><div className="filter-line"><label htmlFor="alarm-filter">Lọc trạng thái</label><select id="alarm-filter" value={alarmFilter} onChange={e=>setAlarmFilter(e.target.value)}>{['ALL','RAISED','ACKED','CLEARED','CRITICAL','WARNING'].map(v=><option key={v}>{v}</option>)}</select></div>
+   <Panel title="Danh sách cảnh báo" tag="DEMO"><div className="filter-line"><label htmlFor="alarm-filter">Lọc trạng thái</label><select id="alarm-filter" value={alarmFilter} onChange={e=>setAlarmFilter(e.target.value)}>
+      <option value="ALL">Tất cả trạng thái</option>
+      <option value="RAISED">Đang phát (RAISED)</option>
+      <option value="ACKED">Đã xác nhận (ACKED)</option>
+      <option value="CLEARED">Đã kết thúc (CLEARED)</option>
+      <option value="CRITICAL">Nguy cấp (CRITICAL)</option>
+      <option value="WARNING">Cảnh báo (WARNING)</option>
+    </select></div>
    {alarms.filter(a=>alarmFilter==='ALL'||a.status===alarmFilter||a.level===alarmFilter).map(a=>renderAlarm(a,true))}
    {alarms.every(a=>alarmFilter!=='ALL'&&a.status!==alarmFilter&&a.level!==alarmFilter)&&<p>Không có cảnh báo phù hợp.</p>}</Panel>
    {alarmId&&<Panel title={`CHI TIẾT CẢNH BÁO ${alarmId}`} tag="INCIDENT">{alarms.filter(a=>a.id===alarmId).map(a=>renderAlarm(a,true))}<Button kind="ghost" onClick={()=>setAlarmId(null)}>Đóng chi tiết</Button></Panel>}
-   <div className="note">ACK chỉ xác nhận đã tiếp nhận, không xóa cảnh báo. CRITICAL không cho phép Mute. Thay đổi hiện tại chỉ lưu ở phiên Demo.</div></>;
+   <div className="note">Xác nhận (ACK) chỉ ghi nhận sĩ quan đã tiếp nhận, không xóa bỏ cảnh báo khỏi nhật ký. Sự cố NGUY CẤP (CRITICAL) không cho phép tắt còi (MUTE). Toàn bộ dữ liệu được lưu trong phiên mô phỏng.</div></>;
   case 'control':{
    const isOp=session?.role==='Operator';
    const isSup=session?.role==='Supervisor';
@@ -672,35 +750,35 @@ export default function App(){
    return <>
     <div className="page-hero">
      <div>
-      <span className="eyebrow">VESSEL DEMO 01 / CONTROL CENTER</span>
-      <h1>Control Center</h1>
+      <span className="eyebrow">Tàu mô phỏng MV SVMG-01 / Trung tâm điều khiển</span>
+      <h1>Trung tâm điều khiển</h1>
       <p>Quản trị cấu hình thiết bị giám sát chuyển động • Tuân thủ Bảng 3.1 đề cương v2.0</p>
      </div>
      <Pill kind={isAdm?'normal':isSup?'caution':'warning'}>
-      {isAdm?'ADMIN: TOÀN QUYỀN':isSup?'SUPERVISOR: CẤU HÌNH':'OPERATOR: CHỈ ĐỌC (VIEW ONLY)'}
+      {isAdm?'QUẢN TRỊ VIÊN: TOÀN QUYỀN':isSup?'GIÁM SÁT VIÊN: CẤU HÌNH':'SĨ QUAN TRỰC CA: CHỈ XEM'}
      </Pill>
     </div>
 
     <div className="note" style={{marginBottom:18}}>
-     <b>LƯU Ý NGƯỠNG CẢNH BÁO:</b> Các ngưỡng Roll Warning, Roll Trip và MAI là cấu hình mô phỏng nội bộ của nhóm dự án (Demo Profile thresholds, dựa trên dải an toàn 15°–25° theo đề cương), không phải tiêu chuẩn IMO chính thức được cấp phép an toàn hàng hải.
+     <b>Lưu ý ngưỡng cảnh báo:</b> Các ngưỡng Roll Warning, Roll Trip và MAI là cấu hình mô phỏng nội bộ của nhóm dự án (Demo Profile thresholds, dựa trên dải an toàn 15°–25° theo đề cương), không phải tiêu chuẩn IMO chính thức được cấp phép an toàn hàng hải.
     </div>
 
     {isOp && (
      <div className="note warning" style={{marginBottom:18}}>
-      <b>CHẾ ĐỘ CHỈ ĐỌC (OPERATOR):</b> Theo Bảng 3.1 đề cương v2.0, Operator chỉ được xem cấu hình hiện hành và nhật ký lệnh. Các nút gửi lệnh đã bị vô hiệu hóa. Để điều chỉnh cấu hình, vui lòng đăng nhập tài khoản <code>supervisor</code> hoặc <code>admin</code>.
+      <b>Chế độ chỉ đọc (Operator):</b> Theo Bảng 3.1 đề cương v2.0, Operator chỉ được xem cấu hình hiện hành và nhật ký lệnh. Các nút gửi lệnh đã bị vô hiệu hóa. Để điều chỉnh cấu hình, vui lòng đăng nhập tài khoản <code>supervisor</code> hoặc <code>admin</code>.
      </div>
     )}
 
     <div className="metrics">
-     <Metric label="PROFILE HIỆN HÀNH" value={profile} note="Cấu hình ngưỡng mô phỏng" tone="cyan"/>
-     <Metric label="CONFIG VERSION" value={`v${configVersion}`} note="Phiên bản cấu hình" tone="green"/>
-     <Metric label="NGƯỠNG ROLL (WARN / TRIP)" value={`${thresholds.roll_warning_deg}° / ${thresholds.roll_trip_deg}°`} note="Ngưỡng mô phỏng nhóm" tone="amber"/>
-     <Metric label="NGƯỠNG MAI (MÔ PHỎNG)" value={String(thresholds.mai_alert_threshold)} note="Motion Anomaly Index" tone="red"/>
+     <Metric label="Profile hiện hành" value={profile} note="Cấu hình ngưỡng mô phỏng" tone="cyan"/>
+     <Metric label="Phiên bản cấu hình" value={`v${configVersion}`} note="Phiên bản cấu hình" tone="green"/>
+     <Metric label="Ngưỡng Roll (Cảnh báo / Nguy cấp)" value={`${thresholds.roll_warning_deg}° / ${thresholds.roll_trip_deg}°`} note="Ngưỡng mô phỏng nhóm" tone="amber"/>
+     <Metric label="Ngưỡng MAI (Mô phỏng)" value={String(thresholds.mai_alert_threshold)} note="Motion Anomaly Index" tone="red"/>
     </div>
 
     <div className="columns">
      <div>
-      <Panel title="CẤU HÌNH THIẾT BỊ GIÁM SÁT" tag={`v${configVersion}`}>
+      <Panel title="Cấu hình thiết bị giám sát" tag={`v${configVersion}`}>
        <dl className="kv">
         <dt>Device ID</dt><dd>vessel-demo-01</dd>
         <dt>Active Profile</dt><dd>{profile}</dd>
@@ -715,24 +793,24 @@ export default function App(){
        <div style={{marginTop:16}}>
         <span className="label">Chọn Profile Ngưỡng Mô Phỏng (Supervisor / Admin):</span>
         <div className="button-line">
-         <Button kind={profile==='STANDARD'?'primary':'secondary'} disabled={!canOperate(session)} onClick={()=>sendCommand('set_profile',false,'STANDARD')}>STANDARD (15°/22°)</Button>
-         <Button kind={profile==='SENSITIVE'?'primary':'secondary'} disabled={!canOperate(session)} onClick={()=>sendCommand('set_profile',false,'SENSITIVE')}>SENSITIVE (12°/18°)</Button>
-         <Button kind={profile==='CONSERVATIVE'?'primary':'secondary'} disabled={!canOperate(session)} onClick={()=>sendCommand('set_profile',false,'CONSERVATIVE')}>CONSERVATIVE (18°/25°)</Button>
+         <Button kind={profile==='STANDARD'?'primary':'secondary'} disabled={!canOperate(session)} onClick={()=>sendCommand('set_profile',false,'STANDARD')}>STANDARD (15°/22°) — Tiêu chuẩn</Button>
+         <Button kind={profile==='SENSITIVE'?'primary':'secondary'} disabled={!canOperate(session)} onClick={()=>sendCommand('set_profile',false,'SENSITIVE')}>SENSITIVE (12°/18°) — Nhạy cao</Button>
+         <Button kind={profile==='CONSERVATIVE'?'primary':'secondary'} disabled={!canOperate(session)} onClick={()=>sendCommand('set_profile',false,'CONSERVATIVE')}>CONSERVATIVE (18°/25°) — An toàn cao</Button>
         </div>
        </div>
        <div style={{marginTop:14}}>
         <Button kind="ghost" disabled={!canOperate(session)||!hasPreviousProfile} onClick={()=>sendCommand('rollback')}>
-         {hasPreviousProfile ? `Rollback về ${previousProfile}` : 'Rollback profile (Không có bản trước)'}
+         {hasPreviousProfile ? `Khôi phục cấu hình trước (${previousProfile})` : 'Khôi phục cấu hình (Không có bản trước)'}
         </Button>
         <small className="muted" style={{display:'block',marginTop:5}}>Rollback khôi phục cấu hình hợp lệ trước đó và tăng số phiên bản config_version.</small>
        </div>
       </Panel>
 
-      <Panel title="LỆNH THIẾT BỊ (MONITORING COMMANDS)" tag="SUPERVISOR / ADMIN">
+      <Panel title="Lệnh thiết bị (Monitoring Commands)" tag="Supervisor / Admin">
        <p className="micro">Các lệnh kiểm tra và hiệu chuẩn thiết bị giám sát tại chỗ (Bảng 8.2).</p>
        <div className="button-line">
-        <Button disabled={!canOperate(session)} onClick={()=>sendCommand('calibrate_zero')}>Calibrate Zero (30s tĩnh)</Button>
-        <Button kind="secondary" disabled={!canOperate(session)} onClick={()=>sendCommand('request_snapshot')}>Request Snapshot (180s)</Button>
+        <Button disabled={!canOperate(session)} onClick={()=>sendCommand('calibrate_zero')}>Hiệu chuẩn điểm 0 (30s tĩnh)</Button>
+        <Button kind="secondary" disabled={!canOperate(session)} onClick={()=>sendCommand('request_snapshot')}>Yêu cầu chụp viễn trắc (180s)</Button>
        </div>
        <p className="note" style={{marginTop:12}}>
         <b>Quy tắc an toàn:</b> Calibrate Zero kiểm tra phương sai trong 30s và chỉ chấp nhận khi tín hiệu ở trạng thái tĩnh (S0 - Biển êm, σ ≤ 1.0°). Nếu tàu đang lắc ở các kịch bản khác, lệnh sẽ bị <code>REJECTED: NOT_STATIC</code>. Lệnh Snapshot trích xuất chuỗi 180s và lưu trực tiếp vào Mock State.
@@ -740,7 +818,7 @@ export default function App(){
       </Panel>
 
       {latestSnapshot && (
-       <Panel title="BẢN CHỤP DỮ LIỆU ĐỘNG HỌC (LATEST SNAPSHOT 180s)" tag="MOCK STATE ARTIFACT">
+       <Panel title="Bản chụp dữ liệu động học (Latest Snapshot 180s)" tag="Mock State Artifact">
         <dl className="kv">
          <dt>Mã Snapshot</dt><dd>{latestSnapshot.snapshot_id}</dd>
          <dt>Thời điểm tạo</dt><dd>{time(latestSnapshot.timestamp)}</dd>
@@ -754,16 +832,21 @@ export default function App(){
        </Panel>
       )}
 
-      <Panel title="TIỆN ÍCH KIỂM THỬ (TEST HARNESS / MOCK ONLY)" tag="UTILITY FOR QA / DEV">
-       <p className="micro">Tiện ích giả lập sự cố kết nối phục vụ kiểm thử giao diện & vòng đời lệnh TIMEOUT (không phải lệnh cấu hình thiết bị trong Bảng 8.2 đề cương):</p>
-       <div className="button-line">
-        <Button kind="ghost" disabled={!canOperate(session)} onClick={()=>sendCommand('test_timeout')}>[TEST UTILITY] Thử nghiệm TIMEOUT (TTL 30s)</Button>
+      <details className="panel" style={{marginBottom:16}}>
+       <summary style={{fontWeight:600,fontSize:'0.82rem',color:'var(--text-muted)',cursor:'pointer',padding:'4px 0'}}>
+        Tiện ích kiểm thử giao diện (Chỉ dành cho Mock) • Nhấp để mở rộng
+       </summary>
+       <div style={{marginTop:10}}>
+        <p className="micro">Tiện ích giả lập sự cố kết nối phục vụ kiểm thử giao diện & vòng đời lệnh TIMEOUT (không phải lệnh cấu hình thiết bị trong Bảng 8.2 đề cương):</p>
+        <div className="button-line">
+         <Button kind="ghost" disabled={!canOperate(session)} onClick={()=>sendCommand('test_timeout')}>[TEST UTILITY] Thử nghiệm TIMEOUT (TTL 30s)</Button>
+        </div>
        </div>
-      </Panel>
+      </details>
      </div>
 
      <div>
-      <Panel title="QUẢN TRỊ MÔ PHỎNG & AI" tag="ADMIN ONLY">
+      <Panel title="Quản trị mô phỏng & AI" tag="Admin Only">
        {!isAdmin(session) ? (
         <p className="muted" style={{padding:'12px 0'}}>Chỉ tài khoản Admin có quyền thay đổi tốc độ mô phỏng, mô hình AI và kịch bản biển động.</p>
        ) : (
@@ -812,7 +895,7 @@ export default function App(){
      </div>
     </div>
 
-    <Panel title="LỊCH SỬ THỰC THI LỆNH (COMMAND AUDIT LOG)" tag="SENT → DELIVERED → APPLIED / REJECTED / TIMEOUT">
+    <Panel title="Lịch sử thực thi lệnh (Command Audit Log)" tag="Sent → Delivered → Applied / Rejected / Timeout">
      {commands.length ? (
       commands.map(c => (
        <div className="command-line" key={c.id}>
@@ -848,15 +931,15 @@ export default function App(){
    return <>
     <div className="page-hero">
      <div>
-      <span className="eyebrow">VESSEL DEMO 01 / VOYAGE INTELLIGENCE</span>
-      <h1>Voyage Reports</h1>
+      <span className="eyebrow">Tàu mô phỏng MV SVMG-01 / Báo cáo hành trình</span>
+      <h1>Báo cáo hành trình</h1>
       <p>Quản lý hành trình, kiểm toán thống kê chuyển động học và phân bố nhận dạng rủi ro • Dữ liệu mô phỏng TV4</p>
      </div>
-     <Pill kind="normal">MOCK DATA • ĐỒNG BỘ T11</Pill>
+     <Pill kind="normal">Dữ liệu mô phỏng • Chuẩn T11</Pill>
     </div>
 
     {/* Voyage Selector Tabs */}
-    <Panel title="DANH SÁCH CHUYẾN ĐI MÔ PHỎNG" tag="CHỌN CHUYẾN">
+    <Panel title="Danh sách chuyến đi mô phỏng" tag="Chọn chuyến">
      <div className="button-line" style={{marginBottom:14}}>
       {MOCK_VOYAGES.map(voy=>(
        <Button
@@ -879,17 +962,17 @@ export default function App(){
 
     {/* Kinematic Summary Metrics */}
     <div className="metrics">
-     <Metric label="THỜI LƯỢNG" value={`${v.durationMinutes} phút`} note={`${v.sampleCount} mẫu`} tone="cyan"/>
-     <Metric label="SỰ KIỆN CẢNH BÁO" value={String(v.alarms)} note={v.alarms>0?'Cần xem xét':'Bình thường'} tone={v.alarms>0?'amber':'green'}/>
-     <Metric label="ROLL CỰC ĐẠI |°|" value={`${v.maxAbsRollDeg.toFixed(1)}°`} note={v.maxAbsRollDeg>15?'Vượt ngưỡng 15°':'An toàn'} tone={v.maxAbsRollDeg>15?'red':'amber'}/>
-     <Metric label="RMS ROLL (T11)" value={`${v.rmsRollDeg.toFixed(2)}°`} note="Đo theo đề cương" tone="cyan"/>
+     <Metric label="Thời lượng" value={`${v.durationMinutes} phút`} note={`${v.sampleCount} mẫu`} tone="cyan"/>
+     <Metric label="Sự kiện cảnh báo" value={String(v.alarms)} note={v.alarms>0?'Cần xem xét':'Bình thường'} tone={v.alarms>0?'amber':'green'}/>
+     <Metric label="Góc lắc ngang cực đại |°|" value={`${v.maxAbsRollDeg.toFixed(1)}°`} note={v.maxAbsRollDeg>15?'Vượt ngưỡng 15°':'An toàn'} tone={v.maxAbsRollDeg>15?'red':'amber'}/>
+     <Metric label="Góc lắc ngang RMS (T11)" value={`${v.rmsRollDeg.toFixed(2)}°`} note="Đo theo đề cương" tone="cyan"/>
     </div>
 
     <div className="metrics">
-     <Metric label="P95 ABS ROLL" value={`${v.p95AbsRollDeg.toFixed(2)}°`} note="Phân vị 95% biên độ" tone="cyan"/>
-     <Metric label="PITCH CỰC ĐẠI / RMS" value={`${v.maxAbsPitchDeg.toFixed(1)}° / ${v.rmsPitchDeg.toFixed(2)}°`} note="Lắc dọc thân tàu" tone="cyan"/>
-     <Metric label="MAI CỰC ĐẠI" value={`${v.maiMax} / 100`} note="Motion Anomaly Index" tone={v.maiMax>70?'red':'amber'}/>
-     <Metric label="MAI TRUNG BÌNH" value={`${v.maiAvg} / 100`} note={`Vượt ngưỡng: ${v.maiCautionMinutes} min`} tone="cyan"/>
+     <Metric label="Phân vị 95 lắc ngang (P95)" value={`${v.p95AbsRollDeg.toFixed(2)}°`} note="Phân vị 95% biên độ" tone="cyan"/>
+     <Metric label="Góc chúi cực đại / RMS" value={`${v.maxAbsPitchDeg.toFixed(1)}° / ${v.rmsPitchDeg.toFixed(2)}°`} note="Lắc dọc thân tàu" tone="cyan"/>
+     <Metric label="MAI cực đại" value={`${v.maiMax} / 100`} note="Motion Anomaly Index" tone={v.maiMax>70?'red':'amber'}/>
+     <Metric label="MAI trung bình" value={`${v.maiAvg} / 100`} note={`Vượt ngưỡng: ${v.maiCautionMinutes} min`} tone="cyan"/>
     </div>
 
     {/* Interactive Kinematic Distribution & RF Breakdown Charts */}
@@ -905,7 +988,7 @@ export default function App(){
     <div className="columns">
      <div>
       {/* RF Distribution Panel */}
-      <Panel title="PHÂN BỐ NHẬN DẠNG RANDOM FOREST" tag={`${v.agreementPercent}% ĐỒNG THUẬN BASELINE B`}>
+      <Panel title="Phân bố nhận dạng Random Forest" tag={`${v.agreementPercent}% ĐỒNG THUẬN BASELINE B`}>
        <p className="micro">Tỷ lệ phân bố các trạng thái động học trong chuyến đi:</p>
        <div style={{height:18,borderRadius:4,overflow:'hidden',display:'flex',marginBottom:14,border:'1px solid var(--border-color)'}}>
         <div style={{width:`${v.rfDistribution.normalPct}%`,background:'var(--accent-color)'}} title={`Normal: ${v.rfDistribution.normalPct}%`}/>
@@ -924,11 +1007,11 @@ export default function App(){
      </div>
 
      <div>
-      <Panel title="THAO TÁC HÀNH TRÌNH" tag="M4-05">
+      <Panel title="Thao tác hành trình" tag="M4-05">
        <p className="micro">Xem chi tiết báo cáo kiểm toán số liệu hoặc mở công cụ phát lại đồng bộ chuỗi thời gian:</p>
        <div className="button-line" style={{flexDirection:'column',alignItems:'stretch'}}>
-        <Button onClick={()=>goto('report-detail')}>Xem chi tiết báo cáo (T11 Audit) →</Button>
-        <Button kind="secondary" onClick={()=>goto('replay')}>Mở Replay & Review chuỗi thời gian →</Button>
+        <Button onClick={()=>goto('report-detail')}>Xem chi tiết báo cáo kiểm toán (T11 Audit) →</Button>
+        <Button kind="secondary" onClick={()=>goto('replay')}>Mở Phát lại & Thẩm định chuỗi thời gian →</Button>
         <DownloadCSV rows={REPLAY_SAMPLES} allowed={canOperate(session)} voyageId={v.id}/>
        </div>
        <div className="note" style={{marginTop:16}}>
@@ -951,16 +1034,16 @@ export default function App(){
     <div className="page-hero">
      <div>
       <div style={{marginBottom:8}}>
-       <Button kind="ghost" onClick={()=>goto('reports')}>← Quay lại Voyage Reports</Button>
+       <Button kind="ghost" onClick={()=>goto('reports')}>← Quay lại Báo cáo hành trình</Button>
       </div>
-      <span className="eyebrow">AUDIT DOSSIER / {v.id}</span>
-      <h1>Report Details: {v.id}</h1>
+      <span className="eyebrow">Audit Dossier / {v.id}</span>
+      <h1>Chi tiết báo cáo hành trình: {v.id}</h1>
       <p>{v.name} • {v.route}</p>
      </div>
-     <Pill kind="normal">AUDIT VERIFIED • T11 COMPLIANT</Pill>
+     <Pill kind="normal">Audit Verified • T11 Compliant</Pill>
     </div>
 
-    <Panel title="THÔNG TIN HÀNH TRÌNH KIỂM TOÁN" tag="METADATA">
+    <Panel title="Thông tin hành trình kiểm toán" tag="Metadata">
      <dl className="kv">
       <dt>Mã chuyến (Voyage ID)</dt><dd>{v.id}</dd>
       <dt>Tuyến hành trình</dt><dd>{v.route}</dd>
@@ -985,7 +1068,7 @@ export default function App(){
     <div className="columns">
      <div>
       {/* Kinematic Statistics Audit */}
-      <Panel title="KIỂM TOÁN ĐỘNG HỌC CHUYỂN ĐỘNG (T11 SPECIFICATION)" tag="RECOMPUTED EXACT">
+      <Panel title="Kiểm toán động học chuyển động (T11 Specification)" tag="Recomputed Exact">
        <dl className="kv">
         <dt>Tổng số mẫu telemetry (sample_count)</dt><dd>{v.sampleCount} mẫu (chu kỳ 5s)</dd>
         <dt>Roll cực đại (|max_abs_roll_deg|)</dt><dd className={v.maxAbsRollDeg>15?'text-danger':'text-info'} style={{fontWeight:600}}>{v.maxAbsRollDeg.toFixed(2)}°</dd>
@@ -995,12 +1078,12 @@ export default function App(){
         <dt>RMS Pitch (rms_pitch_deg)</dt><dd>{v.rmsPitchDeg.toFixed(2)}°</dd>
        </dl>
        <div className="note success" style={{marginTop:14}}>
-        <b>✓ ĐỐI CHỨNG T11:</b> Số liệu trên trùng khớp 100% với kết quả chạy kiểm tra tự động <code>tests/e2e/t11_recompute.py</code> trên fixture <code>tests/e2e/fixtures/telemetry_demo.csv</code> và <code>report_demo.json</code>.
+        <b>✓ Đối chứng T11:</b> Số liệu trên trùng khớp 100% với kết quả chạy kiểm tra tự động <code>tests/e2e/t11_recompute.py</code> trên fixture <code>tests/e2e/fixtures/telemetry_demo.csv</code> và <code>report_demo.json</code>.
        </div>
       </Panel>
 
       {/* MAI and Cargo Risk Evidence */}
-      <Panel title="CHỈ SỐ BẤT THƯỜNG MAI & BẰNG CHỨNG RỦI RO HÀNG HÓA" tag="EVIDENCE">
+      <Panel title="Chỉ số bất thường MAI & Bằng chứng rủi ro hàng hóa" tag="Evidence">
        <dl className="kv">
         <dt>Chỉ số bất thường cực đại (MAI max)</dt><dd className={v.maiMax>70?'text-danger':'text-warning'} style={{fontWeight:600}}>{v.maiMax} / 100</dd>
         <dt>Chỉ số bất thường trung bình (MAI avg)</dt><dd>{v.maiAvg} / 100</dd>
@@ -1018,19 +1101,19 @@ export default function App(){
 
      <div>
       {/* Alarm Log */}
-      <Panel title="NHẬT KÝ CẢNH BÁO HÀNH TRÌNH" tag={`${alarms.length} SỰ KIỆN`}>
+      <Panel title="Nhật ký cảnh báo hành trình" tag={`${alarms.length} sự kiện`}>
        {alarms.map(a => renderAlarm(a, true))}
       </Panel>
 
       {/* Export Cluster */}
-      <Panel title="XUẤT BÁO CÁO & KÝ SỐ" tag="EXPORT CLUSTER">
+      <Panel title="Xuất báo cáo & Ký số" tag="Export Cluster">
        <p className="micro">Các tùy chọn kết xuất dữ liệu và báo cáo theo đề cương TV4:</p>
        <div className="button-line" style={{flexDirection:'column',alignItems:'stretch'}}>
         <DownloadCSV rows={REPLAY_SAMPLES} allowed={canOperate(session)} voyageId={v.id}/>
         <Button kind="secondary" onClick={()=>window.print()}>Xem trước / In báo cáo (HTML Print)</Button>
        </div>
        <div className="note" style={{marginTop:14}}>
-        <b>TRẠNG THÁI PDF CHÍNH THỨC:</b><br/>
+        <b>Trạng thái PDF chính thức:</b><br/>
         <span className="text-warning" style={{fontWeight:600}}>Đang chờ Backend TV3 Report Service</span> kết nối cơ sở dữ liệu và cấp chứng chỉ ký số mật mã. Ở giai đoạn Mock Mode TV4, hệ thống hỗ trợ xuất trực tiếp CSV chuỗi thời gian 121 mẫu và in bản ghi HTML.
        </div>
       </Panel>
@@ -1045,8 +1128,8 @@ export default function App(){
    return <>
     <div className="page-hero">
      <div>
-      <span className="eyebrow">TIME-SERIES DIGITAL RECORDER / {v.id}</span>
-      <h1>Replay & Review</h1>
+      <span className="eyebrow">Bộ ghi viễn trắc chuỗi thời gian / {v.id}</span>
+      <h1>Phát lại & Thẩm định</h1>
       <p>Phát lại đồng bộ chuỗi thời gian chuyển động học và thẩm định cảnh báo trực ca (Bảng 3.1 đề cương v2.0)</p>
      </div>
      <Pill kind={playing?'normal':'caution'}>
@@ -1056,14 +1139,14 @@ export default function App(){
 
     {/* Top HUD Readout Bar */}
     <div className="metrics">
-     <Metric label="MỐC THỜI GIAN" value={`T+${currentPoint.t_sim_s}s`} note={`Mẫu ${replayIndex + 1} / ${REPLAY_SAMPLES.length} (Tổng 600s)`} tone="cyan"/>
-     <Metric label="GÓC LẮC NGANG (ROLL)" value={format(currentPoint.roll)} note="Dao động ngang" tone={Math.abs(currentPoint.roll)>12?'red':'cyan'}/>
-     <Metric label="GÓC LẮC DỌC (PITCH)" value={format(currentPoint.pitch)} note="Dao động dọc" tone="amber"/>
-     <Metric label="MAI / PHÂN LOẠI RF" value={`${currentPoint.mai} • ${currentPoint.class_rf}`} note={`Shadow: ${currentPoint.class_baseline_b}`} tone={currentPoint.mai>70?'red':'green'}/>
+     <Metric label="Mốc thời gian" value={`T+${currentPoint.t_sim_s}s`} note={`Mẫu ${replayIndex + 1} / ${REPLAY_SAMPLES.length} (Tổng 600s)`} tone="cyan"/>
+     <Metric label="Góc lắc ngang (Roll)" value={format(currentPoint.roll)} note="Dao động ngang" tone={Math.abs(currentPoint.roll)>12?'red':'cyan'}/>
+     <Metric label="Góc lắc dọc (Pitch)" value={format(currentPoint.pitch)} note="Dao động dọc" tone="amber"/>
+     <Metric label="MAI / Phân loại RF" value={`${currentPoint.mai} • ${currentPoint.class_rf}`} note={`Shadow: ${currentPoint.class_baseline_b}`} tone={currentPoint.mai>70?'red':'green'}/>
     </div>
 
     {/* 2D Vessel Visualizer Synchronized with Playhead */}
-    <Panel title="TRỰC QUAN HÓA THÂN TÀU (REPLAY 2D DYNAMICS)" tag={`T+${currentPoint.t_sim_s}s`}>
+    <Panel title="Trực quan hóa thân tàu (Phát lại 2D / 3D)" tag={`T+${currentPoint.t_sim_s}s`}>
      <ShipMotionVisualizer
       rollDeg={currentPoint.roll}
       pitchDeg={currentPoint.pitch}
@@ -1077,17 +1160,8 @@ export default function App(){
      />
     </Panel>
 
-    {/* Waveform with needle & markers */}
-    <Panel title={`ĐỒ THỊ CHUYỂN ĐỘNG THEO THỜI GIAN (${v.id})`} tag={`T+${currentPoint.t_sim_s}s`}>
-     <ReplayChart
-      samples={REPLAY_SAMPLES}
-      currentIndex={replayIndex}
-      onSeek={(idx)=>setReplayIndex(idx)}
-     />
-    </Panel>
-
-    {/* Transport Deck & Time Scrubber */}
-    <Panel title="BÀN ĐIỀU KHIỂN PHÁT LẠI (TRANSPORT DECK)" tag="ĐIỀU KHIỂN ĐỒNG BỘ">
+    {/* Transport Deck & Time Scrubber (Directly above Waveform) */}
+    <Panel title="Bàn điều khiển phát lại (Transport Deck)" tag="Điều khiển đồng bộ">
      <div style={{marginBottom:12}}>
       <label htmlFor="replay-slider" className="micro" style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
        <span>KÉO THANH THỜI GIAN (TIME SCRUBBER)</span>
@@ -1131,8 +1205,17 @@ export default function App(){
      </div>
     </Panel>
 
+    {/* Waveform with needle & markers */}
+    <Panel title={`ĐỒ THỊ CHUYỂN ĐỘNG THEO THỜI GIAN (${v.id})`} tag={`T+${currentPoint.t_sim_s}s`}>
+     <ReplayChart
+      samples={REPLAY_SAMPLES}
+      currentIndex={replayIndex}
+      onSeek={(idx)=>setReplayIndex(idx)}
+     />
+    </Panel>
+
     {/* Watchstander Event Review Section */}
-    <Panel title="THẨM ĐỊNH CẢNH BÁO BỞI TRỰC CA (WATCHSTANDER REVIEW)" tag="BẢNG 3.1 ĐỀ CƯƠNG">
+    <Panel title="Thẩm định cảnh báo bởi sĩ quan trực ca (Watchstander Review)" tag="Bảng 3.1 Đề cương">
      <p className="micro">
       Trực ca đánh giá tính chuẩn xác của các cảnh báo trong chuyến đi (Đúng / Sai / Chưa rõ) và nhập lý do thẩm định. Thao tác lưu trực tiếp vào Mock State:
      </p>
@@ -1201,52 +1284,52 @@ export default function App(){
    return <>
     <div className="page-hero">
      <div>
-      <span className="eyebrow">VESSEL DEMO 01 / HARDWARE DIAGNOSTICS</span>
-      <h1>Device Health</h1>
+      <span className="eyebrow">Tàu mô phỏng MV SVMG-01 / Chẩn đoán phần cứng</span>
+      <h1>Tình trạng thiết bị</h1>
       <p>Chẩn đoán vi điều khiển ESP32, cảm biến IMU MPU6050, bus I2C và hàng đợi dữ liệu • Tuân thủ hợp đồng health.json</p>
      </div>
      <Pill kind={health.healthStatus === 'HEALTHY' ? 'normal' : health.healthStatus === 'DEGRADED' ? 'caution' : 'critical'}>
-      {health.healthStatus === 'HEALTHY' ? 'HEALTH: 100% EXCELLENT' : health.healthStatus === 'DEGRADED' ? 'HEALTH: 45% SENSOR FAULT' : 'HEALTH: 15% OFFLINE'}
+      {health.healthStatus === 'HEALTHY' ? 'Sức khỏe: 100% Tốt' : health.healthStatus === 'DEGRADED' ? 'Sức khỏe: 45% Cảm biến lỗi' : 'Sức khỏe: 15% Offline'}
      </Pill>
     </div>
 
     {/* Callout banners */}
     {isOffline ? (
      <div className="note danger" style={{marginBottom:18}}>
-      <b>MẤT KẾT NỐI VỚI THIẾT BỊ (OFFLINE):</b> Thiết bị giám sát mất kết nối MQTT (&gt;30s). Dữ liệu cảm biến không khả dụng. Theo đề cương, hệ thống không tự tạo dữ liệu mới để hiển thị như dữ liệu thật. Dữ liệu đang được tự động lưu vào bộ đệm Flash ngoại tuyến trên ESP32 và sẽ đồng bộ bù khi tái kết nối.
+      <b>Mất kết nối với thiết bị (OFFLINE):</b> Thiết bị giám sát mất kết nối MQTT (&gt;30s). Dữ liệu cảm biến không khả dụng. Theo đề cương, hệ thống không tự tạo dữ liệu mới để hiển thị như dữ liệu thật. Dữ liệu đang được tự động lưu vào bộ đệm Flash ngoại tuyến trên ESP32 và sẽ đồng bộ bù khi tái kết nối.
      </div>
     ) : isSensorFault ? (
      <div className="note warning" style={{marginBottom:18}}>
-      <b>LỖI GIAO TIẾP CẢM BIẾN (SENSOR FAULT):</b> Phát hiện 3 lỗi I2C NACK với cảm biến MPU6050. Tín hiệu đo không khả dụng, hệ thống không suy diễn trạng thái NORMAL.
+      <b>Lỗi giao tiếp cảm biến (SENSOR FAULT):</b> Phát hiện 3 lỗi I2C NACK với cảm biến MPU6050. Tín hiệu đo không khả dụng, hệ thống không suy diễn trạng thái NORMAL.
      </div>
     ) : (
      <div className="note success" style={{marginBottom:18}}>
-      <b>THIẾT BỊ HOẠT ĐỘNG TỐT (100% HEALTH):</b> ESP32 kết nối ổn định qua MQTT QoS 0/1. Cảm biến MPU6050 hoạt động chuẩn xác với chu kỳ đo 5.0s.
+      <b>Thiết bị hoạt động tốt (100% Health):</b> ESP32 kết nối ổn định qua MQTT QoS 0/1. Cảm biến MPU6050 hoạt động chuẩn xác với chu kỳ đo 5.0s.
      </div>
     )}
 
     {/* 4 Primary Diagnostic Metrics */}
     <div className="metrics">
      <Metric
-      label="ĐIỂM SỨC KHỎE (FR17)"
+      label="Điểm sức khỏe (FR17)"
       value={`${health.healthScore} / 100`}
       note={health.healthStatus}
       tone={health.healthScore >= 80 ? 'green' : health.healthScore >= 40 ? 'amber' : 'red'}
      />
      <Metric
-      label="TRẠNG THÁI CẢM BIẾN"
+      label="Trạng thái cảm biến"
       value={health.sensor}
       note={health.sensor === 'OK' ? 'MPU6050 kết nối tốt' : health.sensor === 'FAULT' ? 'Lỗi bus I2C' : 'Chưa rõ / Offline'}
       tone={health.sensor === 'OK' ? 'green' : health.sensor === 'FAULT' ? 'amber' : 'red'}
      />
      <Metric
-      label="LỖI BUS I2C"
+      label="Lỗi bus I2C"
       value={String(health.i2cErrors)}
       note={health.i2cErrors > 0 ? 'NACK timeout phát hiện' : '0 lỗi bus (Chuẩn)'}
       tone={health.i2cErrors > 0 ? 'red' : 'green'}
      />
      <Metric
-      label="FREE HEAP (ESP32)"
+      label="Free Heap (ESP32)"
       value={`${health.freeHeapKb} KB`}
       note={`Tối thiểu: ${health.minFreeHeapKb} KB`}
       tone={health.freeHeapKb < 80 ? 'amber' : 'cyan'}
@@ -1256,25 +1339,25 @@ export default function App(){
     {/* Secondary Metrics */}
     <div className="metrics">
      <Metric
-      label="WIFI RSSI"
+      label="WiFi RSSI"
       value={health.rssiDbm !== null ? `${health.rssiDbm} dBm` : '—'}
       note={health.rssiDbm !== null ? 'Cường độ thu phát tốt' : 'Mất kết nối'}
       tone={health.rssiDbm !== null ? 'cyan' : 'red'}
      />
      <Metric
-      label="UPTIME THIẾT BỊ"
+      label="Uptime thiết bị"
       value={`${health.uptimeMinutes} phút`}
       note={`${Math.floor(health.uptimeMinutes/60)} giờ ${health.uptimeMinutes%60} phút`}
       tone="cyan"
      />
      <Metric
-      label="BỘ ĐỆM NGOẠI TUYẾN"
+      label="Bộ đệm ngoại tuyến"
       value={`${health.bufferUsed} / ${health.bufferCapacity}`}
       note={`Đang lưu: ${((health.bufferUsed / health.bufferCapacity) * 100).toFixed(1)}%`}
       tone={health.bufferUsed > 0 ? 'amber' : 'green'}
      />
      <Metric
-      label="ĐỘ TRỄ HÀNG ĐỢI"
+      label="Độ trễ hàng đợi"
       value={`${health.queueLatencyMs} ms`}
       note={health.bufferStatus === 'BUFFERING' ? 'Đang lưu bù Flash' : 'Đồng bộ trực tiếp'}
       tone={health.queueLatencyMs > 100 ? 'amber' : 'green'}
@@ -1284,7 +1367,7 @@ export default function App(){
     <div className="columns">
      <div>
       {/* Hardware & Bus Panel */}
-      <Panel title="CHẨN ĐOÁN PHẦN CỨNG & BUS TRUYỀN THÔNG" tag="ESP32 • MPU6050">
+      <Panel title="Chẩn đoán phần cứng & Bus truyền thông" tag="ESP32 • MPU6050">
        <dl className="kv">
         <dt>Mã thiết bị (Device ID)</dt><dd>vessel-demo-01</dd>
         <dt>Boot ID / Phiên bản firmware</dt><dd>mock-boot-01 (v1.2.0-esp32)</dd>
@@ -1297,7 +1380,7 @@ export default function App(){
       </Panel>
 
       {/* Heel Zero Calibration (FR18) */}
-      <Panel title="HIỆU CHUẨN ĐIỂM 0 (HEEL ZERO CALIBRATION - FR18)" tag="FR18 SPEC">
+      <Panel title="Hiệu chuẩn điểm 0 (Heel Zero Calibration - FR18)" tag="FR18 Spec">
        <dl className="kv">
         <dt>Trạng thái hiệu chuẩn</dt><dd className={zeroCalibration?'text-success':'text-muted'} style={{fontWeight:600}}>{zeroCalibration ? 'ĐÃ HIỆU CHUẨN (30S TĨNH)' : 'MẶC ĐỊNH NHÀ MÁY (0.0°)'}</dd>
         <dt>Độ lệch Roll hiện hành (offset)</dt><dd className="text-info" style={{fontWeight:600}}>{zeroCalibration ? `${zeroCalibration.roll_offset_deg>0?'+':''}${zeroCalibration.roll_offset_deg}°` : '0.00°'}</dd>
@@ -1313,7 +1396,7 @@ export default function App(){
 
      <div>
       {/* Offline Buffer Panel */}
-      <Panel title="BỘ ĐỆM NGOẠI TUYẾN & ĐỒNG BỘ BÙ (FR19)" tag="FLASH RING BUFFER">
+      <Panel title="Bộ đệm ngoại tuyến & Đồng bộ bù (FR19)" tag="Flash Ring Buffer">
        <p className="micro">Cơ chế lưu trữ Flash ring buffer trên ESP32 đảm bảo không mất mát dữ liệu khi mất kết nối mạng biển:</p>
        <dl className="kv">
         <dt>Dung lượng bộ đệm Flash tối đa</dt><dd>{health.bufferCapacity} mẫu (~83 phút khi mất mạng)</dd>
@@ -1325,7 +1408,7 @@ export default function App(){
         <dt>Chống trùng lặp (Deduplication)</dt><dd className="text-success" style={{fontWeight:600}}>Bảo vệ qua device_id + boot_id + seq</dd>
        </dl>
        <div className="note" style={{marginTop:14}}>
-        <b>NGUYÊN TẮC AN TOÀN KHI OFFLINE:</b> Khi mất kết nối MQTT, thiết bị vẫn duy trì cảnh báo cục bộ độc lập qua còi buzzer và đèn LED trên bo mạch phần cứng, đồng thời lưu trữ chuỗi thời gian vào Flash để tự động đồng bộ bù khi mạng phục hồi.
+        <b>Nguyên tắc an toàn khi Offline:</b> Khi mất kết nối MQTT, thiết bị vẫn duy trì cảnh báo cục bộ độc lập qua còi buzzer và đèn LED trên bo mạch phần cứng, đồng thời lưu trữ chuỗi thời gian vào Flash để tự động đồng bộ bù khi mạng phục hồi.
        </div>
       </Panel>
      </div>
@@ -1338,19 +1421,20 @@ export default function App(){
     return <>
      <div className="page-hero">
       <div>
-       <span className="eyebrow">ACCESS DENIED / TABLE 3.1</span>
+       <span className="eyebrow">Access Denied / Bảng 3.1</span>
        <h1>Model Monitor</h1>
        <p>Theo dõi mô hình học máy Random Forest và đối chiếu Baseline B</p>
       </div>
       <Pill kind="warning">OPERATOR: KHÔNG CÓ QUYỀN TRUY CẬP</Pill>
      </div>
      <div className="note warning" style={{padding:20}}>
-      <h3>QUYỀN TRUY CẬP BỊ TỪ CHỐI (BẢNG 3.1 ĐỀ CƯƠNG)</h3>
+      <h3>Quyền truy cập bị từ chối (Bảng 3.1 Đề cương)</h3>
       <p style={{marginTop:8}}>
        Theo quy định phân quyền tại Bảng 3.1 đề cương dự án Smart Vessel Motion Guard v2.0, vai trò <b>Operator</b> không có quyền truy cập màn hình Model Monitor. Tính năng này chỉ dành riêng cho <b>Supervisor</b> và Quản trị viên (<b>Admin</b>).
       </p>
-      <div style={{marginTop:16}}>
+      <div className="button-line" style={{marginTop:16}}>
        <Button kind="primary" onClick={()=>goto('overview')}>Quay lại Trang Chủ (Overview) →</Button>
+       <Button kind="secondary" onClick={logout}>Đăng xuất để đăng nhập với quyền Supervisor / Admin →</Button>
       </div>
      </div>
     </>;
@@ -1364,35 +1448,35 @@ export default function App(){
    return <>
     <div className="page-hero">
      <div>
-      <span className="eyebrow">EDGE AI & MARITIME INFERENCE / MODEL MONITOR</span>
-      <h1>Model Monitor</h1>
+      <span className="eyebrow">Trí tuệ nhân tạo biên & Suy luận hàng hải</span>
+      <h1>Giám sát mô hình</h1>
       <p>Theo dõi chất lượng mô hình học máy Random Forest & đối chiếu Baseline B shadow (FR04/FR20) • Không suy luận AI trên Frontend</p>
      </div>
-     <Pill kind="normal">MOCK DATA • ĐỒNG THUẬN {modelInfo.agreementPercent}%</Pill>
+     <Pill kind="normal">DỮ LIỆU MÔ PHỎNG • ĐỒNG THUẬN {modelInfo.agreementPercent}%</Pill>
     </div>
 
     {/* 4 Summary Metrics */}
     <div className="metrics">
      <Metric
-      label="MÔ HÌNH CHÍNH (ACTIVE)"
+      label="Mô hình chính (Chính)"
       value={modelInfo.activeModelId === 'RF' ? 'Random Forest' : 'Baseline B'}
       note={modelInfo.version}
       tone="cyan"
      />
      <Metric
-      label="DỰ ĐOÁN HIỆN TẠI (CHÍNH)"
+      label="Dự đoán hiện tại (Chính)"
       value={currentPredPrimary}
       note={telemetry?.sensor_ok ? 'Từ mẫu telemetry hiện hành' : 'Cảm biến lỗi/Offline'}
       tone={currentPredPrimary === 'NORMAL' ? 'green' : currentPredPrimary === 'HIGH_ROLL' || currentPredPrimary === 'AMPLITUDE_GROWTH' ? 'red' : 'amber'}
      />
      <Metric
-      label="ĐỘ ĐỒNG THUẬN CHUNG"
+      label="Độ đồng thuận chung"
       value={`${modelInfo.agreementPercent}%`}
       note="Kiểm toán trên V-2026-001"
       tone="green"
      />
      <Metric
-      label="POPULATION STABILITY (PSI)"
+      label="Độ ổn định phân phối (PSI)"
       value={String(modelInfo.psi)}
       note="Độ ổn định phân phối (Stable)"
       tone="green"
@@ -1407,7 +1491,7 @@ export default function App(){
     <div className="columns">
      <div>
       {/* Realtime Prediction Comparison */}
-      <Panel title="SO SÁNH DỰ ĐOÁN MẪU HIỆN HÀNH (ACTIVE VS SHADOW)" tag="CURRENT DEMO SAMPLE">
+      <Panel title="So sánh dự đoán mẫu hiện hành (Active vs Shadow)" tag="Current Demo Sample">
        <dl className="kv">
         <dt>Mô hình quyết định chính (Active)</dt><dd className="text-info" style={{fontWeight:600}}>{modelInfo.active}</dd>
         <dt>Dự đoán mô hình chính</dt><dd className={currentPredPrimary==='NORMAL'?'text-success':'text-warning'} style={{fontWeight:'bold'}}>{currentPredPrimary}</dd>
@@ -1420,28 +1504,28 @@ export default function App(){
        </dl>
        {scenario === 'S0b' && !agree && (
         <div className="note warning" style={{marginTop:14}}>
-         <b>PHÁT HIỆN BẤT ĐỒNG CÓ CHỦ ĐÍCH (KỊCH BẢN S0b):</b> Baseline B dựa trên ngưỡng góc tức thời nên phát nhãn <code>HIGH_ROLL</code> khi có gió giật; trong khi Random Forest học đặc trưng chuỗi thời gian của quá trình tự hồi phục góc nghiêng nên nhận diện chuẩn xác nhãn <code>NORMAL</code>.
+         <b>Phát hiện bất đồng có chủ đích (Kịch bản S0b):</b> Baseline B dựa trên ngưỡng góc tức thời nên phát nhãn <code>HIGH_ROLL</code> khi có gió giật; trong khi Random Forest học đặc trưng chuỗi thời gian của quá trình tự hồi phục góc nghiêng nên nhận diện chuẩn xác nhãn <code>NORMAL</code>.
         </div>
        )}
       </Panel>
 
       {/* Model Registry Specs */}
-      <Panel title="THÔNG TIN ĐẶC TẢ MÔ HÌNH (MODEL REGISTRY - FR04)" tag="TINYML SPECIFICATION">
+      <Panel title="Thông tin đặc tả mô hình (Model Registry - FR04)" tag="TinyML Specification">
        <dl className="kv">
         <dt>Tên và phiên bản mô hình</dt><dd>{modelInfo.version}</dd>
         <dt>Kiến trúc giải thuật</dt><dd>{modelInfo.algorithm}</dd>
         <dt>Thời gian suy luận trên ESP32</dt><dd className="text-success" style={{fontWeight:600}}>{modelInfo.inferenceMs} ms / mẫu</dd>
         <dt>Chiếm dụng bộ nhớ Flash</dt><dd>{modelInfo.flashKb} KB (trong phân vùng 4MB)</dd>
         <dt>Chiếm dụng bộ nhớ RAM</dt><dd>{modelInfo.ramKb} KB (trong 320KB SRAM)</dd>
-        <dt>Số đặc trưng đầu vào (Input Features)</dt><dd>{modelInfo.featuresCount} đặc trưng động học</dd>
-        <dt>Vectơ đặc trưng</dt><dd style={{fontSize:'0.65rem'}}>{modelInfo.features.join(', ')}</dd>
+        <dt>Số đặc trưng đầu vào (Input Features)</dt><dd>{modelInfo.featuresCount} đặc trưng động học (60s & 180s)</dd>
+        <dt>Vectơ đặc trưng</dt><dd style={{fontSize:'0.68rem',color:'var(--telemetry-accent)',fontWeight:600}}>23 đặc trưng (8 Roll 60s, 12 Roll 180s, 3 Pitch 60s) • {CONTRACT_ID} v{CONTRACT_VERSION}</dd>
        </dl>
       </Panel>
      </div>
 
      <div>
       {/* Concordance Breakdown */}
-      <Panel title="TỶ LỆ ĐỒNG THUẬN THEO LỚP ĐỘNG HỌC (FR20)" tag={`${modelInfo.agreementPercent}% TỔNG THỂ`}>
+      <Panel title="Tỷ lệ đồng thuận theo lớp động học (FR20)" tag={`${modelInfo.agreementPercent}% Tổng thể`}>
        <p className="micro">Phân tích mức độ đồng thuận giữa Random Forest và Baseline B theo từng trạng thái biển:</p>
        <dl className="kv">
         <dt>Lớp NORMAL (Biển êm / S0)</dt><dd className="text-success" style={{fontWeight:600}}>{modelInfo.concordanceBreakdown.normal}%</dd>
@@ -1455,7 +1539,7 @@ export default function App(){
       </Panel>
 
       {/* Data Drift & PSI (FR21) */}
-      <Panel title="THEO DÕI ĐỘ LỆCH PHÂN PHỐI (DATA DRIFT / PSI - FR21)" tag="POPULATION STABILITY INDEX">
+      <Panel title="Theo dõi độ lệch phân phối (Data Drift / PSI - FR21)" tag="Population Stability Index">
        <dl className="kv">
         <dt>Chỉ số PSI hiện tại (Population Stability Index)</dt><dd className="text-success" style={{fontWeight:'bold'}}>{modelInfo.psi}</dd>
         <dt>Đánh giá độ ổn định phân phối</dt><dd className="text-success" style={{fontWeight:600}}>{modelInfo.psiStatus}</dd>
@@ -1463,22 +1547,164 @@ export default function App(){
         <dt>Phân tích phân phối tần suất FFT</dt><dd>Chờ dữ liệu TV2 / TV3</dd>
        </dl>
        <div className="note" style={{marginTop:14}}>
-        <b>LƯU Ý PHẠM VI HỆ THỐNG:</b> Chỉ số PSI và thuật toán Isolation Forest được tính toán định kỳ tại máy chủ Backend TV3 từ cơ sở dữ liệu lịch sử. Giao diện Frontend tuân thủ nghiêm ngặt nguyên tắc <b>không tự huấn luyện và không chạy suy luận TinyML trên trình duyệt</b>.
+        <b>Lưu ý phạm vi hệ thống:</b> Chỉ số PSI và thuật toán Isolation Forest được tính toán định kỳ tại máy chủ Backend TV3 từ cơ sở dữ liệu lịch sử. Giao diện Frontend tuân thủ nghiêm ngặt nguyên tắc <b>không tự huấn luyện và không chạy suy luận TinyML trên trình duyệt</b>.
        </div>
       </Panel>
      </div>
     </div>
+
+    {/* Dedicated 23 Kinematic Features Vector Panel */}
+    <div style={{marginTop:16}}>
+     {(() => {
+      const effectiveValidCount = modelInfo.featureSummary?.validCount ?? (telemetry?.sensor_ok && scenario !== 'OFFLINE' ? TOTAL_FEATURES : 0);
+      return (
+       <Panel title="Danh mục 23 đặc trưng động học (Kinematic Feature Vector)" tag={`${effectiveValidCount}/${TOTAL_FEATURES} VALID • v${CONTRACT_VERSION}`}>
+        {/* Contract & Integrity Status Bar */}
+        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',padding:'10px 14px',background:'var(--panel-alt)',borderRadius:8,marginBottom:14,border:'1px solid var(--border-subtle)'}}>
+         <span className="micro" style={{color:'var(--text-muted)'}}>
+          Hợp đồng: <b style={{color:'var(--text-main)'}}>{CONTRACT_ID}</b> (v{CONTRACT_VERSION})
+         </span>
+         <span className="micro" style={{color:'var(--text-muted)'}}>•</span>
+         <span className="micro" style={{color:'var(--text-muted)'}}>
+          Tổng: <b style={{color:'var(--text-main)'}}>{TOTAL_FEATURES} đặc trưng</b>
+         </span>
+         <span className="micro" style={{color:'var(--text-muted)'}}>•</span>
+         <span className="micro" style={{color: effectiveValidCount > 0 ? '#10B981' : '#EF4444'}}>
+          Hợp lệ: <b>{effectiveValidCount}</b>
+         </span>
+         {modelInfo.featureSummary && modelInfo.featureSummary.missingCount > 0 && (
+          <>
+           <span className="micro" style={{color:'var(--text-muted)'}}>•</span>
+           <span className="micro" style={{color:'#D97706'}}>
+            Không khả dụng: <b>{modelInfo.featureSummary.missingCount}</b>
+           </span>
+          </>
+         )}
+         {modelInfo.featureSummary && modelInfo.featureSummary.invalidCount > 0 && (
+          <>
+           <span className="micro" style={{color:'var(--text-muted)'}}>•</span>
+           <span className="micro" style={{color:'#EF4444'}}>
+            Lỗi: <b>{modelInfo.featureSummary.invalidCount}</b>
+           </span>
+          </>
+         )}
+         <span className="micro" style={{color:'var(--text-muted)',marginLeft:'auto'}}>
+          Nguồn export: <code>{CONTRACT_SOURCE_EXPORT}</code>
+         </span>
+        </div>
+
+      {/* 3 Summary Group Cards */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))',gap:12,marginBottom:16}}>
+       <div style={{background:'var(--panel-alt)',border:'1px solid var(--border-subtle)',borderRadius:10,padding:'12px 14px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+         <b style={{color:'var(--telemetry-accent)',fontSize:'0.82rem'}}>Roll Ngắn hạn (60s)</b>
+         <span className="pill normal" style={{padding:'2px 8px',fontSize:'0.68rem'}}>8 ĐẶC TRƯNG</span>
+        </div>
+        <p className="micro" style={{color:'var(--text-secondary)',margin:0}}>
+         Động học lắc ngang ngắn hạn: RMS, STD, Mean, Peak-to-Peak, P95, Max, IQR và RMS vi phân d(roll)/dt.
+        </p>
+       </div>
+       <div style={{background:'var(--panel-alt)',border:'1px solid var(--border-subtle)',borderRadius:10,padding:'12px 14px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+         <b style={{color:'#10B981',fontSize:'0.82rem'}}>Roll Dài hạn & Trend (180s)</b>
+         <span className="pill normal" style={{padding:'2px 8px',fontSize:'0.68rem'}}>12 ĐẶC TRƯNG</span>
+        </div>
+        <p className="micro" style={{color:'var(--text-secondary)',margin:0}}>
+         Xu hướng dài hạn & chỉ dấu lệch tải (Heel offset): Mean, Median, Abs, Sign ratio, Segment STD, Shift, Early/Late RMS, Ratio, Slope, R² và P95 Slope.
+        </p>
+       </div>
+       <div style={{background:'var(--panel-alt)',border:'1px solid var(--border-subtle)',borderRadius:10,padding:'12px 14px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+         <b style={{color:'#D97706',fontSize:'0.82rem'}}>Pitch Ngắn hạn (60s)</b>
+         <span className="pill normal" style={{padding:'2px 8px',fontSize:'0.68rem'}}>3 ĐẶC TRƯNG</span>
+        </div>
+        <p className="micro" style={{color:'var(--text-secondary)',margin:0}}>
+         Động học nhồi/chúi thân tàu ngắn hạn: Pitch RMS, Pitch STD và Pitch Peak-to-Peak.
+        </p>
+       </div>
+      </div>
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:14}}>
+       <div className="button-line" style={{margin:0}}>
+        <Button kind={featureGroupFilter==='ALL'?'primary':'secondary'} onClick={()=>setFeatureGroupFilter('ALL')}>Tất cả (23)</Button>
+        <Button kind={featureGroupFilter==='roll_60s'?'primary':'secondary'} onClick={()=>setFeatureGroupFilter('roll_60s')}>Roll 60s (8)</Button>
+        <Button kind={featureGroupFilter==='roll_180s'?'primary':'secondary'} onClick={()=>setFeatureGroupFilter('roll_180s')}>Roll 180s (12)</Button>
+        <Button kind={featureGroupFilter==='pitch_60s'?'primary':'secondary'} onClick={()=>setFeatureGroupFilter('pitch_60s')}>Pitch 60s (3)</Button>
+       </div>
+       <div className="button-line" style={{margin:0}}>
+        <Button kind="secondary" onClick={()=>downloadFeaturesCSV(modelInfo.featureItems || [])} title="Xuất toàn bộ 23 đặc trưng dạng CSV theo đúng thứ tự hợp đồng">
+         Xuất CSV 23 Đặc trưng (v{CONTRACT_VERSION})
+        </Button>
+       </div>
+      </div>
+      <div style={{overflowX:'auto'}}>
+       <table style={{width:'100%',borderCollapse:'collapse',fontSize:'0.76rem'}}>
+        <thead>
+         <tr style={{background:'var(--panel-alt)',borderBottom:'1px solid var(--border-subtle)',color:'var(--text-main)',textAlign:'left'}}>
+          <th style={{padding:'8px 10px',width:'36px',fontVariantNumeric:'tabular-nums'}}>#</th>
+          <th style={{padding:'8px 10px'}}>Tên đặc trưng & Ký hiệu</th>
+          <th style={{padding:'8px 10px'}}>Nhóm & Cửa sổ</th>
+          <th style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums'}}>Giá trị mẫu (CSV)</th>
+          <th style={{padding:'8px 10px',textAlign:'center'}}>Đơn vị</th>
+          <th style={{padding:'8px 10px',textAlign:'center'}}>Trạng thái</th>
+          <th style={{padding:'8px 10px'}}>Ý nghĩa động học hàng hải</th>
+         </tr>
+        </thead>
+        <tbody>
+         {(modelInfo.featureItems || []).filter(f => featureGroupFilter === 'ALL' || f.group === featureGroupFilter).map(f => (
+          <tr key={f.name} style={{borderBottom:'1px solid var(--border-subtle)'}}>
+           <td style={{padding:'8px 10px',color:'var(--text-muted)',fontVariantNumeric:'tabular-nums'}}>{f.index + 1}</td>
+           <td style={{padding:'8px 10px',color:'var(--text-main)'}}>
+            <div style={{fontWeight:600,fontSize:'0.78rem'}}>{f.displayName || FEATURE_NAMES_VI[f.name]?.titleVi || f.name}</div>
+            <code style={{fontSize:'0.7rem',color:'var(--text-muted)'}}>{f.name}</code>
+           </td>
+           <td style={{padding:'8px 10px'}}>
+            <span style={{
+             display:'inline-block',padding:'2px 8px',borderRadius:4,fontSize:'0.68rem',fontWeight:500,
+             background: f.group==='roll_60s'?'rgba(2,132,199,0.12)':f.group==='roll_180s'?'rgba(16,185,129,0.12)':'rgba(245,158,11,0.12)',
+             color: f.group==='roll_60s'?'var(--telemetry-accent)':f.group==='roll_180s'?'#10B981':'#D97706'
+            }}>
+             {f.group==='roll_60s'?'Roll 60s (Ngắn hạn)':f.group==='roll_180s'?'Roll 180s (Dài hạn/Trend)':'Pitch 60s (Nhồi/chúi)'}
+            </span>
+           </td>
+           <td style={{padding:'8px 10px',textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:600,color:'var(--text-main)'}}>
+            {f.value !== null && f.value !== undefined ? f.value.toFixed(4) : 'N/A'}
+           </td>
+           <td style={{padding:'8px 10px',textAlign:'center',color:'var(--text-secondary)',fontSize:'0.72rem'}}>
+            <code style={{padding:'1px 4px'}}>{f.unit}</code>
+           </td>
+           <td style={{padding:'8px 10px',textAlign:'center'}}>
+            <span className={`pill ${f.status === 'VALID' ? 'normal' : f.status === 'WARNING' ? 'caution' : f.status === 'NOT_APPLICABLE' ? 'neutral' : 'critical'}`} style={{padding:'2px 8px',fontSize:'0.68rem',fontWeight:700}}>
+             {f.status}
+            </span>
+           </td>
+           <td style={{padding:'8px 10px',color:'var(--text-secondary)',fontSize:'0.73rem',lineHeight:1.4}}>
+            <div>{f.description}</div>
+            {f.reason && (
+             <div className="micro" style={{color:'var(--text-muted)',fontStyle:'italic',marginTop:2}}>
+              {f.reason}
+             </div>
+            )}
+           </td>
+          </tr>
+         ))}
+        </tbody>
+       </table>
+      </div>
+     </Panel>
+    );})()}
+   </div>
    </>;
   }
-  case 'more':return <><header className="page-heading"><h1>More</h1><p>Các chức năng thuộc đề cương và tài khoản demo.</p></header>
-   <Panel title="GIAO DIỆN HIỂN THỊ (THEME)" tag={theme==='light'?'LIGHT MARITIME':'DARK MARITIME'}>
+  case 'more':return <><header className="page-heading"><h1>Chức năng khác</h1><p>Các chức năng hệ thống bổ trợ và tài khoản người dùng.</p></header>
+   <Panel title="Giao diện hiển thị (Theme)" tag={theme==='light'?'Light Maritime':'Dark Maritime'}>
     <p className="micro">Tùy chọn phong cách màu sắc giao diện hệ thống:</p>
     <div className="button-line">
      <Button kind={theme==='light'?'primary':'secondary'} onClick={()=>setTheme('light')}>☀ Light Maritime (Mặc định)</Button>
      <Button kind={theme==='dark'?'primary':'secondary'} onClick={()=>setTheme('dark')}>🌙 Dark Maritime (Giao diện cũ)</Button>
     </div>
    </Panel>
-   <Panel title="CÔNG CỤ GIÁM SÁT"><div className="more-list">{NAV.filter(n=>['control','replay','health','model'].includes(n.key)).map(n=><button type="button" key={n.key} onClick={()=>goto(n.key)}>{n.label}<span>→</span></button>)}</div></Panel><Panel title="TÀI KHOẢN"><dl className="kv"><dt>Username</dt><dd>{session?.username}</dd><dt>Role</dt><dd>{session?.role}</dd><dt>Mode</dt><dd>DEMO AUTH</dd></dl><Button kind="danger" onClick={logout}>Đăng xuất</Button></Panel></>;
+   <Panel title="Công cụ giám sát"><div className="more-list">{NAV.filter(n=>['control','replay','health','model'].includes(n.key)).map(n=><button type="button" key={n.key} onClick={()=>goto(n.key)}>{n.label}<span>→</span></button>)}</div></Panel><Panel title="Tài khoản"><dl className="kv"><dt>Tên đăng nhập</dt><dd>{session?.username}</dd><dt>Vai trò</dt><dd>{getRoleNameVi(session?.role)} ({session?.role})</dd><dt>Chế độ</dt><dd>Mô phỏng (DEMO AUTH)</dd></dl><Button kind="danger" onClick={logout}>Đăng xuất</Button></Panel></>;
   }
  };
   if (!session) {
@@ -1486,14 +1712,14 @@ export default function App(){
       <div className="auth-layout">
         <div className="auth-brand">
           <div className="brand-mark">≋</div>
-          <span className="eyebrow">IOT • EDGE AI • MARITIME SAFETY</span>
+          <span className="eyebrow">IoT • Edge AI • An toàn Hàng hải</span>
           <h1>Smart Vessel<br/>Motion Guard</h1>
           <p>Hệ thống giám sát động học chuyển động tàu thời gian thực và phát hiện bất thường TinyML trên ESP32.</p>
           <div className="auth-sec-notice" style={{marginTop: 18, maxWidth: 460}}>
             <span style={{fontSize: '1rem'}}>🔒</span>
             <span>RSA-4096 BRIDGE HARDWARE KEY ENCRYPTED • M4 DEMO</span>
           </div>
-          <span className="stamp">M4 • LIGHT MARITIME CONSOLE • TIÊU CHUẨN AN TOÀN HÀNG HẢI</span>
+          <span className="stamp">Phiên bản M4 • Bàn điều khiển Hàng hải Light Maritime • An toàn Hàng hải</span>
         </div>
 
         {authView === 'login' && (
@@ -1530,7 +1756,7 @@ export default function App(){
                 onClick={() => { setAuthView('forgot'); setLoginError(''); }}
                 title="Khôi phục mật mã truy cập"
               >
-                KEY_RECOVERY
+                Key Recovery
               </button>
             </div>
             <div className="password-row">
@@ -1549,13 +1775,13 @@ export default function App(){
 
             <div className="auth-sec-notice">
               <span>🛡️</span>
-              <span>TOKEN: HARDWARE AUTH (RSA-4096 EDGE KEY)</span>
+              <span>Khóa xác thực: Hardware Auth (RSA-4096 Edge Key)</span>
             </div>
 
             {loginError && <div className="error" role="alert">{loginError}</div>}
 
-            <button className="btn primary full" type="submit">
-              ĐĂNG NHẬP HỆ THỐNG →
+            <button className="btn primary full" type="submit" disabled={authLoading}>
+              {authLoading ? 'Đang xác thực...' : 'Đăng nhập hệ thống →'}
             </button>
 
             <div className="auth-footer-nav">
@@ -1578,7 +1804,7 @@ export default function App(){
             <div className="reticle-br"></div>
 
             <div className="auth-badge-row">
-              <span className="auth-badge">OFFICER ONBOARDING</span>
+              <span className="auth-badge">Officer Onboarding</span>
               <span className="auth-sysid">RBAC: TABLE 3.1</span>
             </div>
 
@@ -1636,9 +1862,9 @@ export default function App(){
             </label>
 
             <div className="auth-role-fixed">
-              <strong>VAI TRÒ HỆ THỐNG: OPERATOR (SĨ QUAN TRỰC CA)</strong>
+              <strong>Vai trò hệ thống: Operator (Sĩ quan trực ca)</strong>
               <p>
-                <b>Quy chuẩn phân quyền (Bảng 3.1 Đề cương v2.0):</b> Người dùng tự đăng ký chỉ có quyền Sĩ quan trực ca (Operator / View-Only). Quyền Supervisor (Giám sát bờ) và Admin (Quản trị viên) phải do Quản trị hệ thống phê duyệt và cấp phát mã ủy quyền riêng.
+                <b>Quy chuẩn phân quyền (Bảng 3.1 đề cương v2.0):</b> Người dùng tự đăng ký chỉ có quyền Sĩ quan trực ca (Operator / View-Only). Quyền Supervisor (Giám sát bờ) và Admin (Quản trị viên) phải do Quản trị hệ thống phê duyệt và cấp phát mã ủy quyền riêng.
               </p>
             </div>
 
@@ -1661,7 +1887,7 @@ export default function App(){
 
             {!regPendingNotice && (
               <button className="btn primary full" type="submit">
-                XÁC NHẬN ĐĂNG KÝ →
+                Xác nhận đăng ký →
               </button>
             )}
 
@@ -1685,7 +1911,7 @@ export default function App(){
             <div className="reticle-br"></div>
 
             <div className="auth-badge-row">
-              <span className="auth-badge">KEY RECOVERY PROTOCOL</span>
+              <span className="auth-badge">Key Recovery Protocol</span>
               <span className="auth-sysid">SYS_ID: 994-IMU-BRG</span>
             </div>
 
@@ -1721,7 +1947,7 @@ export default function App(){
 
             {!forgotPendingNotice && (
               <button className="btn primary full" type="submit">
-                GỬI YÊU CẦU ĐẶT LẠI MẬT MÃ →
+                Gửi yêu cầu đặt lại mật mã →
               </button>
             )}
 
@@ -1739,5 +1965,5 @@ export default function App(){
       </div>
     );
   }
- return <div className="app-layout"><aside className="sidebar"><div className="brand"><div className="brand-mark">≋</div><div><strong>VESSEL MOTION</strong><small>GUARD / DEMO</small></div></div><span className="nav-label">OPERATIONS</span><nav aria-label="Menu chính">{NAV.map(n=><button key={n.key} className={page===n.key||(page==='report-detail'&&n.key==='reports')?'active':''} onClick={()=>goto(n.key)}>{n.label}<span>›</span></button>)}</nav><div className="sidebar-bottom"><Pill kind="normal">● SIMULATION</Pill><small>{session.role} · {session.username}</small><Button kind="ghost" onClick={logout}>Đăng xuất</Button></div></aside><div className="workspace"><div className="topbar"><div><b>SV<span>MG</span></b><span className="topbar-name">VESSEL DEMO 01</span></div><div className="topbar-right"><div className="theme-selector" role="group" aria-label="Giao diện hiển thị"><button type="button" className={`theme-opt-btn ${theme==='light'?'active':''}`} onClick={()=>setTheme('light')} title="Giao diện Light Maritime (Mặc định)">☀ LIGHT</button><button type="button" className={`theme-opt-btn ${theme==='dark'?'active':''}`} onClick={()=>setTheme('dark')} title="Giao diện Dark Maritime (Giao diện cũ)">🌙 DARK</button></div><Pill kind="caution">MOCK DATA</Pill><span className="micro">{session.role}</span><button className="top-logout" onClick={logout}>Thoát</button></div></div>{notice&&<div className="toast" role="status"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Đóng thông báo">×</button></div>}<main className="main">{renderPage()}<div className="disclaimer">SMART VESSEL MOTION GUARD • TV4 UI DEMO • Không phải hệ thống cảnh báo được chứng nhận</div></main><nav className="mobile-nav" aria-label="Điều hướng điện thoại">{([{key:'overview',label:'Home'},{key:'motion',label:'Motion'},{key:'alarms',label:'Alarms'},{key:'reports',label:'Reports'},{key:'more',label:'More'}] as const).map(n=><button key={n.key} className={page===n.key||(n.key==='reports'&&page==='report-detail')||(n.key==='more'&&['control','replay','health','model'].includes(page))?'active':''} onClick={()=>goto(n.key)}>{n.label}</button>)}</nav></div></div>
+ return <div className="app-layout"><aside className="sidebar"><div className="brand"><div className="brand-mark">≋</div><div><strong>Smart Vessel</strong><small>Motion Guard</small></div></div><span className="nav-label">VẬN HÀNH</span><nav aria-label="Menu chính">{NAV.map(n=>{const isRestricted=n.key==='model'&&session.role==='Operator';return <button key={n.key} className={page===n.key||(page==='report-detail'&&n.key==='reports')?'active':''} onClick={()=>goto(n.key)} title={isRestricted?'Bảng 3.1: Chỉ dành cho Supervisor / Admin':undefined}><span style={{display:'inline-flex',alignItems:'center',gap:6}}>{n.label}{isRestricted&&<span style={{fontSize:'0.65rem',opacity:0.75}}>🔒</span>}</span></button>})}</nav><div className="sidebar-bottom"><Pill kind="normal">● Mô phỏng</Pill><small>{getRoleNameVi(session.role)} · {session.username}</small><Button kind="ghost" onClick={logout}>Đăng xuất</Button></div></aside><div className="workspace"><div className="topbar"><div><b>SV<span>MG</span></b><span className="topbar-name">Tàu MV SVMG-01</span></div><div className="topbar-right"><div className="theme-selector" role="group" aria-label="Giao diện hiển thị"><button type="button" className={`theme-opt-btn ${theme==='light'?'active':''}`} onClick={()=>setTheme('light')} title="Giao diện Light Maritime (Mặc định)">☀ Light</button><button type="button" className={`theme-opt-btn ${theme==='dark'?'active':''}`} onClick={()=>setTheme('dark')} title="Giao diện Dark Maritime (Giao diện cũ)">🌙 Dark</button></div><Pill kind="caution">DỮ LIỆU MÔ PHỎNG</Pill><span className="micro">{getRoleNameVi(session.role)}</span><button className="top-logout" onClick={logout}>Đăng xuất</button></div></div>{notice&&<div className="toast" role="status"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Đóng thông báo">×</button></div>}<main className="main"><div key={page} className="page-transition">{renderPage()}</div><div className="disclaimer">SMART VESSEL MOTION GUARD • PHIÊN BẢN MÔ PHỎNG GIAO DIỆN TV4 • Không thay thế hệ thống cảnh báo hàng hải chính thức</div></main><nav className="mobile-nav" aria-label="Điều hướng điện thoại">{([{key:'overview',label:'Tổng quan'},{key:'motion',label:'Chuyển động'},{key:'alarms',label:'Cảnh báo'},{key:'reports',label:'Báo cáo'},{key:'more',label:'Thêm'}] as const).map(n=><button key={n.key} className={page===n.key||(n.key==='reports'&&page==='report-detail')||(n.key==='more'&&['control','replay','health','model'].includes(page))?'active':''} onClick={()=>goto(n.key)}>{n.label}</button>)}</nav></div></div>
 }

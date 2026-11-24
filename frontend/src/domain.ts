@@ -25,9 +25,25 @@ export interface DeviceHealth{
  inferenceMs:number;mqttReconnects:number;bufferUsed:number;bufferCapacity:number;bufferStatus:'EMPTY'|'BUFFERING'|'OVERFLOW';
  queueLatencyMs:number;lastPacketUtc:string;packetGapS:number;healthScore:number;healthStatus:'HEALTHY'|'DEGRADED'|'CRITICAL';
 }
+export interface FeatureItem {
+ index: number;
+ name: string;
+ group: string;
+ window_s: number;
+ unit: string;
+ description: string;
+ value: number | null;
+ status: 'VALID' | 'WARNING' | 'INVALID' | 'MISSING' | 'NOT_APPLICABLE';
+ reason?: string;
+ source?: string;
+ displayName?: string;
+}
+
 export interface ModelInfo{
  active:string;activeModelId:'RF'|'BASELINE_B';baseline:string;baselineModelId:'RF'|'BASELINE_B';
- version:string;algorithm:string;featuresCount:number;features:string[];inferenceMs:number;flashKb:number;ramKb:number;
+ version:string;algorithm:string;featuresCount:number;features:string[];featureItems?:FeatureItem[];
+ featureSummary?:{total:number;validCount:number;warningCount:number;invalidCount:number;missingCount:number;contractId:string;version:string;sourceExport:string};
+ inferenceMs:number;flashKb:number;ramKb:number;
  agreementPercent:number;psi:number|null;psiStatus:string;
  concordanceBreakdown:{normal:number;highRoll:number;persistentOffset:number;amplitudeGrowth:number};
 }
