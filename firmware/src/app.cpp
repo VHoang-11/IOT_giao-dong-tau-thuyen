@@ -160,7 +160,13 @@ void send_snapshot(uint16_t window_s) {
 #endif
 
 // ---------------------------------------------------------------- xử lý đầu ra của engine
+#ifdef SVMG_RF_SHADOW
+void commit_config(const svmg_config_t &c_in) {
+  svmg_config_t c = c_in;
+  c.primary_model = SVMG_MODEL_BASELINE_B;   // M2-R7: RF chi chay shadow; Baseline B + an toan cung giu quyen canh bao
+#else
 void commit_config(const svmg_config_t &c) {
+#endif
   svmg_engine_apply_config(&E, &c);
   store_save(&E.cfg);
   push_sys_event(SVMG_EV_CONFIG_APPLIED, 0, 0, E.cfg.config_version);
@@ -245,6 +251,11 @@ void diag_features() {   // F,t,mode,update,status,reason,mask,n_valid,ready_s,r
     if (f.valid_mask & (1u << i)) Serial.printf(",%.6g", (double)v[i]); else Serial.print(",nan");
   }
   Serial.println();
+#ifdef SVMG_RF_SHADOW   // M2-R7: M,t,mode,rf,b,primary,status,infer_last_us,infer_max_us,calls (RF shadow, khong dieu khien canh bao)
+  const InferStats &is = infer_stats();
+  Serial.printf("M,%.1f,%s,%s,%s,%s,%d,%lu,%lu,%lu\n", t_now_abs(), mode_name(), class_short(E.dec.cls_rf), class_short(E.dec.cls_b),
+                class_short(E.dec.cls_primary), (int)E.dec.status, (unsigned long)is.last_us, (unsigned long)is.max_us, (unsigned long)is.calls);
+#endif
   static uint32_t prev_mask = 0xffffffffu;
   if (f.valid_mask != prev_mask) {   // chỉ in khi mask đổi: tên đặc trưng INVALID (lõi không phát mã lý do theo từng đặc trưng)
     prev_mask = f.valid_mask;
@@ -358,6 +369,9 @@ svmg_reason_t hk_snapshot(void *, uint16_t w) { snap_window = w; snap_deadline_m
 svmg_reason_t hk_snapshot(void *, uint16_t) { return SVMG_R_UNSUPPORTED; }   // topic trace không có trong ACL/backend
 #endif
 svmg_reason_t hk_model(void *, uint8_t m) {
+#ifdef SVMG_RF_SHADOW
+  if (m == SVMG_MODEL_RF) return SVMG_R_UNSUPPORTED;   // M2-R7: RF shadow, khong lam mo hinh chinh
+#endif
   if (m == SVMG_MODEL_RF && !infer_available()) return SVMG_R_UNSUPPORTED;   // chưa có model.h thật
   svmg_config_t c = E.cfg; c.primary_model = m; c.config_version++;
   commit_config(c);
@@ -461,6 +475,9 @@ void app_setup() {
   svmg_config_t cfg;
   bool loaded = store_load(&cfg, infer_available() ? SVMG_MODEL_RF : SVMG_MODEL_BASELINE_B);
   boot_count = store_next_boot_count();
+#ifdef SVMG_RF_SHADOW
+  cfg.primary_model = SVMG_MODEL_BASELINE_B;   // M2-R7: RF shadow
+#endif
   Serial.printf("[CFG] %s version=%lu profile=%s n=%u phi=%.1f mai=%u rep=%u model=%s zero=(%.2f,%.2f) boots=%lu\n", loaded ? "NVS" : "mac dinh",
                 (unsigned long)cfg.config_version, svmg_profile_name(cfg.profile), cfg.debounce_n, (double)cfg.phi_hard_deg, cfg.mai_caution,
                 (unsigned)cfg.report_interval_s, svmg_model_name(cfg.primary_model), (double)cfg.zero_roll_deg, (double)cfg.zero_pitch_deg, (unsigned long)boot_count);
