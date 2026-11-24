@@ -53,3 +53,5 @@ Thumbs.db
 /ml/data/parity/
 /ml/data/simulation_rf_g1/
 /ml/data/simulation_four_class_pilot/
+/ml/data/simulation_four_class_exp_v02/
+/ml/data/simulation_pitch_imu_diag/
