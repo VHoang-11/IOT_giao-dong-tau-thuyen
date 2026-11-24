@@ -560,18 +560,18 @@ export function LiveMotionChart({
                   </b>
                 </div>
                 <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-                  <span style={{ color: '#0284C7', fontWeight: 600 }}>
+                  <span style={{ color: 'var(--color-metric-tech)', fontWeight: 600 }}>
                     Roll: {activeSample.roll > 0 ? `+${activeSample.roll.toFixed(1)}°` : `${activeSample.roll.toFixed(1)}°`}
                     <small style={{ marginLeft: 3, fontSize: '0.65rem' }}>
-                      {activeSample.roll > 0.1 ? 'Mạn phải (STBD)' : activeSample.roll < -0.1 ? 'Mạn trái (PORT)' : 'Cân bằng (EVEN)'}
+                      {activeSample.roll > 0.1 ? 'Mạn phải' : activeSample.roll < -0.1 ? 'Mạn trái' : 'Cân bằng'}
                     </small>
                   </span>
                 </div>
                 <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 8 }}>
-                  <span style={{ color: '#F59E0B', fontWeight: 600 }}>
+                  <span style={{ color: 'var(--color-status-caution)', fontWeight: 600 }}>
                     Pitch: {activeSample.pitch > 0 ? `+${activeSample.pitch.toFixed(1)}°` : `${activeSample.pitch.toFixed(1)}°`}
                     <small style={{ marginLeft: 3, fontSize: '0.65rem' }}>
-                      {activeSample.pitch > 0.1 ? 'Ngóc mũi (BOW UP)' : activeSample.pitch < -0.1 ? 'Chúi mũi (BOW DN)' : 'Mức chuẩn (LEVEL)'}
+                      {activeSample.pitch > 0.1 ? 'Ngóc mũi' : activeSample.pitch < -0.1 ? 'Chúi mũi' : 'Mức chuẩn'}
                     </small>
                   </span>
                 </div>
@@ -597,10 +597,10 @@ export function LiveMotionChart({
                     }}
                   >
                     {Math.abs(activeSample.roll) >= tripDeg
-                      ? 'NGUY CẤP (TRIP)'
+                      ? 'Nguy cấp'
                       : Math.abs(activeSample.roll) >= warningDeg
-                      ? 'CẢNH BÁO (WARN)'
-                      : 'BÌNH THƯỜNG'}
+                      ? 'Cảnh báo'
+                      : 'Bình thường'}
                   </span>
                 </div>
               </div>

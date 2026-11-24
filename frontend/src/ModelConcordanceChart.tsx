@@ -119,7 +119,7 @@ export function ModelConcordanceChart({ scenario = 'S0', height = 180 }: ModelCo
             Đối chiếu dự đoán theo thời gian: Random Forest (Chính) vs Baseline B (Shadow)
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 2 }}>
-            Kịch bản: <b>{scenario}</b> • Chuỗi 40 mẫu tuần tự • Không suy luận AI ở Frontend (FR04/FR20)
+            Kịch bản: <b>{scenario}</b> • Chuỗi 40 mẫu tuần tự • Không suy luận AI ở Frontend
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -331,7 +331,7 @@ export function ModelConcordanceChart({ scenario = 'S0', height = 180 }: ModelCo
         <div style={{ display: 'flex', gap: 14 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-main)', fontSize: '11.5px' }}>
             <span style={{ width: 7, height: 7, transform: 'rotate(45deg)', borderRadius: 1, background: '#10B981', display: 'inline-block' }} />
-            Bình thường (NORMAL)
+            Bình thường
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-main)', fontSize: '11.5px' }}>
             <span style={{ width: 7, height: 7, transform: 'rotate(45deg)', borderRadius: 1, background: '#D97706', display: 'inline-block' }} />

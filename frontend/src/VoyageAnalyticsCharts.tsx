@@ -7,7 +7,7 @@ export interface VoyageAnalyticsChartsProps {
 export function VoyageKinematicDistributionChart({ voyage }: VoyageAnalyticsChartsProps) {
   const metrics = [
     { label: 'Góc lắc ngang cực đại (Max Roll)', value: voyage.maxAbsRollDeg, unit: '°', max: 25, color: voyage.maxAbsRollDeg > 15 ? '#DC2626' : '#0284C7', threshold: 15.0, note: 'Ngưỡng cảnh báo: 15°' },
-    { label: 'Góc lắc ngang hiệu dụng RMS (T11)', value: voyage.rmsRollDeg, unit: '°', max: 25, color: '#0284C7', note: 'Độ lệch chuẩn lắc ngang' },
+    { label: 'Góc lắc ngang hiệu dụng (RMS)', value: voyage.rmsRollDeg, unit: '°', max: 25, color: '#0284C7', note: 'Độ lệch chuẩn lắc ngang' },
     { label: 'Phân vị 95 lắc ngang (P95)', value: voyage.p95AbsRollDeg, unit: '°', max: 25, color: '#0369A1', note: 'Phân vị 95% biên độ' },
     { label: 'Góc chúi dọc cực đại (Max Pitch)', value: voyage.maxAbsPitchDeg, unit: '°', max: 10, color: '#D97706', note: 'Góc chúi cực đại' },
     { label: 'Góc chúi dọc hiệu dụng RMS', value: voyage.rmsPitchDeg, unit: '°', max: 10, color: '#B45309', note: 'Độ lệch chuẩn lắc dọc' },
@@ -18,7 +18,7 @@ export function VoyageKinematicDistributionChart({ voyage }: VoyageAnalyticsChar
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
         <div>
           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
-            Phân phối thống kê động học (T11 Specification)
+            Phân phối thống kê động học
           </span>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Khớp chính xác với báo cáo kiểm toán {voyage.id}</div>
         </div>
@@ -71,7 +71,7 @@ export function VoyageKinematicDistributionChart({ voyage }: VoyageAnalyticsChar
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
         <span>Đường kẻ đỏ: Ngưỡng cảnh báo lắc ngang 15.0°</span>
-        <span>RMS Roll chuẩn T11: <b>7.083967°</b></span>
+        <span>RMS Roll đo kiểm: <b>7.083967°</b></span>
       </div>
     </div>
   );

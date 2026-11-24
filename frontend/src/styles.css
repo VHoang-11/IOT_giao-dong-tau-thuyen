@@ -15,9 +15,68 @@
 
 :root,
 [data-theme="light"] {
-  color-scheme: light;
-  --canvas-bg: #F4F6F9;
-  --workspace-bg: #F4F6F9;
+/* ==============================================================================
+     SVMG UNIFIED COLOR & TYPOGRAPHY DESIGN TOKENS
+     - Tiêu đề: #142D45
+     - Giá trị kỹ thuật: #2563A6
+     - Trạng thái tích cực: #00966A
+     - Cảnh giác: #D97706
+     - Nguy cấp: #DC2626
+     - Chú thích: #64748B
+     - Nền card sáng: #FFFFFF
+     - Nền trang sáng: #F0F4F8
+     ============================================================================== */
+  --color-title: #142D45;
+  --color-metric-tech: #2563A6;
+  --color-status-positive: #00966A;
+  --color-status-caution: #D97706;
+  --color-status-critical: #DC2626;
+  --color-secondary: #64748B;
+  --color-card-bg: #FFFFFF;
+  --color-canvas-bg: #F0F4F8;
+
+  --font-family-base: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-code: 'JetBrains Mono', Consolas, monospace;
+
+  --font-size-page-title: 28px;
+  --font-weight-page-title: 700;
+
+  --font-size-section-title: 20px;
+  --font-weight-section-title: 600;
+
+  --font-size-card-title: 18px;
+  --font-weight-card-title: 700;
+
+  --font-size-metric-value: 16px;
+  --font-weight-metric-value: 600;
+
+  --font-size-status-text: 15px;
+  --font-weight-status-text: 600;
+
+  --font-size-table-heading: 14px;
+  --font-weight-table-heading: 600;
+
+  --font-size-body: 14px;
+  --font-weight-body: 400;
+
+  --font-size-button: 14px;
+  --font-weight-button: 500;
+
+  --font-size-secondary: 13px;
+  --font-weight-secondary: 400;
+
+  --font-size-badge: 12px;
+  --font-weight-badge: 500;
+
+  --card-padding: 18px 20px;
+  --card-radius: 12px;
+  --card-gap-title-val: 8px;
+  --card-gap-val-note: 6px;
+  --card-shadow: 0 1px 3px rgba(20, 45, 69, 0.04), 0 2px 8px rgba(20, 45, 69, 0.03);
+  --card-shadow-hover: 0 2px 6px rgba(20, 45, 69, 0.06), 0 4px 12px rgba(20, 45, 69, 0.05);
+
+  --canvas-bg: #F0F4F8;
+  --workspace-bg: #F0F4F8;
   --sidebar-bg: #0F2033;
   --sidebar-border: #1B314B;
   --sidebar-brand-title: #FFFFFF;
@@ -33,10 +92,10 @@
   --topbar-bg: #FFFFFF;
   --panel-bg: #FFFFFF;
   --panel-alt: #F8FAFC;
-  --panel-border: #E2E8F0;
-  --border-color: #E2E8F0;
+  --panel-border: rgba(100, 116, 139, 0.16);
+  --border-color: rgba(100, 116, 139, 0.16);
   --border-subtle: #F1F5F9;
-  --border-navy: #1E3A5F;
+  --border-navy: #142D45;
   --text-main: #142D45;
   --text-muted: #64748B;
   --text-bright: #0F172A;
@@ -60,8 +119,6 @@
   --toast-text: #142D45;
   --metric-left-border: #2563A6;
   --brand-mark-bg: #EAF2FA;
-  --card-shadow: 0 1px 3px rgba(15, 32, 51, 0.05), 0 4px 12px rgba(15, 32, 51, 0.03);
-  --card-shadow-hover: 0 2px 6px rgba(15, 32, 51, 0.08), 0 6px 16px rgba(15, 32, 51, 0.06);
 
   /* Ocean Surface & Maritime Atmosphere (Light Theme) */
   --ocean-sky-top: #F8FAFC;
@@ -74,8 +131,8 @@
   --ocean-wave-subtle: rgba(224, 242, 254, 0.5);
   --ocean-reflection-opacity: 0.16;
 
-  /* Semantic Status Colors (Light Theme - All meet WCAG AA > 4.5:1 on light backgrounds) */
-  --status-green-text: #059669;
+  /* Semantic Status Colors (Light Theme) */
+  --status-green-text: #00966A;
   --status-amber-text: #D97706;
   --status-red-text: #DC2626;
   --status-cyan-text: #2563A6;
@@ -86,20 +143,33 @@
   --note-info-border: #2563A6;
   --note-info-text: #0C2B4E;
   --note-warn-bg: #FFFBEB;
-  --note-warn-border: #F59E0B;
+  --note-warn-border: #D97706;
   --note-warn-text: #78350F;
   --note-danger-bg: #FEF2F2;
-  --note-danger-border: #EF4444;
+  --note-danger-border: #DC2626;
   --note-danger-text: #7F1D1D;
   --note-success-bg: #ECFDF5;
-  --note-success-border: #10B981;
+  --note-success-border: #00966A;
   --note-success-text: #064E3B;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --canvas-bg: #09111E;
-  --workspace-bg: #09111E;
+  /* ==============================================================================
+     SVMG UNIFIED COLOR SYSTEM (DARK THEME TOKENS)
+     Tương phản cao, dễ đọc, dịu mắt chuẩn công nghệ hàng hải ban đêm
+     ============================================================================== */
+  --color-title: #F1F5F9;
+  --color-metric-tech: #38BDF8;
+  --color-status-positive: #34D399;
+  --color-status-caution: #FBBF24;
+  --color-status-critical: #F87171;
+  --color-secondary: #94A3B8;
+  --color-card-bg: #131E30;
+  --color-canvas-bg: #0A101D;
+
+  --canvas-bg: #0A101D;
+  --workspace-bg: #0A101D;
   --sidebar-bg: #060B14;
   --sidebar-border: #162438;
   --sidebar-brand-title: #FFFFFF;
@@ -113,11 +183,11 @@
   --sidebar-active-text: #FFFFFF;
   --sidebar-active-border: #2563A6;
   --topbar-bg: #0C1524;
-  --panel-bg: #0F1A2E;
-  --panel-alt: #16233B;
-  --panel-border: #1E2E48;
-  --border-color: #1E2E48;
-  --border-subtle: #142033;
+  --panel-bg: #131E30;
+  --panel-alt: #16243A;
+  --panel-border: rgba(226, 232, 240, 0.12);
+  --border-color: rgba(226, 232, 240, 0.12);
+  --border-subtle: #162235;
   --border-navy: #243C50;
   --text-main: #F1F5F9;
   --text-muted: #94A3B8;
@@ -128,7 +198,7 @@
   --primary-btn-bg: #2563A6;
   --primary-btn-hover: #38BDF8;
   --primary-btn-text: #FFFFFF;
-  --secondary-btn-bg: #16233B;
+  --secondary-btn-bg: #16243A;
   --secondary-btn-color: #F1F5F9;
   --secondary-btn-border: #2D3E5A;
   --ghost-btn-bg: #121D30;
@@ -141,9 +211,9 @@
   --toast-border: #38BDF8;
   --toast-text: #F1F5F9;
   --metric-left-border: #38BDF8;
-  --brand-mark-bg: #16233B;
-  --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --brand-mark-bg: #16243A;
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --card-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.45);
 
   /* Ocean Surface & Maritime Atmosphere (Dark Theme) */
   --ocean-sky-top: #060F1E;
@@ -247,13 +317,13 @@ p {
 }
 
 h1 {
-  font-family: 'Be Vietnam Pro', -apple-system, sans-serif;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
   font-size: 28px;
   line-height: 1.25;
   letter-spacing: -0.01em;
   margin-bottom: 4px;
   color: var(--text-main);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 h2 {
@@ -265,11 +335,11 @@ h2 {
 }
 
 h3 {
-  font-family: 'Be Vietnam Pro', -apple-system, sans-serif;
-  font-size: 17px;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: 18px;
   line-height: 1.35;
   color: var(--text-main);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: none;
 }
 
@@ -281,12 +351,12 @@ small, .micro {
 }
 
 .label {
-  font-family: 'Be Vietnam Pro', sans-serif;
-  font-size: 12px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: var(--font-size-card-title, 18px);
+  color: var(--color-title, #142D45);
+  text-transform: none;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .eyebrow {
@@ -295,7 +365,7 @@ small, .micro {
   letter-spacing: 0.05em;
   color: var(--accent-color);
   font-weight: 600;
-  text-transform: uppercase;
+  text-transform: none;
   margin-bottom: 3px;
   display: inline-block;
 }
@@ -324,9 +394,11 @@ code, pre, .mono {
 }
 
 .auth-brand h1 {
-  font-size: clamp(2.5rem, 4.8vw, 4.5rem);
-  line-height: 1.08;
-  margin: 22px 0 16px;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 16px 0 12px;
   color: var(--text-main);
 }
 
@@ -444,9 +516,10 @@ code, pre, .mono {
 }
 
 .auth-card h2 {
-  margin: 6px 0 4px;
+  margin: 0 0 6px 0;
   color: var(--text-main);
-  font-size: 1.35rem;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .auth-card p.auth-sub {
@@ -918,8 +991,9 @@ code, pre, .mono {
 }
 
 .page-hero h1, .page-heading h1 {
-  font-size: 26px;
-  font-weight: 600;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: 28px;
+  font-weight: 700;
   line-height: 1.25;
   margin: 0 0 4px 0;
   color: var(--text-main);
@@ -1032,7 +1106,15 @@ code, pre, .mono {
 }
 
 /* ==============================================================================
-   METRIC CARDS (CLEAN & MINIMAL)
+   METRIC CARDS (UNIFIED TYPOGRAPHY HIERARCHY & COLOR SYSTEM)
+   Rule: Card Title (18px, w700) > Metric Value (16px, w600) > Secondary Text (13px, w400)
+   Colors:
+   - Roll: Tech Blue (--color-metric-tech #2563A6)
+   - Pitch: Amber (--color-status-caution #D97706)
+   - Normal / Connected: Green (--color-status-positive #00966A)
+   - Caution: Amber (--color-status-caution #D97706)
+   - Critical: Red (--color-status-critical #DC2626)
+   - Note / Secondary: Slate (--color-secondary #64748B)
    ============================================================================== */
 
 .metrics {
@@ -1046,55 +1128,110 @@ code, pre, .mono {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.compact-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .metric {
   border: 1px solid var(--border-color);
   background: var(--panel-bg);
   box-shadow: var(--card-shadow);
-  border-radius: 12px;
-  padding: 18px 20px;
+  border-radius: var(--card-radius, 12px);
+  padding: var(--card-padding, 18px 20px);
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: box-shadow 0.15s ease;
+  justify-content: flex-start;
+  text-align: left;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .metric:hover {
-  /* Static card: maintain stable shadow, no fake interactive lift */
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--card-shadow-hover);
 }
 
+/* Card title: 18px, weight 700, màu navy #142D45, không viết hoa */
+.metric .label,
+.metric label {
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: var(--font-size-card-title, 18px);
+  font-weight: var(--font-weight-card-title, 700);
+  color: var(--color-title, #142D45);
+  line-height: 1.3;
+  margin-bottom: var(--card-gap-title-val, 8px);
+  display: block;
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: left;
+}
+
+/* Metric value: 16px, weight 600, màu theo ý nghĩa dữ liệu */
 .metric-value {
-  font-size: 32px;
-  line-height: 1.2;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: var(--font-size-metric-value, 16px);
+  line-height: 1.35;
   letter-spacing: -0.01em;
   word-break: break-word;
-  font-weight: 600;
-  font-family: 'Be Vietnam Pro', sans-serif;
+  font-weight: var(--font-weight-metric-value, 600);
   font-variant-numeric: tabular-nums;
-  color: var(--text-main);
+  color: var(--color-title, #142D45);
+  margin-bottom: var(--card-gap-val-note, 6px);
+  text-align: left;
 }
 
-.text-success { color: var(--status-green-text); }
-.text-warning { color: var(--status-amber-text); }
-.text-danger { color: var(--status-red-text); }
-.text-info { color: var(--status-cyan-text); }
-.text-muted { color: var(--text-muted); }
-
-.cyan { color: var(--status-cyan-text); }
-.amber { color: var(--status-amber-text); }
-.red { color: var(--status-red-text); }
-.green { color: var(--status-green-text); }
-
-.columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
-  gap: 18px;
-  align-items: start;
-  margin-bottom: 20px;
+/* Secondary text: 13px, weight 400, màu xám xanh #64748B */
+.metric .micro,
+.metric small {
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: var(--font-size-secondary, 13px);
+  font-weight: var(--font-weight-secondary, 400);
+  line-height: 1.4;
+  color: var(--color-secondary, #64748B);
+  display: block;
+  margin-bottom: 0;
+  text-align: left;
 }
 
-/* ==============================================================================
+/* Semantic Metric Color Tones */
+.metric-value.cyan,
+.metric-value.blue,
+.metric-value.roll,
+.metric-value.tech {
+  color: var(--color-metric-tech);
+}
+
+.metric-value.amber,
+.metric-value.pitch,
+.metric-value.caution {
+  color: var(--color-status-caution);
+}
+
+.metric-value.green,
+.metric-value.positive,
+.metric-value.success {
+  color: var(--color-status-positive);
+}
+
+.metric-value.red,
+.metric-value.critical,
+.metric-value.danger {
+  color: var(--color-status-critical);
+}
+
+.metric-value.muted,
+.metric-value.secondary {
+  color: var(--color-secondary);
+}
+
+.text-success, .green { color: var(--color-status-positive) !important; }
+.text-warning, .amber { color: var(--color-status-caution) !important; }
+.text-danger, .red { color: var(--color-status-critical) !important; }
+.text-info, .cyan { color: var(--color-metric-tech) !important; }
+.text-muted { color: var(--color-secondary) !important; }
+
+/* ================================================================================
    PANELS & CARDS
    ============================================================================== */
 
@@ -1125,9 +1262,9 @@ code, pre, .mono {
 .panel-head h3 {
   margin: 0;
   color: var(--text-main);
-  font-family: 'Be Vietnam Pro', -apple-system, sans-serif;
-  font-size: 16px;
-  font-weight: 600;
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1496,9 +1633,9 @@ button:disabled {
   background: var(--note-info-bg);
   border: 1.5px solid var(--note-info-border);
   border-radius: 8px;
-  padding: 13px 16px;
-  font-size: .84rem;
-  line-height: 1.6;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .note.warning {
@@ -1864,9 +2001,13 @@ select {
     gap: 22px;
   }
   .auth-brand h1 {
-    font-size: 2.2rem;
-    margin: 12px 0;
-  }
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 16px 0 12px;
+  color: var(--text-main);
+}
   .auth-brand p {
     font-size: .88rem;
   }
@@ -1903,7 +2044,7 @@ select {
     padding: 12px 10px;
   }
   .metric-value {
-    font-size: 1.15rem;
+    font-size: 15px;
   }
   .pill {
     font-size: .62rem;
@@ -1971,47 +2112,52 @@ select {
 
 .dt-info-card {
   background: var(--panel-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--card-radius, 12px);
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 74px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  box-shadow: var(--card-shadow);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  text-align: left;
 }
 
 .dt-info-card:hover {
   border-color: var(--border-color);
-  box-shadow: 0 2px 6px rgba(16, 43, 73, 0.05);
+  box-shadow: var(--card-shadow-hover);
 }
 
 .dt-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-weight: 500;
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--color-title, #142D45);
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-transform: none;
 }
 
 .dt-card-value {
-  font-size: 1.15rem;
-  font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
+  font-size: var(--font-size-metric-value, 16px);
+  font-weight: var(--font-weight-metric-value, 600);
+  font-family: var(--font-family-base, 'Be Vietnam Pro', sans-serif);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 1.3;
+  margin-bottom: 4px;
+  text-align: left;
 }
 
 .dt-card-sub {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  margin-top: 4px;
+  font-size: var(--font-size-badge, 12px);
+  color: var(--color-secondary, #64748B);
+  margin-top: 2px;
   display: flex;
   align-items: center;
   gap: 4px;
+  text-align: left;
 }
 
 @media (max-width: 1100px) {
@@ -2052,23 +2198,81 @@ select {
   }
 }
 
-/* Compact 4-Card Metrics Grid */
+/* ==============================================================================
+   COMPACT METRICS GRID (LIVE MOTION SUMMARY CARDS)
+   Unified hierarchy: Card Title (18px, w700) > Value (16px, w600) > Note (13px, w400)
+   ============================================================================== */
+
 .compact-metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
-@media (max-width: 900px) {
-  .compact-metrics-grid {
+.compact-metrics-grid .metric {
+  border: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  box-shadow: var(--card-shadow);
+  border-radius: 12px;
+  padding: 18px 20px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  transition: box-shadow 0.15s ease;
+}
+
+.compact-metrics-grid .metric .label {
+  font-family: 'Be Vietnam Pro', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.3;
+  margin-bottom: 8px;
+  display: block;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.compact-metrics-grid .metric .metric-value {
+  font-family: 'Be Vietnam Pro', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.compact-metrics-grid .metric .micro {
+  font-family: 'Be Vietnam Pro', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-muted);
+  display: block;
+}
+
+@media (max-width: 960px) {
+  .compact-metrics-grid,
+  .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .compact-metrics-grid .metric,
+  .metric {
+    padding: 16px 18px;
   }
 }
 
-@media (max-width: 480px) {
-  .compact-metrics-grid {
+@media (max-width: 540px) {
+  .compact-metrics-grid,
+  .metrics {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 

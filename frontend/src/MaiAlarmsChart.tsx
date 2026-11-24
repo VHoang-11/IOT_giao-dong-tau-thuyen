@@ -88,7 +88,7 @@ export function MaiAlarmsChart({
   if (offline) {
     return (
       <div style={{ height, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--note-danger-bg)', border: '1.5px dashed var(--note-danger-border)', borderRadius: 6, padding: 16 }}>
-        <b style={{ color: 'var(--note-danger-text)', fontSize: '0.9rem' }}>KHÔNG CÓ TÍN HIỆU VIỄN TRẮC MAI</b>
+        <b style={{ color: 'var(--note-danger-text)', fontSize: '0.9rem' }}>Không có tín hiệu viễn trắc MAI</b>
         <p style={{ color: 'var(--note-danger-text)', fontSize: '0.75rem', margin: '4px 0 0', textAlign: 'center' }}>
           Mất kết nối cảm biến hoặc thiết bị ngoại tuyến. Không tính toán chỉ số MAI giả định.
         </p>
@@ -111,7 +111,7 @@ export function MaiAlarmsChart({
             Diễn biến chỉ số bất thường chuyển động (MAI) & Sự kiện cảnh báo
           </span>
           <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: 'var(--note-info-bg)', color: 'var(--note-info-text)', border: '1px solid var(--note-info-border)' }}>
-            FR03 / FR15 • TinyML
+            Theo dõi MAI • TinyML
           </span>
         </div>
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -452,7 +452,7 @@ export function MaiAlarmsChart({
           </span>
         </div>
         <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.68rem' }}>
-          Được tính toán bởi thuật toán TinyML (FR03 / FR15) • Đồng bộ thời gian thực
+          Được tính toán bởi thuật toán TinyML • Đồng bộ thời gian thực
         </div>
       </div>
     </div>

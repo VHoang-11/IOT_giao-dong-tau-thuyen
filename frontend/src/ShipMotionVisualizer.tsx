@@ -122,9 +122,9 @@ export function ShipMotionVisualizer({
       : 'var(--note-success-bg)';
 
   const portStbd =
-    validRoll < -0.1 ? 'Mạn trái (PORT)' : validRoll > 0.1 ? 'Mạn phải (STBD)' : 'Cân bằng (EVEN)';
+    validRoll < -0.1 ? 'Mạn trái' : validRoll > 0.1 ? 'Mạn phải' : 'Cân bằng';
   const bowStern =
-    validPitch > 0.1 ? 'Ngóc mũi (BOW UP)' : validPitch < -0.1 ? 'Chúi mũi (BOW DN)' : 'Mức chuẩn (LEVEL)';
+    validPitch > 0.1 ? 'Ngóc mũi' : validPitch < -0.1 ? 'Chúi mũi' : 'Mức chuẩn';
 
   const maiPct = Math.min(100, Math.max(0, validMai));
   const maiColor =
@@ -190,7 +190,7 @@ export function ShipMotionVisualizer({
               border: `1px solid ${severityColor}`,
             }}
           >
-            {isAvailable ? getAlarmLevelNameVi(alarmLevel) : isOffline ? 'MẤT KẾT NỐI' : 'LỖI CẢM BIẾN'}
+            {isAvailable ? getAlarmLevelNameVi(alarmLevel) : isOffline ? 'Mất kết nối' : 'Lỗi cảm biến'}
           </span>
           {isAvailable && classRf && (
             <span
@@ -1054,8 +1054,8 @@ export function ShipMotionVisualizer({
                   borderRadius: 4,
                   fontSize: '0.65rem',
                   fontWeight: 600,
-                  background: Math.abs(validRoll) > 0.1 ? 'rgba(2, 132, 199, 0.1)' : 'var(--border-subtle)',
-                  color: Math.abs(validRoll) > 0.1 ? '#0284C7' : 'var(--text-muted)',
+                  background: Math.abs(validRoll) > 0.1 ? 'rgba(37, 99, 166, 0.1)' : 'var(--border-subtle)',
+                  color: Math.abs(validRoll) > 0.1 ? 'var(--color-metric-tech)' : 'var(--text-muted)',
                 }}
               >
                 {isAvailable ? portStbd : '—'}
@@ -1072,7 +1072,7 @@ export function ShipMotionVisualizer({
             <div
               className="dt-card-value"
               style={{
-                color: Math.abs(validPitch) >= 8 ? 'var(--status-red-text)' : '#D97706',
+                color: Math.abs(validPitch) >= 8 ? 'var(--status-red-text)' : 'var(--color-status-caution)',
               }}
             >
               {isAvailable ? `${validPitch > 0 ? '+' : ''}${validPitch.toFixed(1)}°` : '—'}
@@ -1085,7 +1085,7 @@ export function ShipMotionVisualizer({
                   fontSize: '0.65rem',
                   fontWeight: 600,
                   background: Math.abs(validPitch) > 0.1 ? 'rgba(217, 119, 6, 0.1)' : 'var(--border-subtle)',
-                  color: Math.abs(validPitch) > 0.1 ? '#D97706' : 'var(--text-muted)',
+                  color: Math.abs(validPitch) > 0.1 ? 'var(--color-status-caution)' : 'var(--text-muted)',
                 }}
               >
                 {isAvailable ? bowStern : '—'}
@@ -1134,8 +1134,8 @@ export function ShipMotionVisualizer({
               <span>Nhận dạng mô hình TinyML</span>
               <span style={{ fontSize: '0.62rem', opacity: 0.75 }}>Random Forest</span>
             </div>
-            <div className="dt-card-value" style={{ color: severityColor, fontSize: '0.98rem' }}>
-              {isAvailable ? getRFClassNameVi(classRf) : 'CHƯA XÁC ĐỊNH'}
+            <div className="dt-card-value" style={{ color: severityColor, fontSize: '16px', fontWeight: 600 }}>
+              {isAvailable ? getRFClassNameVi(classRf) : 'Chưa xác định'}
             </div>
             <div className="dt-card-sub">
               <span
@@ -1149,7 +1149,7 @@ export function ShipMotionVisualizer({
                   border: `1px solid ${severityColor}`,
                 }}
               >
-                {isAvailable ? getAlarmLevelNameVi(alarmLevel) : isOffline ? 'MẤT KẾT NỐI' : 'LỖI CẢM BIẾN'}
+                {isAvailable ? getAlarmLevelNameVi(alarmLevel) : isOffline ? 'Mất kết nối' : 'Lỗi cảm biến'}
               </span>
             </div>
           </div>
@@ -1162,7 +1162,7 @@ export function ShipMotionVisualizer({
                 {activeTab === 'iso' ? 'Phối cảnh Isometric' : activeTab === 'front' ? 'Mặt cắt ngang' : 'Mặt cắt dọc'}
               </span>
             </div>
-            <div className="dt-card-value" style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>
+            <div className="dt-card-value" style={{ color: 'var(--text-main)', fontSize: '16px', fontWeight: 600 }}>
               {scenario}
             </div>
             <div className="dt-card-sub">
