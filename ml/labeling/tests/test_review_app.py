@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
+PILOT = Path(__file__).resolve().parents[3] / "ml/data/labels/annotation_pilot/batches/pilot_29.csv"
 
+
+@pytest.mark.skipif(not PILOT.is_file(), reason="Pilot artifacts (gitignored, từ dữ liệu thật) không có trong môi trường này.")
 def test_review_app_renders_selected_hohai_plot_from_validated_image_bytes():
     repo_root = Path(__file__).resolve().parents[3]
     app_path = repo_root / "ml/labeling/review_app.py"

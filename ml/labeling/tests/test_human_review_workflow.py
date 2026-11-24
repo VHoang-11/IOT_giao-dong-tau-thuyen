@@ -50,6 +50,8 @@ def test_review_plot_loader_rejects_missing_or_invalid_image_content(tmp_path):
     assert base64.b64decode(data_uri.partition(",")[2]) == content
 
 
+@pytest.mark.skipif(not (Path(__file__).resolve().parents[3] / "ml/data/labels/annotation_pilot/annotation_pilot.csv").is_file(),
+                    reason="Pilot artifacts (gitignored, từ dữ liệu thật) không có trong môi trường này.")
 def test_actual_pilot_hohai_chart_contains_roll_and_pitch_plot_content():
     repo_root = Path(__file__).resolve().parents[3]
     batch_path = repo_root / "ml/data/labels/annotation_pilot/batches/pilot_29.csv"
@@ -67,6 +69,8 @@ def test_actual_pilot_hohai_chart_contains_roll_and_pitch_plot_content():
         assert orange_line_pixels.sum() > 50
 
 
+@pytest.mark.skipif(not (Path(__file__).resolve().parents[3] / "ml/data/labels/annotation_pilot/annotation_pilot.csv").is_file(),
+                    reason="Pilot artifacts (gitignored, từ dữ liệu thật) không có trong môi trường này.")
 def test_all_92_annotation_records_have_valid_pngs_for_inline_delivery():
     repo_root = Path(__file__).resolve().parents[3]
     forms_path = repo_root / "ml/data/labels/annotation_pilot/annotation_pilot.csv"

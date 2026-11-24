@@ -4,3 +4,7 @@ scikit-learn==1.9.1
 joblib==1.6.0
 scipy==1.18.1
 threadpoolctl==3.8.0
+# M2-R8: đủ để bản clone sạch chạy toàn bộ test ml/ (openpyxl), build firmware RF shadow và ghi Serial Wokwi.
+-r ../preprocessing/requirements.txt
+platformio==6.2.0
+pyserial==3.5
