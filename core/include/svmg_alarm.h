@@ -2,7 +2,7 @@
  *
  * Mức: NORMAL -> CAUTION -> WARNING -> CRITICAL. ACK/MUTE là cờ chồng lên mức (không phải mức).
  * Hai đồng hồ tách biệt (đề cương 5.3/8.1):
- *   - đồng hồ MÔ PHỎNG: số lần svmg_alarm_update() (mỗi 5 s mô phỏng) -> chống nhấp nháy N, trễ giải tỏa;
+ *   - đồng hồ MÔ PHỎNG: số lần svmg_alarm_update() (mỗi 10 s mô phỏng) -> chống nhấp nháy N, trễ giải tỏa;
  *   - đồng hồ THỰC (now_ms, millis()): T_ack = 60 s leo thang, hạn mute.
  * Bất biến an toàn: không có API nào hạ thấp mức đang có hoặc tắt lớp ngưỡng cứng; chỉ ACK (tắt còi, giữ LED)
  * và mute (<= 300 s, chỉ khi WARNING) là được phép; điều kiện hard luôn đưa lên CRITICAL.
@@ -21,7 +21,7 @@ extern "C" {
 typedef struct {
   uint8_t  debounce_n;      /* N lần cập nhật liên tiếp cùng lớp để lên WARNING (CONSERVATIVE 4 / STANDARD 3 / SENSITIVE 2) */
   uint8_t  mai_caution;     /* ngưỡng MAI cho CAUTION */
-  uint8_t  clear_updates;   /* số lần cập nhật hết điều kiện để giải tỏa (6 = 30 s) */
+  uint8_t  clear_updates;   /* số lần cập nhật hết điều kiện để giải tỏa (engine đặt 3 = 30 s ở 10 s/update) */
   uint16_t max_mute_s;      /* 300 */
   uint32_t t_ack_ms;        /* 60000 (thời gian thực) */
 } svmg_alarm_cfg_t;
@@ -55,9 +55,9 @@ void svmg_alarm_default_cfg(svmg_alarm_cfg_t *c);
 void svmg_alarm_init(svmg_alarm_t *a, const svmg_alarm_cfg_t *c);
 void svmg_alarm_set_cfg(svmg_alarm_t *a, const svmg_alarm_cfg_t *c);   /* giữ nguyên trạng thái */
 
-/* Mỗi 5 s mô phỏng. Trả số sự kiện ghi vào ev[] (tối đa SVMG_ALARM_MAX_EVENTS). */
+/* Mỗi 10 s mô phỏng. Trả số sự kiện ghi vào ev[] (tối đa SVMG_ALARM_MAX_EVENTS). */
 int svmg_alarm_update(svmg_alarm_t *a, const svmg_alarm_in_t *in, svmg_event_t *ev);
-/* Gọi ngay khi lớp ngưỡng cứng vừa kích hoạt (không chờ chu kỳ 5 s). */
+/* Gọi ngay khi lớp ngưỡng cứng vừa kích hoạt (không chờ chu kỳ 10 s). */
 int svmg_alarm_force_critical(svmg_alarm_t *a, float t_sim_s, uint32_t now_ms, svmg_event_t *ev);
 /* Gọi thường xuyên theo thời gian thực: leo thang T_ack, hết hạn mute. */
 int svmg_alarm_tick(svmg_alarm_t *a, uint32_t now_ms, svmg_event_t *ev);
@@ -71,6 +71,9 @@ typedef enum { SVMG_OUT_OFF = 0, SVMG_OUT_ON = 1, SVMG_OUT_BLINK_SLOW = 2, SVMG_
 typedef enum { SVMG_BUZ_OFF = 0, SVMG_BUZ_INTERMITTENT = 1, SVMG_BUZ_CONTINUOUS = 2 } svmg_buz_t;
 typedef struct { uint8_t led_g, led_y, led_r, buzzer; } svmg_alarm_out_t;
 void svmg_alarm_outputs(const svmg_alarm_t *a, uint32_t now_ms, svmg_alarm_out_t *out);
+
+/* Dữ liệu vừa bị bỏ (đổi chế độ, khoảng trống): trạng thái hiển thị về UNKNOWN ngay, cắt chuỗi đếm liên tiếp. */
+void svmg_alarm_mark_unknown(svmg_alarm_t *a);
 
 const char *svmg_level_name(svmg_level_t l);
 const char *svmg_class_name(svmg_class_t c);

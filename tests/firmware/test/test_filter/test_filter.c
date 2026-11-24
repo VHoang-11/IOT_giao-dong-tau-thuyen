@@ -32,6 +32,17 @@ void test_I3_saturation(void) {
   uint8_t f = svmg_imu_raw_to_si(&r, &s);
   TEST_ASSERT_FLOAT_WITHIN(1e-3f, -19.6133f, s.az);
   TEST_ASSERT_BITS_HIGH(SVMG_IMU_F_SATURATED, f);
+  TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, s.valid, "giá trị bão hòa bị cắt, không phải phép đo: mẫu không hợp lệ");
+}
+void test_I4_saturation_per_axis_and_unused_gz(void) {
+  svmg_motion_sample_t s; uint8_t f;
+  svmg_imu_raw_t gx = {0, 0, 16384, 32767, 0, 0}; f = svmg_imu_raw_to_si(&gx, &s);
+  TEST_ASSERT_BITS_HIGH(SVMG_IMU_F_SATURATED, f); TEST_ASSERT_EQUAL_UINT8(0, s.valid);                 /* gx bão hòa: tốc độ roll sai */
+  svmg_imu_raw_t gy = {0, 0, 16384, 0, -32768, 0}; f = svmg_imu_raw_to_si(&gy, &s); TEST_ASSERT_EQUAL_UINT8(0, s.valid);
+  svmg_imu_raw_t ax = {32767, 0, 16384, 0, 0, 0}; f = svmg_imu_raw_to_si(&ax, &s); TEST_ASSERT_EQUAL_UINT8(0, s.valid);
+  svmg_imu_raw_t gz = {0, 0, 16384, 0, 0, 32767}; f = svmg_imu_raw_to_si(&gz, &s);
+  TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, f, "gz không dùng trong roll/pitch: bão hòa gz không làm mẫu hỏng"); TEST_ASSERT_EQUAL_UINT8(1, s.valid);
+  svmg_imu_raw_t ok = {1, -1, 16384, 5, -5, 5}; f = svmg_imu_raw_to_si(&ok, &s); TEST_ASSERT_EQUAL_UINT8(0, f); TEST_ASSERT_EQUAL_UINT8(1, s.valid);
 }
 
 /* ===== Nhóm A: gia tốc -> góc ===== */
@@ -180,15 +191,15 @@ void test_D1_D2_output_count_and_timestamps(void) {
   int outs = 0; float t_first = -1, t_second = -1;
   for (int i = 0; i < 200; i++) {
     svmg_motion_sample_t s = st_sample(0.05 * i, 0, 0, 0, 0);
-    svmg_sample2hz_t o;
-    if (svmg_pipeline_push(&pp, &s, &o)) { if (outs == 0) t_first = o.t_s; if (outs == 1) t_second = o.t_s; outs++; TEST_ASSERT_EQUAL_UINT8(10, o.n_valid); TEST_ASSERT_EQUAL_UINT8(0, o.flags); }
+    svmg_sample10hz_t o;
+    if (svmg_pipeline_push(&pp, &s, &o)) { if (outs == 0) t_first = o.t_s; if (outs == 1) t_second = o.t_s; outs++; TEST_ASSERT_EQUAL_UINT8(2, o.n_valid); TEST_ASSERT_EQUAL_UINT8(0, o.flags & ~SVMG_PIPE_F_WARMUP); }
   }
-  TEST_ASSERT_EQUAL_INT(20, outs);
-  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.45f, t_first);
-  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.95f, t_second);
-  pipe_new(); outs = 0;
-  for (int i = 0; i < 1000; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0, 0, 0, 0); svmg_sample2hz_t o; outs += svmg_pipeline_push(&pp, &s, &o); }
   TEST_ASSERT_EQUAL_INT(100, outs);
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.05f, t_first);
+  TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.15f, t_second);
+  pipe_new(); outs = 0;
+  for (int i = 0; i < 1000; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0, 0, 0, 0); svmg_sample10hz_t o; outs += svmg_pipeline_push(&pp, &s, &o); }
+  TEST_ASSERT_EQUAL_INT(500, outs);
 }
 
 /* Chạy tín hiệu roll xác định; trả về RMS roll [deg] của ngõ ra trong [t_from, t_to). */
@@ -200,7 +211,7 @@ static double run_roll(double amp_deg, double period_s, double bias_dps, double 
     double t = 0.05 * i, w = 2 * 3.141592653589793 / period_s;
     double roll = amp_deg * ST_D2R * sin(w * t), rate = amp_deg * ST_D2R * w * cos(w * t) + bias_dps * ST_D2R;
     svmg_motion_sample_t s = st_sample(t, roll, rate, 0, 0);
-    svmg_sample2hz_t o;
+    svmg_sample10hz_t o;
     if (svmg_pipeline_push(&pp, &s, &o)) {
       double r = o.roll_rad * ST_R2D;
       if (first) { if (first_roll_deg) *first_roll_deg = r; first = 0; }
@@ -222,7 +233,7 @@ void test_E1_E3_ship_like_roll(void) {
 void test_E2_static_tilt_from_first_output(void) {
   /* amp=0 + tư thế tĩnh 5 deg: dùng run riêng. */
   pipe_new();
-  svmg_sample2hz_t o; int got = 0;
+  svmg_sample10hz_t o; int got = 0;
   for (int i = 0; i < 10 && !got; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 5.0 * ST_D2R, 0, 0, 0); got = svmg_pipeline_push(&pp, &s, &o); }
   TEST_ASSERT_TRUE(got);
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 5.0f, (float)(o.roll_rad * ST_R2D));
@@ -235,7 +246,7 @@ void test_E4_gyro_bias_limit_documented(void) {
 
 void test_B8_invalid_and_nan_do_not_change_state(void) {
   pipe_new();
-  svmg_sample2hz_t o; int got = 0;
+  svmg_sample10hz_t o; int got = 0;
   for (int i = 0; i < 10; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0.1, 0, 0, 0); got = svmg_pipeline_push(&pp, &s, &o); }
   TEST_ASSERT_TRUE(got);
   float roll_before = o.roll_rad;
@@ -252,32 +263,113 @@ void test_B8_invalid_and_nan_do_not_change_state(void) {
 }
 void test_dead_bus_zero_accel_is_not_valid_measurement(void) {
   pipe_new();
-  svmg_sample2hz_t o; int got = 0;
+  svmg_sample10hz_t o; int got = 0;
   for (int i = 0; i < 10; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0.1, 0, 0, 0); got = svmg_pipeline_push(&pp, &s, &o); }
-  TEST_ASSERT_TRUE(got); TEST_ASSERT_EQUAL_UINT8(10, o.n_valid);
+  TEST_ASSERT_TRUE(got); TEST_ASSERT_EQUAL_UINT8(2, o.n_valid);
   for (int i = 10; i < 20; i++) { svmg_motion_sample_t s; memset(&s, 0, sizeof s); s.t = (float)(0.05 * i); s.valid = 1; got = svmg_pipeline_push(&pp, &s, &o); }
   TEST_ASSERT_TRUE(got);
   TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, o.n_valid, "toàn 0 (valid=1) phải không được tính là phép đo hợp lệ");
   TEST_ASSERT_BITS_HIGH(SVMG_PIPE_F_GATED, o.flags);
   /* một cú xóc ngắn (3/10 mẫu bị cổng) vẫn là khối hợp lệ */
   for (int i = 20; i < 30; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0.1, 0, 0, 0); if (i < 23) { s.ax = s.ay = s.az = 0; } got = svmg_pipeline_push(&pp, &s, &o); }
-  TEST_ASSERT_TRUE(got); TEST_ASSERT_EQUAL_UINT8(7, o.n_valid);
+  TEST_ASSERT_TRUE(got); TEST_ASSERT_EQUAL_UINT8(2, o.n_valid);
 }
-void test_pipeline_partial_block(void) {
+void test_pipeline_partial_block(void){
+ pipe_new();svmg_sample10hz_t o;svmg_motion_sample_t a=st_sample(0,0,0,0,0),b=st_sample(.05,0,0,0,0);
+ a.valid=0;TEST_ASSERT_FALSE(svmg_pipeline_push(&pp,&a,&o));TEST_ASSERT_TRUE(svmg_pipeline_push(&pp,&b,&o));
+ TEST_ASSERT_EQUAL_UINT8(1,o.n_valid);TEST_ASSERT_BITS_HIGH(SVMG_PIPE_F_PARTIAL,o.flags);
+}
+
+void test_timestamp_gap_boundaries_and_discontinuities(void) {
+  svmg_sample10hz_t o;
   pipe_new();
-  svmg_sample2hz_t o; int got = 0;
-  for (int i = 0; i < 10; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0.1, 0, 0, 0); if (i < 3) s.valid = 0; got = svmg_pipeline_push(&pp, &s, &o); }
-  TEST_ASSERT_TRUE(got);
-  TEST_ASSERT_EQUAL_UINT8(7, o.n_valid);
-  TEST_ASSERT_BITS_HIGH(SVMG_PIPE_F_PARTIAL, o.flags);
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_TRUE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.05f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_EQUAL_UINT32(0, pp.cnt_gap); /* nhịp 20 Hz bình thường */
+
+  pipe_new();
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_TRUE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.05f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.10f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.20f,.ax=0,.ay=0,.az=G,.valid=1}, &o)); /* mất 1 mẫu 20 Hz: 0,10 s */
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap);
+  TEST_ASSERT_TRUE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.25f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_BITS_HIGH(SVMG_PIPE_F_RESTARTED, o.flags);
+  TEST_ASSERT_EQUAL_UINT8(2, o.n_valid);
+
+  pipe_new();
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_TRUE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=pp.cfg.max_gap_s,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_EQUAL_UINT32(0, pp.cnt_gap); /* đúng tại max-gap vẫn được nhận */
+  TEST_ASSERT_EQUAL_UINT8(2, o.n_valid);
+  pipe_new();
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=nextafterf(pp.cfg.max_gap_s, INFINITY),.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap); /* ngay trên ngưỡng */
+
+  pipe_new();
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=1.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=1.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap); /* timestamp trùng */
+  pipe_new();
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=1.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.99f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap); /* lùi thời gian nhỏ */
+  pipe_new();
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=4000.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &(svmg_motion_sample_t){.t=0.0f,.ax=0,.ay=0,.az=G,.valid=1}, &o));
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap); /* bước lùi lớn nhưng không sát wrap 8192 */
 }
+
+static void assert_bad_timestamp_rejected(float t) {
+  pipe_new();
+  svmg_sample10hz_t o;
+  svmg_motion_sample_t good = st_sample(1.0, 0.0, 0.0, 0.0, 0.0);
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &good, &o)); /* đã có 1/2 mẫu hợp lệ trong khối */
+  TEST_ASSERT_TRUE(pp.cf.initialized); TEST_ASSERT_TRUE(pp.lp_init);
+  float cf_roll = pp.cf.roll;
+
+  svmg_motion_sample_t bad = st_sample(t, 1.0, 5.0, 0.0, 0.0); /* payload hợp lệ nhưng thời gian không hợp lệ */
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &bad, &o));
+  TEST_ASSERT_FALSE(pp.cf.initialized); TEST_ASSERT_EQUAL_UINT8(0, pp.lp_init);
+  TEST_ASSERT_EQUAL_UINT8(0, pp.phase); TEST_ASSERT_EQUAL_UINT8(0, pp.n_valid);
+  TEST_ASSERT_FALSE(pp.have_t); TEST_ASSERT_BITS_HIGH(1, pp.pending_restart);
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_invalid); TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, cf_roll, pp.cf.roll); /* reset, payload không được tích phân */
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, pp.lp[0].z1);
+  TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, pp.y[0]);
+  /* Sau lỗi thời gian, hai timestamp hữu hạn mới tạo segment/output hợp lệ. */
+  good = st_sample(10.0, 0.0, 0.0, 0.0, 0.0);
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &good, &o));
+  good = st_sample(10.05, 0.0, 0.0, 0.0, 0.0);
+  TEST_ASSERT_TRUE(svmg_pipeline_push(&pp, &good, &o));
+  TEST_ASSERT_TRUE(isfinite(o.t_s)); TEST_ASSERT_FLOAT_WITHIN(1e-5f, 10.05f, o.t_s);
+  TEST_ASSERT_EQUAL_UINT8(2, o.n_valid); TEST_ASSERT_BITS_HIGH(SVMG_PIPE_F_RESTARTED, o.flags);
+}
+
+void test_nonfinite_timestamps_fail_closed(void) {
+  assert_bad_timestamp_rejected(NAN);
+  assert_bad_timestamp_rejected(INFINITY);
+  assert_bad_timestamp_rejected(-INFINITY);
+}
+
+void test_invalid_timestamp_before_pipeline_initialization(void) {
+  pipe_new();
+  svmg_sample10hz_t o;
+  svmg_motion_sample_t bad = st_sample(NAN, 0.0, 0.0, 0.0, 0.0);
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &bad, &o));
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_invalid); TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap);
+  TEST_ASSERT_FALSE(pp.have_t); TEST_ASSERT_FALSE(pp.cf.initialized); TEST_ASSERT_FALSE(pp.lp_init);
+  TEST_ASSERT_EQUAL_UINT8(0, pp.phase); TEST_ASSERT_EQUAL_UINT8(0, pp.n_valid);
+}
+
 void test_B9_gap_restarts_filter(void) {
   pipe_new();
-  svmg_sample2hz_t o; int got;
+  svmg_sample10hz_t o; int got;
   for (int i = 0; i < 10; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0.1, 0, 0, 0); svmg_pipeline_push(&pp, &s, &o); }
   /* khoảng trống 2 s, tư thế mới 0.3 rad */
   got = 0;
-  for (int i = 0; i < 10; i++) { svmg_motion_sample_t s = st_sample(2.5 + 0.05 * i, 0.3, 0, 0, 0); got = svmg_pipeline_push(&pp, &s, &o); }
+  for (int i = 0; i < 2; i++) { svmg_motion_sample_t s = st_sample(2.5 + 0.05 * i, 0.3, 0, 0, 0); got = svmg_pipeline_push(&pp, &s, &o); }
   TEST_ASSERT_TRUE(got);
   TEST_ASSERT_BITS_HIGH(SVMG_PIPE_F_RESTARTED, o.flags);
   TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap);
@@ -285,7 +377,7 @@ void test_B9_gap_restarts_filter(void) {
 }
 void test_time_going_backwards_restarts(void) {
   pipe_new();
-  svmg_sample2hz_t o;
+  svmg_sample10hz_t o;
   for (int i = 0; i < 5; i++) { svmg_motion_sample_t s = st_sample(1.0 + 0.05 * i, 0.1, 0, 0, 0); svmg_pipeline_push(&pp, &s, &o); }
   svmg_motion_sample_t s = st_sample(0.0, 0.1, 0, 0, 0);
   svmg_pipeline_push(&pp, &s, &o);
@@ -293,23 +385,32 @@ void test_time_going_backwards_restarts(void) {
 }
 void test_clock_wrap_is_not_a_gap(void) {
   pipe_new();
-  svmg_sample2hz_t o; int outs = 0;
+  svmg_sample10hz_t o; int outs = 0;
   for (int i = 0; i < 20; i++) { svmg_motion_sample_t s = st_sample(8191.0 + 0.05 * i, 0.1, 0, 0, 0); outs += svmg_pipeline_push(&pp, &s, &o); }
   /* t quấn từ ~8192 về 0 giữa chừng */
   for (int i = 0; i < 20; i++) { svmg_motion_sample_t s = st_sample(0.05 * i, 0.1, 0, 0, 0); outs += svmg_pipeline_push(&pp, &s, &o); }
   TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, pp.cnt_gap, "quấn vòng đồng hồ không được tính là khoảng trống");
-  TEST_ASSERT_EQUAL_INT(4, outs);
+  TEST_ASSERT_EQUAL_INT(20, outs);
+}
+void test_large_backward_jump_is_not_mistaken_for_wrap(void) {
+  pipe_new();
+  svmg_sample10hz_t o;
+  svmg_motion_sample_t a = st_sample(4000.0, 0.1, 0, 0, 0);
+  svmg_motion_sample_t b = st_sample(0.0, 0.1, 0, 0, 0);
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &a, &o));
+  TEST_ASSERT_FALSE(svmg_pipeline_push(&pp, &b, &o));
+  TEST_ASSERT_EQUAL_UINT32(1, pp.cnt_gap);
 }
 void test_sizeof_pipeline_reported(void) {
   /* Ghi lại dung lượng RAM cho nhật ký; chặn phình to ngoài ý muốn. */
   TEST_MESSAGE("sizeof(svmg_pipeline_t) is reported below");
   char msg[64]; snprintf(msg, sizeof msg, "sizeof(svmg_pipeline_t)=%u", (unsigned)sizeof(svmg_pipeline_t)); TEST_MESSAGE(msg);
-  TEST_ASSERT_TRUE(sizeof(svmg_pipeline_t) < 256);
+  TEST_ASSERT_TRUE(sizeof(svmg_pipeline_t) < 512);
 }
 
 int main(void) {
   UNITY_BEGIN();
-  RUN_TEST(test_I1_accel_1g); RUN_TEST(test_I2_gyro_1dps); RUN_TEST(test_I3_saturation);
+  RUN_TEST(test_I1_accel_1g); RUN_TEST(test_I2_gyro_1dps); RUN_TEST(test_I3_saturation); RUN_TEST(test_I4_saturation_per_axis_and_unused_gz);
   RUN_TEST(test_A_angles); RUN_TEST(test_A6_gate);
   RUN_TEST(test_B1_first_sample_from_accel); RUN_TEST(test_B2_step_response); RUN_TEST(test_B3_tracking_constant_rate);
   RUN_TEST(test_B4_gyro_bias_equilibrium); RUN_TEST(test_B5_gated_integrates_gyro_only); RUN_TEST(test_B6_alpha_follows_dt);
@@ -320,6 +421,7 @@ int main(void) {
   RUN_TEST(test_D1_D2_output_count_and_timestamps);
   RUN_TEST(test_E1_E3_ship_like_roll); RUN_TEST(test_E2_static_tilt_from_first_output); RUN_TEST(test_E4_gyro_bias_limit_documented);
   RUN_TEST(test_B8_invalid_and_nan_do_not_change_state); RUN_TEST(test_dead_bus_zero_accel_is_not_valid_measurement); RUN_TEST(test_pipeline_partial_block); RUN_TEST(test_B9_gap_restarts_filter);
-  RUN_TEST(test_time_going_backwards_restarts); RUN_TEST(test_clock_wrap_is_not_a_gap); RUN_TEST(test_sizeof_pipeline_reported);
+  RUN_TEST(test_timestamp_gap_boundaries_and_discontinuities); RUN_TEST(test_nonfinite_timestamps_fail_closed); RUN_TEST(test_invalid_timestamp_before_pipeline_initialization);
+  RUN_TEST(test_time_going_backwards_restarts); RUN_TEST(test_clock_wrap_is_not_a_gap); RUN_TEST(test_large_backward_jump_is_not_mistaken_for_wrap); RUN_TEST(test_sizeof_pipeline_reported);
   return UNITY_END();
 }

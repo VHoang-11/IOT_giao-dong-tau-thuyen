@@ -1,0 +1,373 @@
+{
+ "analytic_checks": {
+  "failed": [],
+  "passed": 123,
+  "total": 123
+ },
+ "contract": "ml/docs/feature_contract_23_v0.2.json",
+ "contract_sha256": "36a7e59b270a3127fc59659780e82783fb4618f57ad96b4395dc488d3d866a17",
+ "contract_validation": {
+  "blocking_inconsistency": false,
+  "open_issues": []
+ },
+ "environment": {
+  "numpy": "2.4.6",
+  "pandas": "3.0.3",
+  "python": "3.14.10"
+ },
+ "feature_order": [
+  "roll_rms_60",
+  "roll_std_60",
+  "roll_mean_60",
+  "roll_peak_to_peak_60",
+  "roll_abs_p95_60",
+  "roll_abs_max_60",
+  "roll_iqr_60",
+  "roll_diff_rms_60",
+  "roll_mean_180",
+  "roll_median_180",
+  "roll_mean_abs_180",
+  "roll_dominant_sign_ratio_180",
+  "roll_segment_mean_std_180",
+  "roll_mean_shift_180",
+  "roll_rms_early_60",
+  "roll_rms_late_60",
+  "roll_rms_ratio_180",
+  "roll_rms_slope_180",
+  "roll_rms_trend_r2_180",
+  "roll_p95_trend_slope_180",
+  "pitch_rms_60",
+  "pitch_std_60",
+  "pitch_peak_to_peak_60"
+ ],
+ "feature_schema_version": "svmg-angle-23-v1",
+ "files": {
+  "ml/data/parity/real/cases.json": {
+   "bytes": 51383,
+   "sha256": "cefded692b46a00d761cb58071dd1086bb4950b7b972c4836a4450255a83a214",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/expected_features.csv": {
+   "bytes": 265258,
+   "sha256": "d7bf1b22c88e95129bec27ca9407ed883f303d8b3b5bd2eddbb4c3bb70011fe4",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/golden_vectors.jsonl": {
+   "bytes": 150305,
+   "sha256": "e8b1eda54c8f6a4d4dc684595738781fe8521d31002deec169b3e84810dc8fed",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/inputs/REAL_hohai_max_roll_std.csv": {
+   "bytes": 93055,
+   "sha256": "fb434ddb932559e8d58b95c7878ea9770e0724020f2e9d2f0dbb8f94027f1f6e",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/inputs/REAL_hohai_min_roll_std.csv": {
+   "bytes": 94076,
+   "sha256": "0c8c129bb32a7e181501ed21fb91a8ea97967bd0a2e14d049a0acadbcbb70dc3",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/inputs/REAL_seafar_longest_segment_middle.csv": {
+   "bytes": 86651,
+   "sha256": "ba9814addfaa7bbdcb7a72a63153174cf7f21dcd5b23736f5c18c6bb12cc52f5",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/inputs/REAL_seafar_max_roll_std.csv": {
+   "bytes": 88595,
+   "sha256": "d06c19f3b03b3471fcc7cab6ff6328b7a8596fa3736a21ba46da2d2469b6a9d2",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/data/parity/real/inputs/REAL_southampton_run14_end.csv": {
+   "bytes": 104163,
+   "sha256": "4eecd9a13068e3c521eb36e8fc590ba105ba7cbfb06629b85efff5e5ee8937a1",
+   "suite": "real",
+   "tracked_in_git": false
+  },
+  "ml/parity/fixtures/interchange_format.json": {
+   "bytes": 4284,
+   "sha256": "2b79f0e48d2a90b3a4b17e8fe60a93a23021283cda058fe9a62c9469ceb74df7",
+   "suite": "shared",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/cases.json": {
+   "bytes": 253245,
+   "sha256": "c18b84a17099ac84bf66080bca736c159c889d7de8f77165ef2d85fdbed70a7d",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/expected_features.csv": {
+   "bytes": 1223260,
+   "sha256": "97390d5ed492b550491fb454ea932a05cffe72f74d1199897f6d30190b9d3933",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/golden_vectors.jsonl": {
+   "bytes": 751549,
+   "sha256": "5fedb2eda8b19d89727a1e0b727a27a6f0039acec616a664e9bca6778d2cbacf",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN01_const_zero.csv": {
+   "bytes": 47169,
+   "sha256": "0efd1c0be13cf5a84af0ed536356b87f617c63b582ad1a8293c483fb4745c740",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN02_const_roll_pos.csv": {
+   "bytes": 47169,
+   "sha256": "49183dfda0fc267862a24800e56f804822e452e58aa943e0ba40a66914cbcdc7",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN03_const_roll_neg_pitch_pos.csv": {
+   "bytes": 51371,
+   "sha256": "86af16f82354768c9ceae0750251bf66a5fbd590b24dc98975d1d1512aca2853",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN04_sine_roll.csv": {
+   "bytes": 60446,
+   "sha256": "a1ef3eb3d6abe5c3ce2fd06f72ebf20bcd88b4b4f70364e7e246ebb117fa6312",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN05_sine_pitch.csv": {
+   "bytes": 60993,
+   "sha256": "63a8f58b0d130bc763f54c86ce91b8d070620e7ebcfa79c7e432d1a36950b620",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN06_mixed_order_detector.csv": {
+   "bytes": 74706,
+   "sha256": "8452b615bc5a28af18950e6ef7d7837c4ab295a3b608e29826128cb68a3bf811",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN07_growing_amplitude.csv": {
+   "bytes": 60726,
+   "sha256": "8995072ffb79cf6fbd21effa7191cd0c09e1d19291a65833fe12927f0f70d1a3",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN08_decreasing_amplitude.csv": {
+   "bytes": 62722,
+   "sha256": "d4f7177a73b6fcf69f14a63321ebd26ec606be491301c79d8f2985a238dcde2f",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN09_block_step_linear.csv": {
+   "bytes": 61594,
+   "sha256": "b199e129332825babea89fae87d4dca97db567a4b47d888d0d0e5f6844732274",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN10_block_step_nonlinear.csv": {
+   "bytes": 61594,
+   "sha256": "8464a46c34f7b9b933bd1824155c8edf4a8748e68bfac4f199c4483def7ac52b",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN11_offset_constant_amplitude.csv": {
+   "bytes": 59292,
+   "sha256": "a4333ea82c27d3c80dc63ea9fff9b9886af57d5cc22399007a1c1ad989e29660",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN12_spike_window_boundaries.csv": {
+   "bytes": 62830,
+   "sha256": "c9d9fff7d44c99975b557c72327edb31f5421617552863a58186f9a98614e234",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN13_ramp_quantiles.csv": {
+   "bytes": 72962,
+   "sha256": "d0d16463665d2b0d3ec1ec5fbe9083da977b3d01a6ccb75270eaaa645a34b8db",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN14_square_wave_quantile_discontinuity.csv": {
+   "bytes": 50319,
+   "sha256": "16adf77dc0fb6a51d72e69f660138ef3d45a98f59d9b40e07a65c220d55c0c8b",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN15_low_amplitude.csv": {
+   "bytes": 89628,
+   "sha256": "31abc3ba5efaef11a1bd6a906076f3d8b0a362e006d3df3bd7ea586af639a703",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN16_sign_with_exact_zeros.csv": {
+   "bytes": 47799,
+   "sha256": "38cbcf1b6d9f662c9a277ae9c38db5b64c8013297cc50f11bca0a74a078e7664",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN17_zero_early_block.csv": {
+   "bytes": 55785,
+   "sha256": "631f92cadd2a5e2f4e7653adf25dd09871ff08d893152cb7f40ef7f07aef26d7",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN18_epsilon_below.csv": {
+   "bytes": 64938,
+   "sha256": "b1b334e8096d01155007f49dea44fcf87481605577496f90174a62adfef52140",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN19_epsilon_above.csv": {
+   "bytes": 64669,
+   "sha256": "d71152fbc4bfea3c6bc0576caa9d0e0bd12e8ca437945f27bd345ebcb5da09b3",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN20_insufficient_history.csv": {
+   "bytes": 53872,
+   "sha256": "b4d06146a8782b3a7b9a75ce1bf28c6a5145eb4c2f5a684304825d0e75bdc5a7",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN21_isolated_nan.csv": {
+   "bytes": 76573,
+   "sha256": "b30c54972bc05014ee99cc63aa8e403ff70f6d89993b566b3ba8d69ad83a3a74",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN22_nan_excess.csv": {
+   "bytes": 76464,
+   "sha256": "419c2c8566dcb3e63d5117eed85a5d7a1736d18803e018eb274dd9f9e24300c7",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN23_timestamp_gap.csv": {
+   "bytes": 76557,
+   "sha256": "5121f7c467a738ceccfedc56242ec7866097eaac6a9af43334c9636ce551a726",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN24_single_dropped_sample.csv": {
+   "bytes": 76671,
+   "sha256": "202be2821d226f8fe80a19c64305a8da3c29321e3234a2d8140501562da2e851",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN25_large_amplitude_units.csv": {
+   "bytes": 73057,
+   "sha256": "c88dcde98f4afb46dd29eb09fe74f56df3eefdc58ef24d625f1872d62d47485c",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN26_infinite_values.csv": {
+   "bytes": 76695,
+   "sha256": "d88d7cd3de01476c6a1ba97138d8c2ecbdf8d703fbb700f2220e35140d2e0d17",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN27_block_coverage_rule.csv": {
+   "bytes": 76464,
+   "sha256": "8f1c13b39f75ea440ff4f6ec42e795ce4da85b9f6fe5ab172d80606d18a49f08",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN28_negative_offset_sine.csv": {
+   "bytes": 77297,
+   "sha256": "a0de973c36ab68292d0e5ef026981f1bba31c38ced7031de1825a66181ce9fc5",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN29_block_step_symmetric.csv": {
+   "bytes": 62026,
+   "sha256": "cf0cc710591d3507ece7435d9087830ab629facfd8acef9a79be89e6a12cef9c",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN30_permuted_blocks.csv": {
+   "bytes": 76913,
+   "sha256": "ba5f0f8c1b9d197de6be834b5ef4966dfcf51853205b624634e4a77cc2d83b8a",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/synthetic/inputs/SYN31_large_offset_small_variation.csv": {
+   "bytes": 72130,
+   "sha256": "c6581ca156c9cc974fab90431ea8b717c27c7ce478e1ab2111792ba341bc99bb",
+   "suite": "synthetic",
+   "tracked_in_git": true
+  },
+  "ml/parity/fixtures/tolerance_spec.json": {
+   "bytes": 4996,
+   "sha256": "7213f2436e0034b0e9d0abf75b9ea67815fcb8845f9be8fe826773d9120561bc",
+   "suite": "shared",
+   "tracked_in_git": true
+  }
+ },
+ "generator": "python -m ml.parity.golden",
+ "parity_status": [
+  "PYTHON_REFERENCE_READY",
+  "C_PARITY_PENDING"
+ ],
+ "real_cross_check": {
+  "cases": [
+   {
+    "case_id": "REAL_hohai_max_roll_std",
+    "max_abs_difference": 0.0,
+    "validity_mismatch": 0,
+    "values_compared": 293
+   },
+   {
+    "case_id": "REAL_hohai_min_roll_std",
+    "max_abs_difference": 0.0,
+    "validity_mismatch": 0,
+    "values_compared": 293
+   },
+   {
+    "case_id": "REAL_seafar_longest_segment_middle",
+    "max_abs_difference": 0.0,
+    "validity_mismatch": 0,
+    "values_compared": 293
+   },
+   {
+    "case_id": "REAL_seafar_max_roll_std",
+    "max_abs_difference": 0.0,
+    "validity_mismatch": 0,
+    "values_compared": 293
+   },
+   {
+    "case_id": "REAL_southampton_run14_end",
+    "max_abs_difference": 0.0,
+    "validity_mismatch": 0,
+    "values_compared": 293
+   }
+  ],
+  "passed": true
+ },
+ "reference_sources_sha256": {
+  "ml/features/calculations.py": "e8f1313439a2a4c6ab16d5bc06b31cfa885bf9bb07394dafe49844b5ecba9497",
+  "ml/features/config.yaml": "e4640bb2b18e7e13f4696125c4f9bf65aaef960319c2a7fd487318dd6e9a7271",
+  "ml/features/extractor.py": "b7288a64b73369f2032ffe43ffa0833842f85c9344a1cb5acfaf6686c7934537",
+  "ml/features/spec.py": "65c13d22e3604bb1b5b47b268ecd42f4dc06740936dffd5fe99f861cde7e48d2"
+ },
+ "schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+ "schema_version": "svmg-angle23-0.2.0-proposal",
+ "semantic_contract_version": "svmg-angle23-semantics-1.0.0",
+ "suites": {
+  "real": {
+   "cases": 5,
+   "endpoints": 95,
+   "expected_rows": 2185
+  },
+  "synthetic": {
+   "cases": 31,
+   "endpoints": 488,
+   "expected_rows": 11224
+  }
+ },
+ "validity_policy_version": "svmg-angle23-validity-1.0.0",
+ "window_index_rule_consistent": true
+}

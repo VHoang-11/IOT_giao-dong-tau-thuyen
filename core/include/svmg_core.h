@@ -5,51 +5,41 @@
 #ifndef SVMG_CORE_H
 #define SVMG_CORE_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /* ── Cấu trúc dữ liệu ── */
 
 typedef struct {
-    float ax, ay, az;   // m/s²
-    float gx, gy, gz;   // rad/s
-    float t;            // s (thời gian mô phỏng)
-    uint8_t source_mode; // 0 = SENSOR, 1 = SIMULATION
-    bool valid;
+  float ax, ay, az;    // m/s²
+  float gx, gy, gz;    // rad/s
+  float t;             // s (thời gian mô phỏng)
+  uint8_t source_mode; // 0 = SENSOR, 1 = SIMULATION
+  bool valid;
 } MotionSample;
 
 typedef enum {
-    CLASS_NORMAL = 0,
-    CLASS_HIGH_ROLL,
-    CLASS_PERSISTENT_OFFSET,
-    CLASS_AMPLITUDE_GROWTH,
-    CLASS_UNKNOWN,
-    CLASS_FAULT
+  CLASS_NORMAL = 0,
+  CLASS_HIGH_ROLL,
+  CLASS_PERSISTENT_OFFSET,
+  CLASS_AMPLITUDE_GROWTH,
+  CLASS_UNKNOWN,
+  CLASS_FAULT
 } MotionClass;
 
 typedef enum {
-    ALARM_NORMAL = 0,
-    ALARM_CAUTION,
-    ALARM_WARNING,
-    ALARM_CRITICAL,
-    ALARM_ACKED
+  ALARM_NORMAL = 0,
+  ALARM_CAUTION,
+  ALARM_WARNING,
+  ALARM_CRITICAL,
+  ALARM_ACKED
 } AlarmLevel;
 
+#include "svmg_feature_schema.h"
 typedef struct {
-    float rms_roll;
-    float p95_roll;
-    float rms_pitch;
-    float p95_pitch;
-    float max_abs_roll;
-    float energy_roll;
-    float zero_crossing_rate;
-    float mean_roll;
-    float mean_pitch;
-    float std_roll;
-    float trend_rms_slope;
-    float heel_duration_s;
-    float data_quality_pct;
-    bool sensor_ok;
+#define SVMG_CONTRACT_FIELD(name) float name;
+  SVMG_FEATURE_FIELDS(SVMG_CONTRACT_FIELD)
+#undef SVMG_CONTRACT_FIELD
 } FeatureVector;
 
 /* ── API ── */

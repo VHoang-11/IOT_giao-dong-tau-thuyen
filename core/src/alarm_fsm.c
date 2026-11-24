@@ -70,7 +70,9 @@ static int is_anomaly(svmg_class_t c) {
   return c == SVMG_HIGH_ROLL || c == SVMG_PERSISTENT_OFFSET || c == SVMG_AMPLITUDE_GROWTH;
 }
 
-/* Chuyển sang mức mới (mức mới khác mức hiện tại). */
+/* Chuyển sang mức mới (mức mới khác mức hiện tại).
+ * alarm_id được cấp NGAY khi rời NORMAL (CAUTION): schema event bắt buộc alarm_id kiểu chuỗi và backend mở
+ * vòng đời cảnh báo từ mọi mức khác NORMAL. Thời điểm "raised" cho T_ack/MTTA vẫn là lúc chạm WARNING. */
 static void go(svmg_alarm_t *a, evw_t *w, svmg_level_t to, uint32_t now_ms) {
   svmg_level_t prev = a->level;
   uint32_t id = a->alarm_id;
@@ -81,15 +83,29 @@ static void go(svmg_alarm_t *a, evw_t *w, svmg_level_t to, uint32_t now_ms) {
     a->alarm_id = 0; a->acked = 0; a->muted = 0; a->cls = SVMG_NORMAL; a->clear_count = 0;
     return;
   }
-  if (to >= SVMG_LVL_WARNING) {
-    if (a->alarm_id == 0) { a->alarm_id = a->next_id++; a->n_raised++; a->raised_ms = now_ms; }
-    if (to == SVMG_LVL_CRITICAL && prev != SVMG_LVL_CRITICAL) {
-      a->acked = 0; a->muted = 0;                    /* mức mới cao hơn -> phải được xác nhận lại */
-    }
-    if (prev < SVMG_LVL_WARNING) { a->acked = 0; a->muted = 0; }
+  if (a->alarm_id == 0) a->alarm_id = a->next_id++;
+  if (to >= SVMG_LVL_WARNING && prev < SVMG_LVL_WARNING) {
+    a->n_raised++; a->raised_ms = now_ms;
+    a->acked = 0; a->muted = 0;
+  }
+  if (to == SVMG_LVL_CRITICAL && prev != SVMG_LVL_CRITICAL) {
+    a->acked = 0; a->muted = 0;                      /* mức mới cao hơn -> phải được xác nhận lại */
   }
   a->level = to;
   emit(w, SVMG_EV_ALARM_STATE, a, prev, SVMG_ACKBY_NONE, 0, a->alarm_id);
+}
+
+/* Lớp ghi vào sự kiện phải là một trong 4 lớp hợp lệ của schema (không UNKNOWN/FAULT). Ngưỡng cứng khi mô hình
+ * không cho lớp bất thường nào => HIGH_ROLL (|roll| >= phi_hard là chuyển động biên độ lớn). */
+static svmg_class_t event_class(svmg_class_t c, int hard) {
+  if (c == SVMG_HIGH_ROLL || c == SVMG_PERSISTENT_OFFSET || c == SVMG_AMPLITUDE_GROWTH) return c;
+  return hard ? SVMG_HIGH_ROLL : SVMG_NORMAL;
+}
+
+void svmg_alarm_mark_unknown(svmg_alarm_t *a) {
+  a->status = SVMG_ST_UNKNOWN;       /* dữ liệu cũ không còn hiệu lực: LED không được hiển thị xanh */
+  a->streak = 0; a->streak_cls = SVMG_NORMAL;
+  a->clear_count = 0;                /* khoảng mù cắt đứt tính liên tục của điều kiện giải tỏa */
 }
 
 int svmg_alarm_update(svmg_alarm_t *a, const svmg_alarm_in_t *in, svmg_event_t *ev) {
@@ -108,18 +124,20 @@ int svmg_alarm_update(svmg_alarm_t *a, const svmg_alarm_in_t *in, svmg_event_t *
       else { a->streak_cls = in->cls; a->streak = 1; }
       a->cls = in->cls;
     } else { a->streak = 0; a->streak_cls = SVMG_NORMAL; }
-  }                                 /* UNKNOWN/FAULT: giữ nguyên chuỗi đếm, không tiến tới giải tỏa */
+  } else {
+    a->streak = 0; a->streak_cls = SVMG_NORMAL;   /* "N lần cập nhật LIÊN TIẾP": khoảng mù cắt đứt chuỗi */
+  }
 
   svmg_level_t target = SVMG_LVL_NORMAL;
   if (in->hard) target = SVMG_LVL_CRITICAL;
   else if (anomaly && a->streak >= a->cfg.debounce_n) target = SVMG_LVL_WARNING;
   else if (anomaly || mai_high) target = SVMG_LVL_CAUTION;
 
-  if (cond) a->clear_count = 0;
-  else if (ok && a->clear_count < 255) a->clear_count++;
+  if (cond || !ok) a->clear_count = 0;               /* giải tỏa cần 30 s LIÊN TỤC hết điều kiện, mù dữ liệu không tính */
+  else if (a->clear_count < 255) a->clear_count++;
 
   if (target > a->level) {
-    if (in->hard && a->cls == SVMG_NORMAL) a->cls = in->cls;
+    if (in->hard && a->cls == SVMG_NORMAL) a->cls = event_class(in->cls, 1);
     if (target == SVMG_LVL_CRITICAL && a->level == SVMG_LVL_WARNING) a->n_escalated++;
     go(a, &w, target, in->now_ms);
   } else if (a->level != SVMG_LVL_NORMAL && !cond && a->clear_count >= a->cfg.clear_updates) {
@@ -133,6 +151,7 @@ int svmg_alarm_force_critical(svmg_alarm_t *a, float t_sim_s, uint32_t now_ms, s
   a->t_sim_s = t_sim_s;
   a->clear_count = 0;
   if (a->level < SVMG_LVL_CRITICAL) {
+    if (a->cls == SVMG_NORMAL) a->cls = SVMG_HIGH_ROLL;
     if (a->level == SVMG_LVL_WARNING) a->n_escalated++;
     go(a, &w, SVMG_LVL_CRITICAL, now_ms);
   }

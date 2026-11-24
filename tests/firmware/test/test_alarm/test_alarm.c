@@ -33,7 +33,7 @@ void test_caution_then_warning_after_N(void) {
   fresh(3);
   int n = OKU(SVMG_HIGH_ROLL, 100);                       /* lần 1 -> CAUTION */
   TEST_ASSERT_EQUAL_INT(1, n); TEST_ASSERT_EQUAL_INT(SVMG_LVL_CAUTION, A.level);
-  TEST_ASSERT_EQUAL_UINT32(0, EV[0].alarm_id);            /* CAUTION chưa có alarm_id */
+  TEST_ASSERT_EQUAL_UINT32(1, EV[0].alarm_id);            /* alarm_id cấp ngay từ CAUTION (schema event bắt buộc alarm_id) */
   svmg_alarm_out_t o = outs(0); TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_ON, o.led_y); TEST_ASSERT_EQUAL_UINT8(SVMG_BUZ_OFF, o.buzzer);
   TEST_ASSERT_EQUAL_INT(0, OKU(SVMG_HIGH_ROLL, 200));     /* lần 2: vẫn CAUTION, không sự kiện */
   TEST_ASSERT_EQUAL_INT(SVMG_LVL_CAUTION, A.level);
@@ -212,6 +212,66 @@ void test_cfg_update_keeps_state(void) {
   TEST_ASSERT_EQUAL_UINT16(300, A.cfg.max_mute_s);                                 /* trần mute 300 s không thể nới */
 }
 
+
+/* ---- Lỗi biên do rà soát phát hiện (tests/firmware/audit) và contract ---- */
+void test_streak_must_be_consecutive_across_blind_updates(void) {
+  fresh(3);
+  OKU(SVMG_HIGH_ROLL, 0); OKU(SVMG_HIGH_ROLL, 0);
+  for (int i = 0; i < 20; i++) upd(SVMG_UNKNOWN, SVMG_ST_UNKNOWN, 0, 0, 0);
+  OKU(SVMG_HIGH_ROLL, 0);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(SVMG_LVL_CAUTION, A.level, "HIGH,HIGH,20xUNKNOWN,HIGH không phải 3 lần liên tiếp");
+  TEST_ASSERT_EQUAL_UINT8(1, A.streak);
+}
+void test_clear_must_be_continuous_across_blind_updates(void) {
+  fresh(3); to_warning(0);
+  for (int i = 0; i < 5; i++) OKU(SVMG_NORMAL, 0);
+  for (int i = 0; i < 20; i++) upd(SVMG_UNKNOWN, SVMG_ST_UNKNOWN, 0, 0, 0);
+  OKU(SVMG_NORMAL, 0);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(SVMG_LVL_WARNING, A.level, "5xNORMAL,20xUNKNOWN,1xNORMAL không phải 30 s liên tục");
+  for (int i = 0; i < 5; i++) OKU(SVMG_NORMAL, 0);
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_NORMAL, A.level);                               /* đủ 6 lần liên tục thật thì mới giải tỏa */
+}
+void test_mark_unknown_turns_led_off_green_immediately(void) {
+  fresh(3);
+  for (int i = 0; i < 3; i++) OKU(SVMG_NORMAL, 0);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_ON, outs(0).led_g);
+  svmg_alarm_mark_unknown(&A);
+  svmg_alarm_out_t o = outs(0);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_OFF, o.led_g); TEST_ASSERT_EQUAL_UINT8(SVMG_OUT_BLINK_SLOW, o.led_y);
+}
+void test_event_class_is_always_one_of_four_schema_values(void) {
+  fresh(3);                                            /* ngưỡng cứng lúc khởi động nguội: lớp UNKNOWN */
+  upd(SVMG_UNKNOWN, SVMG_ST_UNKNOWN, 0, 1, 0);
+  TEST_ASSERT_TRUE(EV[0].cls <= SVMG_AMPLITUDE_GROWTH);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_HIGH_ROLL, EV[0].cls);
+  fresh(3); svmg_alarm_force_critical(&A, 1.0f, 0, EV);
+  TEST_ASSERT_TRUE(EV[0].cls <= SVMG_AMPLITUDE_GROWTH);
+  fresh(3); upd(SVMG_FAULT, SVMG_ST_FAULT, 0, 1, 0);
+  TEST_ASSERT_TRUE(EV[0].cls <= SVMG_AMPLITUDE_GROWTH);
+}
+void test_every_state_event_has_alarm_id_and_prev_level_chain(void) {
+  fresh(3);
+  int last_level = SVMG_LVL_NORMAL; uint32_t id = 0;
+  svmg_class_t seq[] = { SVMG_HIGH_ROLL, SVMG_HIGH_ROLL, SVMG_HIGH_ROLL, SVMG_NORMAL, SVMG_NORMAL, SVMG_NORMAL, SVMG_NORMAL, SVMG_NORMAL, SVMG_NORMAL, SVMG_NORMAL };
+  for (unsigned i = 0; i < sizeof seq / sizeof seq[0]; i++) {
+    int n = OKU(seq[i], 0);
+    for (int k = 0; k < n; k++) {
+      TEST_ASSERT_TRUE_MESSAGE(EV[k].alarm_id != 0, "mọi ALARM_STATE phải mang alarm_id (kể cả CAUTION và CLEARED)");
+      TEST_ASSERT_EQUAL_INT(last_level, EV[k].prev_level);          /* chuỗi prev_level liền mạch */
+      if (id) TEST_ASSERT_EQUAL_UINT32(id, EV[k].alarm_id);
+      id = EV[k].alarm_id; last_level = EV[k].level;
+    }
+  }
+  TEST_ASSERT_EQUAL_INT(SVMG_LVL_NORMAL, last_level);               /* kết thúc bằng CLEARED */
+}
+void test_ack_event_keeps_level_and_carries_source(void) {
+  fresh(3); to_warning(1000);
+  int n = svmg_alarm_ack(&A, SVMG_ACKBY_REMOTE, 2000, EV, NULL);
+  TEST_ASSERT_EQUAL_INT(1, n);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_LVL_WARNING, EV[0].level); TEST_ASSERT_EQUAL_UINT8(SVMG_LVL_WARNING, EV[0].prev_level);
+  TEST_ASSERT_EQUAL_UINT8(SVMG_ACKBY_REMOTE, EV[0].acked_by); TEST_ASSERT_EQUAL_UINT32(1, EV[0].alarm_id);
+}
+
 /* ---- Thuộc tính an toàn bằng thao tác ngẫu nhiên (không thể "tắt" cảnh báo cục bộ) ---- */
 void test_property_no_operation_sequence_disables_local_alarm(void) {
   uint32_t rng = 0xC0FFEEu;
@@ -224,7 +284,12 @@ void test_property_no_operation_sequence_disables_local_alarm(void) {
         case 0: { svmg_class_t c = (svmg_class_t)(st_rng(&rng) % 6); svmg_status_t s = (svmg_status_t)(st_rng(&rng) % 3);
                   int hard = (st_rng(&rng) % 8) == 0; int mai = (int)(st_rng(&rng) % 101);
                   cond_false = !(hard || (s == SVMG_ST_OK && (c == SVMG_HIGH_ROLL || c == SVMG_PERSISTENT_OFFSET || c == SVMG_AMPLITUDE_GROWTH || mai >= A.cfg.mai_caution)));
-                  upd(c, s, mai, hard, now); break; }
+                  int ne = upd(c, s, mai, hard, now);
+                  for (int k = 0; k < ne; k++) {              /* mọi sự kiện: lớp thuộc 4 giá trị schema, alarm_id khác 0 */
+                    TEST_ASSERT_TRUE(EV[k].cls <= SVMG_AMPLITUDE_GROWTH);
+                    TEST_ASSERT_TRUE(EV[k].alarm_id != 0);
+                  }
+                  break; }
         case 1: svmg_alarm_ack(&A, SVMG_ACKBY_REMOTE, now, EV, NULL); break;
         case 2: svmg_alarm_mute(&A, (uint16_t)(st_rng(&rng) % 400), now, EV, NULL); break;
         case 3: now += st_rng(&rng) % 30000u; svmg_alarm_tick(&A, now, EV); break;
@@ -256,6 +321,9 @@ int main(void) {
   RUN_TEST(test_reescalation_unacks); RUN_TEST(test_clear_needs_6_updates_and_new_alarm_gets_new_id);
   RUN_TEST(test_flapping_same_alarm_continues); RUN_TEST(test_unknown_and_fault_never_clear_nor_raise);
   RUN_TEST(test_mtta_statistics); RUN_TEST(test_time_in_event_matches_sim_clock); RUN_TEST(test_cfg_update_keeps_state);
+  RUN_TEST(test_streak_must_be_consecutive_across_blind_updates); RUN_TEST(test_clear_must_be_continuous_across_blind_updates);
+  RUN_TEST(test_mark_unknown_turns_led_off_green_immediately); RUN_TEST(test_event_class_is_always_one_of_four_schema_values);
+  RUN_TEST(test_every_state_event_has_alarm_id_and_prev_level_chain); RUN_TEST(test_ack_event_keeps_level_and_carries_source);
   RUN_TEST(test_property_no_operation_sequence_disables_local_alarm);
   return UNITY_END();
 }

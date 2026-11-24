@@ -1,5 +1,6 @@
-/* svmg_decision.h - M1-04: lớp ngưỡng cứng (safety envelope), chỉ số MAI, Baseline B.
- * Mọi ngưỡng ở đây là tham số DEMO, không phải ngưỡng an toàn hàng hải (đề cương mục 5.3, 7.4).
+/* svmg_decision.h - M1-04: lớp ngưỡng cứng (safety.c), chỉ số MAI (mai.c), Baseline B (baseline.c).
+ * Baseline B và MAI dùng bộ 23 đặc trưng của contract (đề cương 7.4: cùng nhóm đặc trưng với RF để so sánh công bằng).
+ * Mọi ngưỡng là tham số DEMO, không phải ngưỡng an toàn hàng hải (đề cương 5.3, 7.4).
  */
 #ifndef SVMG_DECISION_H
 #define SVMG_DECISION_H
@@ -11,7 +12,7 @@
 extern "C" {
 #endif
 
-/* ---------------- Lớp ngưỡng cứng ----------------
+/* ---------------- Lớp ngưỡng cứng (safety.c) ----------------
  * |roll| >= phi_hard liên tục >= dwell_s  ->  active (CRITICAL bất kể mô hình).
  * phi_hard luôn bị kẹp vào [15, 25] độ: lệnh/cấu hình từ xa không thể nới ra ngoài. */
 #define SVMG_PHI_HARD_MIN_DEG     15.0f
@@ -35,7 +36,8 @@ void  svmg_safety_reset(svmg_safety_t *s);
 int   svmg_safety_push(svmg_safety_t *s, float t_s, float roll_deg, uint8_t valid);
 
 /* ---------------- MAI (Motion Anomaly Index, 0..100) ----------------
- * MAI = 100 * min(1, max(r_amp, r_off, r_trend)); không phải xác suất rủi ro. */
+ * MAI = 100 * min(1, max(r_amp, r_off, r_trend)); không phải xác suất rủi ro.
+ * r_amp = rms_roll/A_ref ; r_off = |mean_roll|/B_ref ; r_trend = max(0, trend_rms_slope)/G_ref. */
 typedef struct { float a_ref_deg, b_ref_deg, g_ref_deg_per_min; } svmg_mai_params_t;
 typedef struct {
   uint8_t value;       /* 0..100 */
@@ -46,21 +48,25 @@ typedef struct {
 void svmg_mai_default(svmg_mai_params_t *p);
 void svmg_mai_compute(const svmg_mai_params_t *p, const svmg_features_t *f, svmg_mai_t *out);
 
-/* ---------------- Baseline B (luật nhiều đặc trưng) ----------------
- * Ưu tiên như quy tắc nhãn: HIGH_ROLL > AMPLITUDE_GROWTH > PERSISTENT_OFFSET > NORMAL.
- * Giá trị mặc định chỉ là điểm khởi đầu; M2 xuất baseline_params.json sau khi chỉnh trên validation. */
+/* Baseline B uses angle-23 only: std60 for dynamic amplitude, raw RMS slope with
+ * a short-mean gate for growth, sign ratio and a long/short mean heuristic for offset.
+ * off_heel_s is an equivalent-duration demo threshold, NOT measured continuous heel.
+ * grow_max_heel_s is retained for parameter-source compatibility but unused.
+ * See contracts/features.md; M2 must recalibrate defaults on validation data. */
 typedef struct {
-  float hi_rms_deg;        /* HIGH_ROLL nếu rms_roll >= */
-  float off_mean_deg;      /* PERSISTENT_OFFSET nếu |mean_roll| >= ... */
-  float off_same_sign;     /* ... và same_sign_ratio >= */
-  float grow_trend;        /* AMPLITUDE_GROWTH nếu trend >= (deg/phút) ... */
-  float grow_ratio;        /* ... và rms_ratio >= ... */
-  float grow_min_rms;      /* ... và rms_roll >= (loại nhiễu nhỏ) */
+  float hi_dyn_rms_deg;
+  float grow_slope;        /* deg/phút */
+  float grow_min_rms;
+  float grow_max_heel_s;
+  float off_mean_deg;
+  float off_heel_s;
 } svmg_baseline_params_t;
 
 void         svmg_baseline_default(svmg_baseline_params_t *p);
 /* Chỉ gọi khi dữ liệu đạt chất lượng (status OK). */
 svmg_class_t svmg_baseline_b(const svmg_baseline_params_t *p, const svmg_features_t *f);
+/* Biên độ động (deg): population std của Roll 60 s. */
+float        svmg_baseline_dyn_rms(const svmg_features_t *f);
 
 #ifdef __cplusplus
 }

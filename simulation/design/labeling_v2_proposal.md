@@ -1,8 +1,12 @@
 # SVMG — Đề xuất chuẩn hóa mô phỏng và nhãn `labeling_v2`
 
-**Trạng thái:** Đề xuất để nhóm xem xét; chưa được phê duyệt và chưa áp dụng vào source.  
-**Phạm vi:** Định nghĩa nhãn, profile kích động G1, ma trận 605 phiên, H1 và tác động feature contract.  
-**Nguồn:** Giá trị ghi rõ trong yêu cầu M2-01.4d và cấu hình/source hiện tại. Repository có badge đề cương v2.0 ở README nhưng không tìm thấy tài liệu v2.0 riêng có bảng SS0–SS5 hoặc danh sách 30 feature. Các giá trị chưa có nguồn thực nghiệm được đánh dấu là đề xuất/giả định.
+**Trạng thái:** Được Hoàng (Embedded/Core Lead) và nhóm phê duyệt toàn bộ theo yêu cầu M2-01.4e; đang triển khai. Ngưỡng phân loại v2 và profile sea state vẫn là ứng viên chưa hiệu chỉnh thực nghiệm.
+**Phạm vi:** Định nghĩa nhãn, profile kích động G1, ma trận 605 phiên, H1 và tác động feature contract.
+**Nguồn:** Quyết định nhóm được phê duyệt trong yêu cầu M2-01.4e; các giá trị lịch sử lấy từ source/config. Repository không có bảng SS0–SS5 đã hiệu chỉnh hoặc danh sách 30 feature ứng viên có sẵn. Profile SS và ngưỡng chưa có hiệu chuẩn thực nghiệm được ghi rõ là ứng viên.
+
+### Lịch sử quyết định
+
+- **M2-01.4e:** Hoàng (M1/Core Lead) và nhóm phê duyệt toàn bộ thiết kế labeling v2, sea-state profile ứng viên, ma trận 605 phiên, H1 Combined Scenario, và mục tiêu 30 feature cho Random Forest. Việc phê duyệt số lượng 30 không tự phê duyệt contract/thứ tự/công thức của từng feature. `contracts/features.md` và cấu trúc C vẫn thuộc thay đổi riêng phối hợp M1.
 
 ## 1. Thực trạng `labeling_v1`
 
@@ -65,7 +69,7 @@ Với S2, offset tĩnh không tự đẩy `rms_centered_60` lên cao. Nếu S2 �
 
 Ngưỡng heel 3° và thời lượng 120 giây là thông số trong brief M2/labeler hiện tại. Cách lấy mean, ngưỡng áp dụng cho mean 60 hay 180 giây, xử lý vùng hysteresis và reset khi đổi dấu cần nhóm phê duyệt. Nếu dùng mean 180 giây, cần kiểm tra độ trễ và hiện tượng pha loãng mean khi sự kiện vừa bắt đầu.
 
-Khi offset bền và dao động mạnh cùng xuất hiện, giữ cả hai cờ phenotype. Nhãn chính cần một thứ tự ưu tiên được phiên bản hóa; đề xuất giữ `HIGH_ROLL` đứng trước offset để ưu tiên dao động động học, nhưng không để ưu tiên xóa thông tin offset khỏi nhãn phụ/metadata. Quyết định này cần được xác nhận vì interface classifier hiện đơn nhãn.
+Khi offset bền và dao động mạnh cùng xuất hiện, giữ cả hai cờ phenotype. Thứ tự ưu tiên đã được duyệt cho v2 là `HIGH_ROLL > PERSISTENT_OFFSET > AMPLITUDE_GROWTH > NORMAL`; nhãn chính không làm mất các cờ phenotype phụ.
 
 ### 2.4 AMPLITUDE_GROWTH — bằng chứng quá khứ
 
@@ -94,7 +98,7 @@ Contract classifier hiện là đơn nhãn. Đề xuất lưu các phenotype fla
 
 `HIGH_ROLL > PERSISTENT_OFFSET > AMPLITUDE_GROWTH > NORMAL`
 
-Đây là đề xuất mới, khác vị trí tương đối giữa AMPLITUDE_GROWTH và PERSISTENT_OFFSET trong v1. `FAULT`/`UNKNOWN` được xử lý ở quality/status trước nhãn chuyển động. Nếu nhóm muốn giữ thứ tự v1 cho v2 để giảm thay đổi, cần ghi rõ đó là quyết định chủ động và vẫn lưu phenotype flags.
+Đây là thứ tự đã được duyệt cho v2, khác vị trí tương đối giữa AMPLITUDE_GROWTH và PERSISTENT_OFFSET trong v1. `FAULT`/`UNKNOWN` được xử lý ở quality/status trước nhãn chuyển động.
 
 ## 3. Profile Sea State ứng viên
 
@@ -144,12 +148,10 @@ Ma trận do yêu cầu M2-01.4d cung cấp; tổng mỗi cột khớp kế ho�
 - H1 là scenario/provenance, không phải class thứ năm. Nhãn chuyển động chính được tính từ tín hiệu và thứ tự ưu tiên đã phê duyệt; các cờ high-roll/offset/growth có thể cùng đúng.
 - **Fault injection** là tình huống riêng (ví dụ mã fault scenario độc lập) tạo spike, stuck-at, NaN hoặc invalid sample. Lỗi được biểu diễn qua quality/status (`FAULT`, `sensor_ok`, validity) thay vì trộn vào phenotype chuyển động.
 
-Tài liệu/cấu hình cần đồng bộ sau khi nhóm duyệt:
+Tài liệu/cấu hình M2 đã đồng bộ trong bước triển khai; các phần liên thành viên còn lại:
 
-- `simulation/README.md`: đổi mô tả H1 từ lỗi cảm biến sang combined scenario; mô tả fault injection tách biệt.
-- `simulation/generator/config.py`: sửa `ScenarioDefinition` H1 hiện ghi “Sensor fault”/`FAULT`; bổ sung cấu hình profile và ma trận theo scenario nếu được duyệt.
-- `simulation/generator/scenarios.py`: dùng cùng ánh xạ SS4/SS5 cho S1/H1, lưu metadata sự kiện và nhãn version; bổ sung cơ chế nhãn v2 sau phê duyệt.
-- `README.md` và `ml/README.md`: thống nhất bốn nhãn chuyển động, quality/fault status và ý nghĩa H1.
+- `simulation/README.md`, `simulation/generator/config.py` và `simulation/generator/scenarios.py` đã cập nhật H1 Combined, candidate profile, labeler versions và cùng sea-state mapping S1/H1.
+- `ml/README.md` và tài liệu giao diện liên quan cần phối hợp cập nhật khi M2-04 chuẩn hóa feature contract.
 - Fault injector/test riêng sẽ cần file mới trong simulation và kiểm thử tương ứng; chưa thuộc implementation này.
 - Contract event/telemetry chỉ cần sửa nếu nhóm quyết định biểu diễn FAULT khác hiện tại. Chưa đề xuất thay `contracts/features.md` hoặc `FeatureVector C` trong bước này.
 
@@ -165,19 +167,51 @@ Contract hiện hành mô tả 14 feature và yêu cầu thứ tự nhất quán
 - **Trùng thông tin:** `energy_roll = rms_roll²` trên cùng cửa sổ; centered RMS bằng population std trên cùng cửa sổ; `max_abs_roll` và P95(abs roll) tương quan; slope và growth ratio cũng có thể tương quan. Chỉ giữ feature bổ sung nếu validation chứng minh giá trị tăng thêm.
 - **Giới hạn roll 1-DOF:** simulator hiện không mô phỏng pitch/yaw độc lập, hướng sóng, gia tốc tịnh tiến tàu hay dynamics đa trục. Các feature pitch, cross-axis, wave direction hoặc sensor fault cần nguồn/mô hình riêng; không nên giả lập thành chuyển động đa dạng tùy tiện. `sensor_ok` là quality flag hơn là phenotype roll.
 
-**Đề xuất cho giai đoạn này:** giữ contract 14 feature. Trước khi mở lên 30, nhóm cần có danh sách 30 chính thức, loại feature trùng và đánh dấu feature không được bộ sinh hiện hỗ trợ. Việc thêm feature cần cập nhật contract/C/Python đồng bộ; không chỉ thêm cột vào dataset.
+**Quyết định đã duyệt:** mục tiêu là 30 feature cho Random Forest. Repository hiện chỉ có contract 14 feature; danh sách 30 ứng viên chi tiết không tìm thấy. Danh sách, thứ tự, công thức, đơn vị và cửa sổ dưới đây là **đề xuất kỹ thuật để chuẩn hóa ở M2-04**, không phải contract đã duyệt. Bốn feature pitch không được hỗ trợ bởi roll 1-DOF và phải bị loại/để dành đến khi có mô hình đa trục hoặc nguồn dữ liệu phù hợp; không tạo giá trị pitch giả.
 
-## 7. Các quyết định cần nhóm phê duyệt
+| # | Feature ứng viên | Đơn vị / cửa sổ | Hỗ trợ roll 1-DOF | Chi phí ESP32 sơ bộ |
+|---:|---|---|---|---|
+| 1 | `roll_rms_60` | deg / 60 s | Có; RMS quanh 0, giữ để tương thích | Thấp |
+| 2 | `roll_std_60` | deg / 60 s | Có; đây cũng là RMS centered, không thêm feature centered RMS thứ hai | Thấp |
+| 3 | `roll_mean_60` | deg / 60 s | Có, từ roll | Thấp |
+| 4 | `p95_abs_roll_60` | deg / 60 s | Có | Trung bình |
+| 5 | `max_abs_roll_60` | deg / 60 s | Có | Thấp |
+| 6 | `roll_zero_crossing_rate_60` | 1/s / 60 s | Có | Thấp |
+| 7 | `roll_mean_180` | deg / 180 s | Có, signed | Thấp |
+| 8 | `roll_std_180` | deg / 180 s | Có | Thấp |
+| 9 | `roll_slope_180` | deg/min / trailing 180 s | Có | Trung bình |
+| 10 | `heel_duration_180` | s / 180 s | Có, từ quan sát roll; exact threshold policy belongs to label/feature calibration | Thấp |
+| 11 | `roll_iqr_60` | deg / 60 s | Có | Trung bình |
+| 12 | `roll_skewness_60` | dimensionless / 60 s | Có | Trung bình |
+| 13 | `roll_kurtosis_60` | dimensionless / 60 s | Có | Trung bình |
+| 14 | `roll_p2p_60` | deg / 60 s | Có; correlated with max/P95, validate incremental value | Thấp |
+| 15 | `gx_mean_60` | rad/s / 60 s | Có, IMU roll axis | Thấp |
+| 16 | `gx_std_60` | rad/s / 60 s | Có | Thấp |
+| 17 | `p95_abs_gx_60` | rad/s / 60 s | Có | Trung bình |
+| 18 | `gx_zero_crossing_rate_60` | 1/s / 60 s | Có | Thấp |
+| 19 | `gx_slope_180` | (rad/s)/min / trailing 180 s | Có | Trung bình |
+| 20 | `roll_accel_std_60` | rad/s² / 60 s | Derivable from gx differences; noise-sensitive | Trung bình |
+| 21 | `p95_abs_roll_accel_60` | rad/s² / 60 s | Derivable from gx differences; noise-sensitive | Trung bình |
+| 22 | `ay_mean_60` | m/s² / 60 s | Available from IMU projection; strongly affected by roll/gravity | Thấp |
+| 23 | `ay_std_60` | m/s² / 60 s | Available from IMU | Thấp |
+| 24 | `az_mean_60` | m/s² / 60 s | Available from IMU projection | Thấp |
+| 25 | `az_std_60` | m/s² / 60 s | Available from IMU | Thấp |
+| 26 | `data_valid_fraction_60` | fraction / 60 s | Sensor quality, not motion morphology | Thấp |
+| 27 | `pitch_rms_60` | deg / 60 s | **Unsupported**: no pitch state | — |
+| 28 | `pitch_p95_abs_60` | deg / 60 s | **Unsupported**: no pitch state | — |
+| 29 | `pitch_mean_180` | deg / 180 s | **Unsupported**: no pitch state | — |
+| 30 | `pitch_std_180` | deg / 180 s | **Unsupported / placeholder proposal**: no pitch state; fourth pitch candidate is absent from current repository | — |
 
-1. Chọn metric HIGH_ROLL v2 là centered RMS/std 60 giây hay metric khác; xác nhận quy trình chọn threshold trên Validation và tiêu chí false positive/recall/latency.
-2. Chốt cửa sổ mean roll để đo offset, threshold 3°, cách giữ dấu, reset timer và điều kiện persistent 120 giây.
-3. Chốt primary-label priority khi nhiều phenotype đồng thời; có giữ phenotype flags phụ không.
-4. Chốt AMPLITUDE_GROWTH dùng slope, ratio hay kết hợp; epsilon, thời lượng xác nhận và latency chấp nhận.
-5. Phê duyệt profile SS0–SS5 là profile ứng viên để đánh giá, không phải physical calibration; chốt dùng sigma điểm hay miền sigma theo từng state.
-6. Xác nhận S1/H1 cùng ánh xạ SS label → sigma và chính sách paired Test-G1/Test-G2.
-7. Phê duyệt ma trận 605 phiên và định nghĩa H1 combined; định vị fault injection riêng.
-8. Giữ contract 14 feature hay bắt đầu quy trình phê duyệt 30 feature; không đổi C/contract trong bước kế tiếp nếu chưa có M1 sign-off.
-9. Chốt cách version hóa `labeling_v1`/`labeling_v2`, metadata lưu và cách tái lập kết quả cũ.
+The current 14-feature contract contains three pitch features; no fourth pitch candidate is listed in the repository. `pitch_std_180` is shown only as a placeholder proposal to make the four unsupported pitch slots explicit, and needs group/M1 decision before it could enter any contract. Do not synthesize pitch values. These 30 rows are a discussion list, not a final contract: remove mathematical duplicates (for example, `roll_std_60` and centered RMS are one quantity; `roll_rms_60` and energy are deterministically related) and confirm added value on Validation. Keep `sensor_ok` and `data_quality_pct` as quality metadata unless an explicit fault classification task requires them as model inputs. Cost tiers are qualitative and need target benchmark. M2-04 must coordinate feature naming/order/formulas with Hoàng; a separate PR must update the contract and Python/C implementation together.
+
+## 7. Các việc còn lại cần hiệu chỉnh hoặc phối hợp
+
+1. Hiệu chỉnh HIGH_ROLL centered threshold và AMPLITUDE_GROWTH slope/ratio/floor/confirmation trên Validation; hiện các giá trị này chưa được chốt.
+2. Xác nhận/hiệu chỉnh chi tiết signed-mean offset window, threshold policy, reset/hysteresis, với thời gian persistent tối thiểu 120 s đã duyệt.
+3. Xác nhận việc giữ priority `HIGH_ROLL > PERSISTENT_OFFSET > AMPLITUDE_GROWTH > NORMAL` và các phenotype flags độc lập.
+4. Hiệu chỉnh profile sea state bằng dữ liệu phù hợp; các sigma hiện tại là candidate.
+5. Chuẩn hóa danh sách/công thức/thứ tự 30 feature ở M2-04 cùng M1; con số 30 đã được duyệt nhưng contract chưa đổi.
+6. Xác nhận quy trình Validation và tiêu chí chấp nhận trước khi sinh dataset; Test-G1/Test-G2 không được dùng để tune.
 
 ## 8. File bị ảnh hưởng trong bước triển khai sau
 
@@ -195,7 +229,7 @@ Contract hiện hành mô tả 14 feature và yêu cầu thứ tự nhất quán
 - `contracts/features.md`, `core/include/svmg_core.h`, `core/src/features.c`, `ml/features_c.py` và test parity Python/C.
 - Schema telemetry/event chỉ khi cách biểu diễn class/FAULT được nhóm thay đổi.
 
-`simulation/design/labeling_v2_proposal.md` là tài liệu đề xuất được tạo trong lượt hiện tại; các file ở trên chưa được sửa.
+`contracts/features.md` và `FeatureVector C` chưa được sửa trong M2-01.4e; thay đổi contract 30 feature được tách sang PR phối hợp M1.
 
 ## 9. Kế hoạch kiểm thử và tiêu chí chấp nhận trước dataset
 

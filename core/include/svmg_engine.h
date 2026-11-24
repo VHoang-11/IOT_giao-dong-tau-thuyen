@@ -1,5 +1,5 @@
 /* svmg_engine.h - ghép chuỗi xử lý của thiết bị (C thuần, chạy được trên máy chủ để kiểm thử hàng loạt):
- *   mẫu 20 Hz -> lọc/giảm mẫu 2 Hz -> (trừ hiệu chuẩn) -> cửa sổ -> đặc trưng -> RF + Baseline B + MAI
+ *   mẫu 20 Hz -> lọc/giảm mẫu 10 Hz -> (trừ hiệu chuẩn) -> cửa sổ -> đặc trưng -> RF + Baseline B + MAI
  *   -> lớp ngưỡng cứng -> máy trạng thái cảnh báo -> sự kiện.
  * Không phụ thuộc mạng: cảnh báo cục bộ hoạt động như nhau khi MQTT mất (đề cương FR06, T05).
  * Không malloc; không Arduino. Tầng firmware chỉ nối phần cứng, MQTT và lưu cấu hình.
@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 #define SVMG_ENGINE_MAX_EV 8
-#define SVMG_BLOCK_MIN_VALID 5     /* khối 0.5 s cần >= 5/10 mẫu hợp lệ mới tính là mẫu 2 Hz hợp lệ */
+#define SVMG_BLOCK_MIN_VALID 2     /* khối 0.1 s cần 2/2 mẫu hợp lệ */
 
 /* Mô hình RF do M2 xuất (qua infer.c ở firmware). Trả SVMG_UNKNOWN nếu độ tin cậy thấp/ngoài miền huấn luyện. */
 typedef svmg_class_t (*svmg_rf_fn)(void *ctx, const float *features, int n_features);
@@ -33,7 +33,7 @@ typedef struct {
   uint8_t        hard;
   uint8_t        model_fallback;   /* 1 nếu chọn RF nhưng chưa có mô hình -> đang dùng Baseline B */
   svmg_features_t feat;
-  float          roll_deg, pitch_deg;   /* mẫu 2 Hz mới nhất đã trừ hiệu chuẩn */
+  float          roll_deg, pitch_deg;   /* mẫu 10 Hz mới nhất đã trừ hiệu chuẩn */
   float          t_sim_s;
 } svmg_decision_state_t;
 
@@ -55,8 +55,8 @@ typedef struct {
 } svmg_engine_t;
 
 typedef struct {
-  uint8_t      got_2hz;        /* có mẫu 2 Hz mới (e->dec.roll_deg/pitch_deg) */
-  uint8_t      got_update;     /* có quyết định mới (mỗi 5 s mô phỏng) */
+  uint8_t      got_10hz;        /* có mẫu 10 Hz mới (e->dec.roll_deg/pitch_deg) */
+  uint8_t      got_update;     /* có quyết định mới (mỗi 10 s mô phỏng) */
   uint8_t      calib_done;     /* hiệu chuẩn vừa xong: firmware phải lưu cấu hình + trả ack */
   svmg_reason_t calib_result;
   uint8_t      n_ev;
@@ -76,7 +76,7 @@ int  svmg_engine_tick(svmg_engine_t *e, uint32_t now_ms, svmg_engine_out_t *out)
 int  svmg_engine_ack(svmg_engine_t *e, uint8_t by, uint32_t now_ms, svmg_engine_out_t *out);
 int  svmg_engine_mute(svmg_engine_t *e, uint16_t duration_s, uint32_t now_ms, svmg_engine_out_t *out, svmg_reason_t *res);
 svmg_reason_t svmg_engine_calibrate_start(svmg_engine_t *e);
-float svmg_engine_agreement(const svmg_engine_t *e);   /* tỉ lệ đồng thuận RF/Baseline B, 1.0 nếu chưa có phép so */
+float svmg_engine_agreement(const svmg_engine_t *e);   /* tỉ lệ đồng thuận RF/Baseline B, NaN nếu chưa có phép so */
 
 #ifdef __cplusplus
 }

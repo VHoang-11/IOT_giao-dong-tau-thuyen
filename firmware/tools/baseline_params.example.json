@@ -1,5 +1,20 @@
 {
-  "baseline_b": {"hi_rms_deg": 6.0, "off_mean_deg": 2.5, "off_same_sign": 0.85, "grow_trend": 1.0, "grow_ratio": 1.5, "grow_min_rms": 1.5},
-  "mai": {"a_ref_deg": 8.0, "b_ref_deg": 5.0, "g_ref_deg_per_min": 2.0},
-  "generator_version": "example", "data_hash": "none"
+  "baseline_b": {
+    "hi_dyn_rms_deg": 6.0,
+    "grow_slope": 1.0,
+    "grow_min_rms": 1.5,
+    "grow_max_heel_s": 0.0,
+    "off_mean_deg": 1.5,
+    "off_heel_s": 120.0
+  },
+  "mai": {
+    "a_ref_deg": 8.0,
+    "b_ref_deg": 5.0,
+    "g_ref_deg_per_min": 2.0
+  },
+  "generator_version": "example",
+  "data_hash": "none",
+  "feature_schema_version": "svmg-angle-23-v1",
+  "preprocessing_version": "imu-cf-bw4-20to10-v1",
+  "notes": "Demo defaults only; grow_max_heel_s is retained for source compatibility and ignored by the angle-23 baseline."
 }

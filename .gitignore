@@ -37,8 +37,18 @@ compile_commands.json
 ml/data/*.csv
 ml/notebooks/.ipynb_checkpoints/
 
+
 # IDE / OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Machine Learning datasets
+/ml/data/raw/
+/ml/data/processed/
+/ml/data/features/
+/ml/data/labels/
+/ml/data/models/
+/ml/data/parity/
+/ml/data/simulation_rf_g1/

@@ -1,0 +1,264 @@
+"""Xu ly 1 ban tin MQTT: parse topic -> validate -> chong trung -> luu DB.
+
+Ham thuan (khong phu thuoc broker) de test duoc. consumer.py goi ham nay.
+"""
+import json
+import logging
+import math
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Optional
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from alarms.realtime import telemetry_hub
+from alarms.service import apply_event
+from app.core.config import settings
+from app.services.voyages import active_voyage_id
+from commands.config_service import mark_applied as mark_config_applied
+from commands.service import handle_ack as handle_command_ack
+from notify.service import notify_device_offline
+from app.models import AlarmEvent, Device, DeviceHealth, Telemetry
+from app.models.enums import AlarmLevel, DeviceState, MotionClass, SourceMode
+from ingest.stats import stats
+from ingest.validator import validate
+
+log =logging.getLogger("svmg.ingest")
+
+MAX_PAYLOAD_BYTES = 16 * 1024
+
+# Do dai toi da cua tung truong chuoi, bam sat do rong cot trong DB (PostgreSQL se bao loi neu vuot).
+# Schema hop dong (M1) khong gioi han do dai nen backend phai tu chan.
+DEFAULT_MAX_STR = 64
+FIELD_MAX_STR = {"scenario_id": 32, "model_version": 32, "fw": 32, "reason": 256}
+
+
+def _reject_constant(name: str) -> None:
+    raise ValueError(f"giá trị JSON không hợp lệ: {name}")  # NaN / Infinity / -Infinity
+
+
+def _finite_float(s: str) -> float:
+    v = float(s)
+    if not math.isfinite(v):  # vd. 1e999 -> inf
+        raise ValueError(f"số quá lớn: {s}")
+    return v
+
+
+def _too_long(data: dict[str, Any]) -> Optional[str]:
+    for key, value in data.items():
+        if isinstance(value, str) and len(value) > FIELD_MAX_STR.get(key, DEFAULT_MAX_STR):
+            return f"trường '{key}' quá dài (tối đa {FIELD_MAX_STR.get(key, DEFAULT_MAX_STR)} ký tự)"
+    return None
+TOPIC_RE = re.compile(r"^svmg/([A-Za-z0-9_.-]{1,64})/(telemetry|event|status|health|cmd/ack)$")
+SUBSCRIPTIONS = [("svmg/+/telemetry", 0), ("svmg/+/event", 1), ("svmg/+/status", 1),
+                 ("svmg/+/health", 0), ("svmg/+/cmd/ack", 1)]
+
+
+class Outcome(str, Enum):
+    STORED = "STORED"
+    DUPLICATE = "DUPLICATE"
+    INVALID = "INVALID"    # sai JSON / sai schema
+    REJECTED = "REJECTED"  # device_id trong payload khac topic
+    IGNORED = "IGNORED"    # topic khong xu ly o WP nay
+
+
+@dataclass
+class Result:
+    outcome: Outcome
+    kind: Optional[str] = None
+    device_id: Optional[str] = None
+    reason: Optional[str] = None
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _device_gate(db: Session, dev_id: str) -> Optional[str]:
+    """Ly do tu choi ban tin theo trang thai thiet bi (Admin quan ly), hoac None neu cho qua."""
+    row = db.execute(select(Device.enabled).where(Device.device_id == dev_id)).first()
+    if row is None:
+        return None if settings.auto_register_devices else "thiet bi chua duoc Admin dang ky (AUTO_REGISTER_DEVICES=false)"
+    return None if row[0] else "thiet bi da bi Admin vo hieu hoa"
+
+
+def _get_or_create_device(db: Session, device_id: str) -> Device:
+    dev = db.scalar(select(Device).where(Device.device_id == device_id))
+    if dev is None:
+        dev = Device(device_id=device_id)
+        db.add(dev)
+        db.flush()
+    return dev
+
+
+def _commit_or_duplicate(db: Session) -> bool:
+    """Commit; True neu thanh cong, False neu vi pham unique (ban tin trung)."""
+    try:
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False
+
+
+def _dedup_exists(db: Session, model, device_id: str, boot_id: str, seq: int) -> bool:
+    return db.scalar(select(model.id).where(
+        model.device_id == device_id, model.boot_id == boot_id, model.seq == seq)) is not None
+
+
+def _iso(dt: datetime) -> str:
+    dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    if _dedup_exists(db, Telemetry, dev_id, p["boot_id"], p["seq"]):
+        return Result(Outcome.DUPLICATE, "telemetry", dev_id)
+    dev = _get_or_create_device(db, dev_id)
+    dev.last_seen = rx
+    dev.source_mode = SourceMode(p["source_mode"])
+    dev.model_version = p["model_version"]
+    dev.config_version = p["config_version"]
+    dev.boot_id = p["boot_id"]
+    bb = p.get("class_baseline_b")
+    # Thiet bi that khong gui voyage_id -> gan theo chuyen DANG CHAY cua thiet bi luc nhan ban tin.
+    # Neu ban tin tu mang voyage_id (nguon khac) thi giu nguyen.
+    voyage_id = p.get("voyage_id") or active_voyage_id(db, dev_id)
+    db.add(Telemetry(
+        device_id=dev_id, boot_id=p["boot_id"], seq=p["seq"], t_sim_s=p["t_sim_s"],
+        uptime_ms=p["uptime_ms"], timewarp=p.get("timewarp", 1),
+        source_mode=SourceMode(p["source_mode"]), synthetic=p.get("synthetic"),
+        scenario_id=p.get("scenario_id"), voyage_id=voyage_id,
+        roll_deg=p["roll_deg"], pitch_deg=p["pitch_deg"], rms_roll_deg=p.get("rms_roll_deg"),
+        heel_offset_deg=p.get("heel_offset_deg"), trend_rms_deg_per_min=p.get("trend_rms_deg_per_min"),
+        class_rf=MotionClass(p["class_rf"]), class_baseline_b=MotionClass(bb) if bb else None,
+        mai=p.get("mai"), alarm_level=AlarmLevel(p["alarm_level"]),
+        model_version=p["model_version"], config_version=p["config_version"],
+        sensor_ok=p["sensor_ok"], server_rx_time=rx))
+    ok = _commit_or_duplicate(db)
+    if ok:
+        telemetry_hub.publish({"type": "telemetry", **p, "device_id": dev_id, "voyage_id": voyage_id,
+                               "server_rx_time": _iso(rx)})
+    return Result(Outcome.STORED if ok else Outcome.DUPLICATE, "telemetry", dev_id)
+
+
+def _handle_event(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    if _dedup_exists(db, AlarmEvent, dev_id, p["boot_id"], p["seq"]):
+        return Result(Outcome.DUPLICATE, "event", dev_id)
+    dev = _get_or_create_device(db, dev_id)
+    dev.last_seen = rx
+    prev, cls = p.get("prev_level"), p.get("class")
+    ev = AlarmEvent(
+        device_id=dev_id, boot_id=p["boot_id"], seq=p["seq"], alarm_id=p["alarm_id"],
+        level=AlarmLevel(p["level"]), prev_level=AlarmLevel(prev) if prev else None,
+        motion_class=MotionClass(cls) if cls else None, t_sim_s=p["t_sim_s"],
+        acked_by=p.get("acked_by"), server_rx_time=rx)
+    db.add(ev)
+    if not _commit_or_duplicate(db):
+        return Result(Outcome.DUPLICATE, "event", dev_id)
+    try:
+        apply_event(db, ev)  # M3-03: cap nhat vong doi canh bao (event tho da luu ben tren)
+    except Exception:
+        db.rollback()
+        log.exception("apply_event failed", extra={"device_id": dev_id, "alarm_id": p["alarm_id"]})
+    return Result(Outcome.STORED, "event", dev_id)
+
+
+def _handle_status(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    dev = _get_or_create_device(db, dev_id)
+    was_online = dev.state == DeviceState.online
+    dev.state = DeviceState(p["state"])  # offline (LWT) cung di qua day
+    dev.last_seen = rx
+    for src, dst in (("fw", "fw"), ("model_version", "model_version"),
+                     ("config_version", "config_version"), ("boot_id", "boot_id")):
+        if src in p:
+            setattr(dev, dst, p[src])
+    for k in ("feature_schema_version", "preprocessing_version", "feature_count"):
+        if p.get(k) is not None:
+            setattr(dev, k, p[k])
+    db.commit()
+    telemetry_hub.publish({"type": "device_status", "device_id": dev_id, "state": dev.state.value,
+                           "last_seen": _iso(rx)})
+    if p.get("state") == "online":
+        mark_config_applied(db, dev_id, p.get("config_version"))  # thiet bi bao dang dung phien ban nay
+    elif was_online:  # chi bao khi chuyen online -> offline (LWT gui lai khong bao lap)
+        notify_device_offline(dev_id, dev.source_mode.value)
+    return Result(Outcome.STORED, "status", dev_id)
+
+
+def _handle_health(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    dev = _get_or_create_device(db, dev_id)
+    dev.last_seen = rx
+    for k in ("feature_schema_version", "preprocessing_version", "feature_count"):
+        if p.get(k) is not None:
+            setattr(dev, k, p[k])
+    db.add(DeviceHealth(
+        device_id=dev_id, free_heap_bytes=p["free_heap_bytes"],
+        min_free_heap_bytes=p.get("min_free_heap_bytes"), uptime_ms=p["uptime_ms"],
+        sensor_ok=p["sensor_ok"], i2c_errors=p.get("i2c_errors"), inference_ms=p.get("inference_ms"),
+        mqtt_reconnects=p.get("mqtt_reconnects"), buffer_used=p.get("buffer_used"),
+        buffer_capacity=p.get("buffer_capacity"), server_rx_time=rx))
+    db.commit()
+    return Result(Outcome.STORED, "health", dev_id)
+
+
+_HANDLERS = {"telemetry": _handle_telemetry, "event": _handle_event,
+             "status": _handle_status, "health": _handle_health}
+
+
+def handle_message(db: Session, topic: str, payload: bytes, rx_time: Optional[datetime] = None) -> Result:
+    """Xu ly 1 ban tin. Khong nem exception ra ngoai vi loi du lieu - tra ve Result."""
+    rx = rx_time or _utcnow()  # luon gan server_rx_time
+    result = _process(db, topic, payload, rx)
+    stats.add(result.kind, result.outcome.value, result.device_id, topic, result.reason)
+    level = logging.INFO if result.outcome in (Outcome.STORED, Outcome.DUPLICATE, Outcome.IGNORED) else logging.WARNING
+    log.log(level, "mqtt message", extra={"topic": topic, "device_id": result.device_id,
+                                          "kind": result.kind, "outcome": result.outcome.value,
+                                          "reason": result.reason})
+    return result
+
+
+def _process(db: Session, topic: str, payload: bytes, rx: datetime) -> Result:
+    m = TOPIC_RE.match(topic)
+    if not m:
+        return Result(Outcome.INVALID, None, None, "topic khong thuoc svmg/{device_id}/...")
+    dev_id, kind = m.group(1), m.group(2)
+    if len(payload) > MAX_PAYLOAD_BYTES:
+        return Result(Outcome.INVALID, kind, dev_id, "payload qua lon")
+    blocked = _device_gate(db, dev_id)
+    if blocked:
+        return Result(Outcome.REJECTED, kind, dev_id, blocked)
+    try:
+        # parse_constant/parse_float: JSON chuan khong co NaN/Infinity; Python mac dinh van nhan -> phai tu choi
+        data = json.loads(payload, parse_constant=_reject_constant, parse_float=_finite_float)
+    except (UnicodeDecodeError, ValueError) as e:
+        return Result(Outcome.INVALID, kind, dev_id, f"JSON loi: {e}")
+    errs = validate(kind, data)
+    if errs:
+        return Result(Outcome.INVALID, kind, dev_id, "; ".join(errs[:5]))
+    too_long = _too_long(data)
+    if too_long:
+        return Result(Outcome.INVALID, kind, dev_id, too_long)
+    if "device_id" in data and data["device_id"] != dev_id:
+        return Result(Outcome.REJECTED, kind, dev_id,
+                      f"device_id payload '{data['device_id']}' khac topic '{dev_id}'")
+    if kind == "cmd/ack":
+        return _handle_ack(db, dev_id, data, rx)
+    return _HANDLERS[kind](db, dev_id, data, rx)
+
+
+def _handle_ack(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    """M3-04: cap nhat vong doi lenh tu bao cao cua thiet bi."""
+    status, _ = handle_command_ack(db, dev_id, p, rx)
+    if status in ("applied", "rejected"):
+        return Result(Outcome.STORED, "cmd/ack", dev_id)
+    if status == "duplicate":
+        return Result(Outcome.DUPLICATE, "cmd/ack", dev_id)
+    if status == "mismatch":  # thiet bi ACK lenh cua tau khac
+        return Result(Outcome.REJECTED, "cmd/ack", dev_id, f"cmd_id '{p['cmd_id']}' khong thuoc thiet bi nay")
+    reason = "cmd_id khong ton tai" if status == "unknown" else "ACK den sau khi lenh het han (TIMEOUT)"
+    return Result(Outcome.IGNORED, "cmd/ack", dev_id, reason)

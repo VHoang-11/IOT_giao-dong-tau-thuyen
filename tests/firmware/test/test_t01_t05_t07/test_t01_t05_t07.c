@@ -93,7 +93,7 @@ void test_T01_d_gyro_units(void) {
 }
 void test_T01_e_features_shown_for_oscillation(void) {
   new_engine(); run_sea(300, 0);
-  CHECK("T01-e", E.dec.status == SVMG_ST_OK && E.dec.feat.rms_roll_deg > 2.0f && E.dec.feat.rms_roll_deg < 4.0f && E.alarm.level == SVMG_LVL_NORMAL,
+  CHECK("T01-e", E.dec.status == SVMG_ST_OK && E.dec.feat.rms_roll > 2.0f && E.dec.feat.rms_roll < 4.0f && E.alarm.level == SVMG_LVL_NORMAL,
         "dao dong +- vai do -> du lieu OK, RMS 2..4 deg, khong bao dong");
 }
 void test_T01_f_sensor_error_shown(void) {

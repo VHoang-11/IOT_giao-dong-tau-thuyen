@@ -36,9 +36,8 @@ svmg_motion_sample_t acquireMotionSample(svmg_source_t mode) {
     // Thời gian thực từ millis() (đã quấn vòng); khi loop bị đứng > 0.5 s lõi sẽ phát hiện khoảng trống và khởi động lại cửa sổ.
     s.t = (float)fmod((double)millis() / 1000.0, WRAP_S);
     if (mpu_read(&raw)) {
-      if (svmg_imu_raw_to_si(&raw, &s) & SVMG_IMU_F_SATURATED) s_sat++;
+      if (svmg_imu_raw_to_si(&raw, &s) & SVMG_IMU_F_SATURATED) s_sat++;   // bão hòa -> s.valid = 0 (đặt bởi lõi), không ghi đè
       s.t = (float)fmod((double)millis() / 1000.0, WRAP_S);
-      s.valid = 1;
     } else {
       s.valid = 0;                    // lỗi I2C: vẫn đẩy mẫu thiếu vào lõi để đếm tỉ lệ thiếu
     }

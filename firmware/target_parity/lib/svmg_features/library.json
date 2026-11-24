@@ -1,0 +1,8 @@
+{
+  "name": "svmg-features-target-test",
+  "version": "0.1.0",
+  "description": "HV01 test view of the production feature implementation",
+  "build": {
+    "srcFilter": ["+<features.c>"]
+  }
+}

@@ -1,55 +1,46 @@
-# Nhật ký kiểm thử – M1 (firmware / lõi C)
+# Nhật ký kiểm thử M1 — bản 23 đặc trưng
 
-Ngày lập: 12/11/2026. Môi trường: Windows 11, PlatformIO Core 6.2.0, gcc 13.2 (MinGW-W64 UCRT), Python 3.13, Arduino-ESP32 3.3.x.
-Quy ước trạng thái: **PASS** (đã chạy, đạt) · **FAIL** · **NOT RUN** (chưa chạy, có lý do – không được hiểu là đạt).
+Cập nhật **18/11/2026**. Chỉ PASS khi có chạy thật; build/kiểm thử máy chủ không phải chạy mạch.
+Môi trường: Windows, GCC 13.2, Python 3.13.9; ESP32 dùng espressif32 8.0.0 / Arduino-ESP32 3.3.12.
 
-## 1. Kiểm thử tự động trên máy chủ (cùng lõi C với ESP32)
+## 1. Kiểm thử tự động trên máy chủ
 
-Lệnh: `cd tests/firmware && pio test -e native` → **178 ca, 178 PASS** (≈ 12 s).
+`python tests/firmware/tools/run_native.py`: **208 ca PASS, 0 FAIL**. Gồm alarm 29, cmd/config 26,
+decision 22, engine 31, evbuf 8, features 13, filter 30, message 31, FRD 4, T01/T05/T07 host 14.
+Test 14 đặc trưng cũ được thay bằng kiểm tra giải tích 23 đặc trưng và parity trực tiếp với extractor M2.
 
-| Bộ | Ca | Kết quả |
-|---|---|---|
-| test_filter (M1-02) | 29 | PASS |
-| test_features (M1-03) | 17 | PASS |
-| test_decision (M1-04) | 17 | PASS |
-| test_alarm (M1-05) | 23 | PASS |
-| test_cmd_config (M1-07) | 22 | PASS |
-| test_evbuf (M1-06) | 8 | PASS |
-| test_msg (M1-06) | 21 | PASS |
-| test_engine (tích hợp) | 27 | PASS |
-| test_t01_t05_t07 (M1-09) | 14 | PASS |
+| Công cụ | Kết quả |
+|---|---|
+| `check_features23.py` | 23 chuỗi × 23 = **529 giá trị khớp**, đúng thứ tự, không đọc tương lai; cùng float32 đầu vào với Python M2 |
+| `check_filter23.py` | **8.000 giá trị** khớp CF + SciPy Butterworth4 4 Hz; sai số lớn nhất **1,681e-7 rad** |
+| `check_model_adapter.py` | **6 artifact cases PASS**: đúng metadata, 14 mục cũ, sai schema, sai preprocessing, thiếu metadata, không có model |
+| `validate_messages.py` | **46 bản tin hợp lệ, 0 vi phạm**; 10 event gồm 4 alarm, 1 CLEARED, 1 ACK; không lỗi vòng đời/ACL |
+| `crosscheck_crc.py` | **4.004/4.004** + **300/300** số thực chính xác cao khớp CRC tham chiếu backend |
 
-Lỗi thật tìm thấy và đã sửa nhờ kiểm thử (không phải chỉnh test cho qua):
-1. Độ lợi DC của biquad float lệch ~5e-6 (cực gần 1 ở 0,5 Hz/20 Hz) → ép hệ số `b` theo `a1,a2` đã làm tròn (`filter.c`).
-2. `rms_ratio` của tín hiệu im lặng trả 0 thay vì 1 (sàn 0,5° chỉ áp cho mẫu số) → áp cho cả hai vế.
-3. **Bus I2C chết trả toàn 0 nhưng `valid=1` không bị phát hiện** (cổng gia tốc bỏ qua rồi vẫn tính là mẫu hợp lệ) → bước bị cổng không còn tính là phép đo hợp lệ; cảm biến chết giờ dẫn tới FAULT sau 10 s.
-4. **`calibrate_zero` được chấp nhận khi đang có cảnh báo OFFSET** (có thể xóa bằng chứng nghiêng thật) → từ chối `FORBIDDEN_STATE` khi mức ≥ WARNING.
-5. Lệnh `calibrate_zero` bị hủy giữa chừng (đổi chế độ) làm lệnh treo mãi ở trạng thái chờ → trả `FORBIDDEN_STATE`.
-6. Độ phân giải thời gian `float` mất dần theo giờ chạy → đồng hồ lõi quấn vòng ở 8 192 s, pipeline hiểu bước lùi lớn là quấn vòng.
+Kiểm tra an toàn: mute CRITICAL bị chặn; TTL/idempotency; cảnh báo độc lập mạng; thiếu mẫu không hiển thị xanh;
+FAULT sau mất mẫu liên tục 10 s; model không nhận vector thiếu/NaN; nhãn model lỗi → UNKNOWN.
+API host `svmg_features_from_series` dùng frame stack khoảng 25,5 KB vì chứa ring cục bộ, **không gọi trên ESP32**.
+ESP32 dùng engine/ring/workspace tĩnh; stack thực tế còn phải đo khi chạy thiết bị.
 
-Kiểm tra độc lập khả năng bắt lỗi: đã thử đột biến `alarm_fsm.c` (cho phép mute khi CRITICAL) → `test_mute_does_not_stop_escalation…` FAIL đúng; đã hoàn nguyên.
+Độ trễ trên **sóng tổng hợp của M1**, không thay T04/dataset M2:
 
-### Số đo hành vi trên sóng tổng hợp của M1 (`pio test -e native -f test_engine -v`)
-*Không phải bộ sinh của M2; chỉ chứng minh lõi hoạt động và cho M2 biết điểm khởi đầu của tham số.*
+| Hành vi | Đo được |
+|---|---|
+| S1-like | 42 s |
+| S2-like | 152 s |
+| S3-like | 142 s; lớp bắt được HIGH_ROLL, chưa chứng minh AMPLITUDE_GROWTH đúng |
+| Ngưỡng cứng, bước nghiêng chỉ gia tốc | 17,2 s |
+| Ngưỡng cứng, nghiêng dần có gyro nhất quán | 9,1 s |
+| Hiệu chuẩn | 30 s |
 
-| Đại lượng | Đo được | Mục tiêu tham khảo (Bảng 10.2) |
-|---|---|---|
-| Độ trễ phát hiện S1-like (warm start) | 30 s | ≤ 60 s |
-| Độ trễ phát hiện S2-like | **160 s** | ≤ 180 s (sát giới hạn) |
-| Độ trễ phát hiện S3-like | 130 s | ≤ 240 s |
-| Cảnh báo WARNING+ trong 1 giờ sóng bình thường (sum 3 sin, RMS ≈ 2,9°) | 0 | ≤ 1 / 10 giờ |
-| Nghiêng tạm thời 5° trong 60 s (S0b-like) | 0 WARNING | 0 |
-| Ngưỡng cứng 25°: bước chỉ từ gia tốc kế → CRITICAL | 17,9 s | (không đặt) |
-| Ngưỡng cứng 25°: nghiêng dần có gyro nhất quán → CRITICAL | 9,4 s | (không đặt) |
-| Leo thang WARNING→CRITICAL khi không ACK | 60,0 s ± 0,2 | 60 s |
-| `calibrate_zero` hoàn tất | 30 s | 30 s |
+## 2. Build và tài nguyên
 
-## 2. Kích thước / tài nguyên: xem `firmware/docs/M1-08_resource_table.md` (ảnh 1 188 119 B flash, 57 036 B RAM tĩnh; lõi `engine` 3 336 B).
+Bảng đo và trạng thái build: [M1-08_resource_table.md](../../firmware/docs/M1-08_resource_table.md).
+Bản RF vẫn là stub; các test adapter không phải kết quả suy luận RF thật.
 
 ## 3. Thí nghiệm của M1 – T01, T05, T07
 
-Phần "Trên máy chủ" đã PASS (mục 1). Phần "Trên Wokwi" là thủ tục thủ công; **chưa chạy** vì môi trường phát triển không chạy được
-Wokwi. Điền cột "Kết quả Wokwi" khi chạy.
+Phần "Trên máy chủ" đã PASS (mục 1). Phần "Trên Wokwi" là thủ tục thủ công; **chưa chạy** trong đợt cập nhật này. Điền cột "Kết quả Wokwi" khi chạy.
 
 ### T01 – MPU6050 ở SENSOR MODE (M1)
 Chuẩn bị: `cd firmware && pio run`; Wokwi: `wokwi/wokwi.toml`. Mở Serial Monitor 115200. Khởi động ở SENSOR.
@@ -61,7 +52,7 @@ Chuẩn bị: `cd firmware && pio run`; Wokwi: `wokwi/wokwi.toml`. Mở Serial M
 | b | accelY=0,5 ; accelZ=0,866 | roll = 30,0 ± 0,2° (sau ≈ 60 s do bộ lọc bù) | PASS (T01-b) | NOT RUN |
 | c | accelX=−0,5 ; accelZ=0,866 | pitch = 30,0 ± 0,2° | PASS (T01-c) | NOT RUN |
 | d | rotationX = 10 °/s trong **2–3 s rồi đưa về 0** (accel giữ 1 g) | trong những giây đầu, roll trong dòng `R,…` tăng với độ dốc ≈ **10 °/s** (kiểm tra thang gyro 131 LSB/(°/s)); sau đó bộ lọc bù kéo về 0 với hằng số 7,5 s. **Không để rotationX khác 0 lâu**: gyro không nhất quán với gia tốc kế làm roll trôi tới τ·ω (≈ 75°) và kích hoạt ngưỡng cứng (đúng thiết kế) | PASS (T01-d: chỉ kiểm tra quy đổi đơn vị) | NOT RUN |
-| e | Sau ≥ 180 s mọi thứ ổn định | `T,…` có `NORMAL` (hết UNKNOWN), LED xanh | PASS (T01-e) | NOT RUN |
+| e | Sau ≥ 182 s mọi thứ ổn định | `T,…` có `NORMAL` (hết UNKNOWN), LED xanh | PASS (T01-e) | NOT RUN |
 | f | Giữ nguyên giá trị MPU6050 không đổi (phương sai 0) | **không** báo lỗi (cố ý không có bộ phát hiện "đứng yên"); `i2c_err=0` | – | NOT RUN |
 | g | Rút dây SDA của MPU6050 (hoặc bản `esp32dev_inject` gõ `i`) | sau ≈ 10 s: LCD `FAULT`, LED vàng+đỏ nháy nhanh, `[EV]` FAULT | PASS (T01-f, T07-a) | NOT RUN |
 
@@ -73,7 +64,7 @@ Không có broker: dùng `pio run -e esp32dev_inject` + `wokwi/wokwi.inject.toml
 
 | Bước | Thao tác | Kỳ vọng | Trên máy chủ | Kết quả Wokwi |
 |---|---|---|---|---|
-| 1 | Chuyển MODE→SIMULATION, ×10 (`set_timewarp`) hoặc để ×1, chờ khởi động nguội 180 s | LED vàng nháy chậm rồi xanh | PASS (test_engine) | NOT RUN |
+| 1 | Chuyển MODE→SIMULATION, ×10 (`set_timewarp`) hoặc để ×1, chờ khởi động nguội khoảng 182 s | LED vàng nháy chậm rồi xanh | PASS (test_engine) | NOT RUN |
 | 2 | SCENARIO → S1 (hoặc đẩy sea state bằng chiết áp lên 5) | CAUTION → WARNING (LED đỏ, còi ngắt quãng) | PASS (T05-a) | NOT RUN |
 | 3 | **Ngắt MQTT** (dừng broker hoặc gõ `m`) khi đang WARNING | LED đỏ/còi **vẫn hoạt động**; Serial tiếp tục `[EV]`; dashboard báo offline (Last Will) | PASS (T05-a, T05-b) | NOT RUN |
 | 4 | Để leo thang 60 s không ACK | LED đỏ, còi liên tục (CRITICAL) dù mất mạng | PASS (test_engine) | NOT RUN |
@@ -99,7 +90,7 @@ Cơ chế chèn lỗi (`esp32dev_inject`) sẵn sàng cho T13. **Phần tính ch
 ## 4. Chưa thực hiện / phụ thuộc người khác
 | Hạng mục | Lý do |
 |---|---|
-| Chạy thủ tục Wokwi (T01/T05/T07) | cần mở Wokwi (môi trường phát triển không chạy được) |
+| Chạy thủ tục Wokwi (T01/T05/T07) | cần thực hiện mô phỏng/thiết bị và lưu kết quả |
 | Chạy với broker thật, cmd/config round-trip | cần Mosquitto/backend (M3, M4) |
 | Đo thời gian suy luận RF và `stack_hwm` | cần `model.h` (M2-06) và chạy trên thiết bị |
 | T03 (Python ↔ lõi C ↔ ESP32), T09, T10 phía đầy đủ | thuộc M2/M3; lõi C đã sẵn cho M2 gọi qua ctypes |

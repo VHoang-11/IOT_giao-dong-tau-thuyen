@@ -1,0 +1,116 @@
+{
+ "contract_path": "ml/docs/feature_contract_23_v0.1.json",
+ "memory": {
+  "feature_ram_bytes": {
+   "roll_ring_180s_float32": 7200,
+   "pitch_ring_60s_float32": 2400,
+   "validity_bits": 300,
+   "quantile_scratch_1800_float32": 7200,
+   "outputs_and_flags": 115,
+   "total": 17215
+  },
+  "existing_core_engine_bytes_documented": 3336,
+  "free_ram_documented_bytes_approx": 270000,
+  "flash_budget_documented_bytes_approx": 1900000,
+  "documented_source": "firmware/docs/M1-08_resource_table.md (đo với stub, ngày 12/11/2026)",
+  "sort_comparisons_per_update_estimate": 47151,
+  "models": {
+   "RELATIVE_HIGH_ROLL": {
+    "estimated_c_array_bytes": 8400,
+    "total_nodes": 1150,
+    "n_estimators": 200,
+    "max_depth": 5,
+    "mean_comparisons_per_inference": 316.7566137566138,
+    "max_comparisons_per_inference": 330.0,
+    "latency_estimate_us_at_240MHz_20_cycles_per_comparison": 27.5
+   }
+  },
+  "status": "ESTIMATE_NOT_MEASURED_ON_DEVICE"
+ },
+ "compact_models": {
+  "RELATIVE_HIGH_ROLL": {
+   "f1": 1.0,
+   "params": {
+    "n_estimators": 25,
+    "max_depth": 6,
+    "min_samples_leaf": 10,
+    "class_weight": "balanced_subsample",
+    "max_features": "sqrt"
+   },
+   "median_estimated_c_array_bytes": 1380.0
+  }
+ },
+ "firmware_chain_emulation": {
+  "windows": 1512,
+  "std_ratio_median": 0.6659551272076508,
+  "std_ratio_p05": 0.6311513370268286,
+  "std_ratio_p95": 0.7281488582451132,
+  "samples_per_60s_window_2hz": 120,
+  "proxy_decisions_original": {
+   "NEG": 1209,
+   "POS": 152,
+   "ABSTAIN": 151
+  },
+  "proxy_decisions_emulated": {
+   "NEG": 1502,
+   "ABSTAIN": 6,
+   "POS": 4
+  },
+  "decisions_changed": 299,
+  "original_pos_now_not_pos": 148,
+  "butterworth2_0p5hz_gain_at": {
+   "hohai_dominant_roll_hz_approx": 0.6294217415694666,
+   "southampton_test_plan_wave_hz": 0.36575089424066487,
+   "southampton_late_window_roll_hz_approx": 0.12159108405522934
+  },
+  "nyquist_2hz_output_hz": 1.0,
+  "approximation": "Lọc 0.5 Hz trên chuỗi 10 Hz rồi lấy mỗi mẫu thứ 5; không mô phỏng bộ lọc bù/gia tốc kế."
+ },
+ "filtered_feature_model_shift": {
+  "windows_original": 1512,
+  "windows_filtered_complete": 1512,
+  "predictions_original": {
+   "NEG": 1324,
+   "POS": 188
+  },
+  "predictions_filtered": {
+   "NEG": 1003,
+   "ABSTAIN": 505,
+   "POS": 4
+  },
+  "abstain_reasons_filtered": {
+   "FEATURE_OUTSIDE_TRAINING_RANGE": 505
+  },
+  "roll_std_60_ratio_median": 0.6663731681238962,
+  "approximation": "Butterworth bậc 2 fc=0.5 Hz nhân quả trên chuỗi 10 Hz đã xử lý; extractor 0.1.0; không giảm mẫu, không mô phỏng gia tốc kế."
+ },
+ "southampton_accel_roll_check": {
+  "samples": 5117,
+  "convention": "atan2(-ay, -az) (chọn để khớp dấu; chưa xác minh)",
+  "dataset_roll_mean_deg": 0.6979085803031921,
+  "accel_roll_mean_deg": 0.7026180624961853,
+  "dataset_roll_std_deg": 0.05542254447937012,
+  "accel_roll_std_deg": 0.14246611297130585,
+  "pearson_r": 0.5512272486131607,
+  "rms_difference_deg": 0.12118428945541382
+ },
+ "current_firmware_chain": {
+  "input_hz": 20,
+  "complementary_filter_tau_s": 7.5,
+  "lowpass": "Butterworth bậc 2, 0.5 Hz",
+  "output_hz": 2,
+  "short_window_samples": 120,
+  "long_window_samples": 360,
+  "update_every_samples": 10,
+  "source": "core/include/svmg_filter.h, core/src/filter.c, core/include/svmg_features.h"
+ },
+ "deployable": false,
+ "deployable_blockers": [
+  "Chưa đo RAM/flash/latency trên ESP32 với model thật",
+  "Chưa có cài đặt C 23 feature và golden-vector parity",
+  "Chuỗi firmware hiện tại 2 Hz + lọc 0.5 Hz khác chuỗi 10 Hz của dataset",
+  "Roll ESP32 từ bộ lọc bù MPU6050 khác nguồn đo của dataset; chưa có hiệu chuẩn chéo",
+  "Mô hình học trên Hohai model-scale (chu kỳ ~1.8 s), không đại diện tàu full-scale",
+  "Nhãn là proxy tương đối, không phải hazard đã xác minh"
+ ]
+}

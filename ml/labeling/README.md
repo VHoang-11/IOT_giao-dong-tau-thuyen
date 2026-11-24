@@ -1,0 +1,98 @@
+# Pipeline khảo sát và gán nhãn SVMG
+
+## Phạm vi
+
+Pipeline đối chiếu các cửa sổ feature đã trích xuất với tài liệu nguồn để khảo sát khả năng xây dựng nhãn `NORMAL`, `HIGH_ROLL`, `PERSISTENT_OFFSET` và `AMPLITUDE_GROWTH`. Mặc định là `feasibility`: không áp ngưỡng suy đoán và không xem dữ liệu không nhãn là NORMAL. Chế độ `exploratory_proxy` chỉ tạo ứng viên `PROXY_RULE` khi từng rule được cấu hình đủ ngưỡng cùng `evidence_reference`; proxy không phải ground truth.
+
+Hiện cấu hình mọi rule đều tắt do chưa có giới hạn hazard/operating envelope độc lập được phê duyệt. Vì vậy lần chạy hiện tại xuất `UNLABELED` cho các cửa sổ đủ điều kiện. Không có label ground truth hoặc quyết định human review được phát hiện trong artifact hiện hành.
+
+## Dữ liệu và quy ước
+
+Input là `ml/data/features/{dataset}/feature_values.parquet` và `feature_metadata.parquet`. Chỉ dùng cửa sổ trailing 180 giây có đủ angle-only 23 feature `VALID`; endpoint tuân theo `(t-W,t]`. Các feature 60 giây tại endpoint vẫn sử dụng cửa sổ 60 giây tương ứng. Session và segment không bị ghép; các cửa sổ stride 10 giây chồng lấn và không độc lập. Dataset/session/segment nằm trong label metadata, không phải feature vector.
+
+Seafar có một session thật với timestamp gaps/duplicates đã tách segment; Hohai có 21 experimental sessions, thời gian suy từ 50 Hz và không có gyro trực tiếp; Southampton có 47 model-scale runs nhưng chỉ Run 14 hỗ trợ 180 giây. Điều kiện sóng và tên thí nghiệm chỉ là provenance/context, không tự sinh nhãn. Xem [Real Dataset Audit](../audit/real_dataset_audit_report.md), [Feature Extraction results](../reports/features/feature_extraction_results.md) và [Labeling feasibility report](../reports/labeling/labeling_feasibility_report.md).
+
+## Chạy lại
+
+Môi trường chạy và phiên bản thư viện đã đo được ghi trong `ml/reports/labeling/labeling_summary.json`; các phiên bản tái tạo đã dùng được ghim trong `ml/labeling/requirements.txt` (Python 3.14.6). Từ repository root:
+
+```bash
+python3.14 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r ml/labeling/requirements.txt
+python -m ml.labeling.run --config ml/labeling/config.yaml --dataset all --mode feasibility
+python -m ml.labeling.run --config ml/labeling/config.yaml --dataset seafar --mode feasibility
+python -m pytest ml/labeling/tests ml/features/tests ml/preprocessing/tests ml/audit -q
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/09_labeling_feasibility_seafar.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/10_labeling_feasibility_hohai.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/11_labeling_feasibility_southampton.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/12_labeling_comparison.ipynb
+```
+
+`--dry-run` chỉ kiểm tra schema và số cửa sổ. `--mode exploratory_proxy` vẫn không gán phenotype nếu rules chưa bật. Trước khi bật rule, cung cấp ngưỡng có đơn vị/phạm vi và tài liệu tham chiếu trong config, xem xét bằng team, rồi ghi lại rule version.
+
+External labels (nếu nhóm cung cấp sau này) có thể được nạp từ CSV, JSONL hoặc Parquet bằng cách đặt `labeling.external_annotations_path` trong YAML. File cần `dataset_source`, `session_id`, `segment_id`, `window_start_seconds`, `window_end_seconds`, `label` và `evidence_reference`; khóa phải khớp chính xác cửa sổ hiện có, nhãn trùng cửa sổ bị từ chối. Không có external annotation path mặc định.
+
+Review queue chia tầng `CLEAR_PROXY_CANDIDATE` và `CONFLICTING_PHENOTYPES` khi có rule; có thể bật `BORDERLINE_CASE` bằng `review_borderline_relative_margin` sau khi nhóm duyệt biên review. `SUSPECTED_FALSE_POSITIVE` chỉ được khởi tạo từ một đánh giá reviewer bác bỏ proxy, không suy ra tự động từ thống kê.
+
+## Artifact và review
+
+Output đầy đủ nằm trong `ml/data/labels/` (Parquet tách riêng cho proxy candidates, unlabeled, review-required và verified/human-reviewed annotations; review queue, annotation template, provenance và chẩn đoán) và bị loại khỏi Git. Báo cáo nhỏ/tái lập nằm trong `ml/reports/labeling/` và được theo dõi. Mẫu annotation được version-control tại `ml/labeling/templates/annotation_template.csv`. Chỉ quyết định người duyệt thực tế mới được ghi là `HUMAN_REVIEWED`; mọi thay đổi cần reviewer, timestamp, notes và audit trail. `append_review_event` nối sự kiện JSONL để giữ lịch sử trước/sau không bị ghi đè. Không ghi đè bảng feature.
+
+## Phòng tránh circular validation
+
+Nếu proxy dùng `roll_std_60`, `roll_mean_180` hay RMS slope, các feature tương ứng trực tiếp/gián tiếp định nghĩa nhãn. Độ chính xác mô hình trên những proxy label như vậy chỉ đo tái tạo rule. Cần nhãn sự kiện/tham chiếu độc lập, split theo session và kiểm định vật lý riêng trước khi diễn giải kết quả là nhận diện nguy hiểm.
+
+## Label Evidence & Annotation Pilot
+
+Pilot mới dùng lại review queue 92 mẫu của pipeline feasibility và dữ liệu processed/provenance hiện có. Chạy từ repository root:
+
+```bash
+python -m ml.labeling.pilot_run --repo-root .
+```
+
+Lệnh tạo form `ml/data/labels/annotation_pilot/annotation_pilot.csv`, decision ledger `review_decisions.csv`, 92 hình Roll/Pitch cùng biểu đồ tổng hợp trong `ml/data/labels/annotation_pilot/figures/`. Dữ liệu và hình được loại khỏi Git theo `.gitignore`. Các báo cáo nhỏ được ghi tại `ml/reports/labeling/label_evidence_report.md`, `annotation_pilot_report.md` và `training_readiness_assessment.md`.
+
+Form rỗng có schema tại `ml/labeling/templates/annotation_pilot_template.csv`. Mỗi record phải giữ nguyên `review_sample_id` và khóa dataset/session/segment/window. Reviewer cần điền bằng chứng, quyết định, phenotype flags, ghi chú, ID và thời điểm thực tế. `HUMAN_REVIEWED` chỉ dành cho phenotype được reviewer ACCEPTED; `VERIFIED` cần nguồn external cho hazard vận hành hoặc operating envelope NORMAL. Không được suy hazard từ wave metadata. Nhiều phenotype đồng thời phải giữ mọi cờ và ghi `ambiguity_reason`.
+
+`ml/data/labels/annotation_pilot/review_decisions.csv` hỗ trợ nhiều reviewer trên cùng mẫu (mỗi reviewer một dòng). Các revision thủ công cần ghi event JSONL append-only bằng `append_annotation_revision` trong `ml.labeling.pilot_decisions`; event giữ snapshot trước/sau, người sửa và thời gian, không ghi đè lịch sử. Không nhập quyết định giả định hoặc tự tạo nhãn từ `queue_suggested_label`.
+
+Chạy notebook sau khi tạo artifact:
+
+```bash
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/13_label_evidence_seafar.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/14_label_evidence_hohai.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/15_label_evidence_southampton.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace ml/notebooks/16_annotation_pilot_comparison.ipynb
+```
+
+Các notebook hiển thị output mẫu, session, provenance, quality flags và tín hiệu đã xử lý; không nhúng toàn bộ dataset. Agreement chỉ tính khi có ít nhất hai reviewer ACCEPTED trên cùng sample. Mọi cửa sổ chồng lấn vẫn phải được nhóm theo session/run khi phân tích hoặc chia tập.
+
+## Human Annotation Quality Assessment
+
+Tạo batch deterministic mà không sửa queue gốc:
+
+```bash
+python -m ml.labeling.human_review_workflow --prepare-batches
+```
+
+Từ repository root mở giao diện review local:
+
+```bash
+python -m streamlit run ml/labeling/review_app.py
+```
+
+Nhập reviewer ID cá nhân, chọn batch và record, kiểm tra plot Roll/Pitch (có context trước endpoint nhưng không có dữ liệu tương lai), quality flags, experiment metadata và 23 angle features với validity. Sau đó ghi observed motion flags, evidence category/reference, quyết định, ghi chú và ambiguity reason. Không xem nhãn gợi ý trước khi đánh giá. `NORMAL` cần ba phenotype được đánh giá rõ là không quan sát thấy cùng external normal-envelope reference; signal plot không thể làm external hazard evidence.
+
+Pilot batch `ml/data/labels/annotation_pilot/batches/pilot_29.csv` phủ Seafar 4 mẫu, mỗi 21 Hohai session một mẫu và Southampton 4 mẫu. Batch mở rộng `extended_63.csv` giữ các cửa sổ Hohai còn lại. Original queue 92 mẫu được giữ nguyên. Hai batch, decision ledger, audit JSONL và output review đều nằm trong `ml/data/labels/`, bị loại khỏi Git.
+
+Mỗi quyết định được ghi một lần theo cặp `(review_id, reviewer_id)` vào `review_decisions.csv`; gửi trùng bởi cùng reviewer bị từ chối. Nhiều reviewer có thể review cùng sample. Mỗi lần lưu nối sự kiện trước/sau vào `review_audit.jsonl`; CSV ledger có `decision_id`, `annotation_schema_version`, reviewer, decision/status, phenotype flags, evidence, ghi chú và timestamp UTC. Ledger có thể được khôi phục từ audit JSONL nếu bị mất. Không sửa tay hoặc xóa dòng ledger để thay một quyết định.
+
+Tạo lại báo cáo sau khi có review hoặc để kiểm tra hiện trạng:
+
+```bash
+python -m ml.labeling.human_review_workflow --refresh-reports
+python -m pytest ml/labeling/tests ml/features/tests ml/preprocessing/tests ml/audit -q
+```
+
+Hướng dẫn thao tác chi tiết ở `ml/reports/labeling/human_review_execution_guide.md`; kết quả chất lượng ở `human_annotation_quality_report.md`; cổng training ở `training_readiness_assessment.md`. Không cần thêm notebook vì giao diện Streamlit cho phép ghi quyết định thực tế và nhật ký có kiểm soát; notebook chỉ đọc không đáp ứng được thao tác lưu an toàn.

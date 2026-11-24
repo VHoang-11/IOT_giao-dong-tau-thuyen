@@ -1,0 +1,381 @@
+{
+ "contract_id": "svmg-angle23",
+ "status": "FINALIZED_SEMANTICS",
+ "supersedes": "0.1.0-proposal",
+ "legacy_contract_untouched": [
+  "contracts/features.md",
+  "core/include/svmg_core.h",
+  "core/include/svmg_features.h"
+ ],
+ "source_of_truth_formulas": "ml/docs/feature_specification_30.md + ml/features/extractor.py (feature_extractor_version 0.1.0)",
+ "sampling_hz": 10.0,
+ "endpoint_convention": "(t-W, t]",
+ "update_stride_seconds": 10.0,
+ "window_seconds": [
+  60,
+  180
+ ],
+ "blocks_180": "3 block 60 s không chồng lấn, cũ -> mới, (lower, upper]",
+ "minimum_valid_fraction": 0.95,
+ "maximum_gap_factor": 1.5,
+ "dtype": "float32 trên ESP32; tham chiếu float64 Python",
+ "invalid_policy": "Không thay bằng 0; mỗi feature có cờ validity; vector thiếu -> ABSTAIN/UNKNOWN, không NORMAL",
+ "version": "0.2.0-proposal",
+ "schema_version": "svmg-angle23-0.2.0-proposal",
+ "schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+ "semantic_contract": {
+  "version": "svmg-angle23-semantics-1.0.0",
+  "status": "FINAL",
+  "validity_policy_version": "svmg-angle23-validity-1.0.0",
+  "feature_schema": {
+   "version": "svmg-angle-23-v1",
+   "sha256_scope": "ordered feature names only",
+   "sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8"
+  },
+  "parity_schema_mapping": {
+   "schema_version": "svmg-angle23-0.2.0-proposal",
+   "status": "HISTORICAL_ARTIFACT_SCHEMA_PRESERVED",
+   "note": "Golden và host parity metadata giữ định danh producer đã phát hành; không ghi lại fixture như thể được sinh dưới schema version mới."
+  },
+  "validity_policy": {
+   "C01": "Cửa sổ 180 s hợp lệ và cả ba block 60 s đều có ít nhất 570 mẫu; nếu một block không đạt, cả tám feature block INVALID_INPUT/SEGMENT_BLOCK_COVERAGE.",
+   "C02": "rms_early <= 1e-9 degree -> UNDEFINED_MATHEMATICALLY; ngưỡng zero số học, không phải noise floor cảm biến.",
+   "C03": "SST <= 1e-15 degree^2 -> UNDEFINED_MATHEMATICALLY; parity REVIEW chỉ là diagnostic."
+  },
+  "model_compatibility_metadata": {
+   "model_id": "RELATIVE_HIGH_ROLL",
+   "model_sha256": "eab2891044256ac2b8c4041ed0e1178c4cfb9d1a01bc95c7ed7e80fc19ffe714",
+   "feature_schema_version": "svmg-angle-23-v1",
+   "feature_schema_sha256": "060095dd1f6bf4264fdf1d95e601fe66880837cde08ec5896e35a67f7ff8a1c8",
+   "semantic_contract_version": "svmg-angle23-semantics-1.0.0",
+   "validity_policy_version": "svmg-angle23-validity-1.0.0",
+   "input_policy": "FULL_VECTOR_ONLY; training requires angle23_complete and inference rejects non-finite feature values",
+   "historical_metrics_and_model_modified": false
+  }
+ },
+ "units": {
+  "roll_deg": "degree",
+  "pitch_deg": "degree",
+  "time_seconds": "second"
+ },
+ "window_membership": "Mẫu i thuộc cửa sổ W tại endpoint e khi t_e - W < t_i <= t_e. Với nhịp 10 Hz không gap, tương đương chỉ số (k_e - 10W, k_e].",
+ "endpoint_grid": "Chỉ số mẫu 600 + 100·j tính từ mẫu đầu segment (endpoint đầu tại t0 + 60 s). Golden liệt kê endpoint tường minh.",
+ "warmup": "Feature 60 s: cần t_e - t0 >= 60 s; feature 180 s: cần >= 180 s. Thiếu lịch sử -> INSUFFICIENT_WINDOW/WINDOW_HISTORY_SHORT (WARMUP).",
+ "coverage": {
+  "pointwise_minimum_finite_samples_60s": 570,
+  "pointwise_minimum_finite_samples_180s": 1710,
+  "diff_minimum_adjacent_pairs_60s": 570,
+  "block_minimum_samples": 570,
+  "maximum_gap_seconds": 0.15,
+  "maximum_timestamps_in_window": "N_expected + 1"
+ },
+ "missing_value_semantics": "M2: NaN/Inf có timestamp bỏ khỏi thống kê pointwise; cặp sai phân chỉ dùng hai mẫu hữu hạn kề nhau đúng 0,1 s. Timestamp vắng mặt tạo gap và cửa sổ chứa gap vượt ngưỡng là INVALID_INPUT/TIMESTAMP_GAP. M1 stream: gap timestamp hữu hạn restart pipeline/window và đưa decision UNKNOWN; timestamp NaN/Inf bị từ chối, không lọc payload bằng nominal_dt, engine UNKNOWN tức thì. C feature-only API giả định lưới 10 Hz đều và không biểu diễn gap.",
+ "timestamp_gap_policy": {
+  "m2_timestamp_aware_reference": "Giữ nguyên semantics và golden SYN23/SYN24: cửa sổ chứa gap vượt 0,15 s là INVALID_INPUT/TIMESTAMP_GAP.",
+  "m1_end_to_end_stream": "Gap hữu hạn restart filter và xóa feature history; timestamp không hữu hạn bị loại khỏi decimation và làm engine UNKNOWN ngay; active CRITICAL không bị xóa.",
+  "m1_feature_only_api": "Giữ nguyên API số học không timestamp; yêu cầu chuỗi 10 Hz đều.",
+  "host_c_parity": "46 bản ghi SYN23/SYN24 vẫn NOT_EVALUABLE đối với API không timestamp; chỉ implementation timestamp-aware có đầu ra thật mới có thể được so sánh."
+ },
+ "block_rule_as_implemented": "Chính sách validity production bảo thủ đã duyệt: cả 8 feature dựa trên block (segment_mean_std, mean_shift, rms_early, rms_late, rms_ratio, rms_slope, trend_r2, p95_trend_slope) cần cửa sổ 180 s hợp lệ VÀ cả 3 block đạt ít nhất 570 mẫu. Quy tắc này chặt hơn dependency toán học tối thiểu của một số công thức trong đặc tả 30 ứng viên.",
+ "statistics": {
+  "std": "quần thể, mẫu số n",
+  "quantile": "Type-7: h=(n-1)p, nội suy tuyến tính trên giá trị đã sắp xếp",
+  "regression": "OLS 3 điểm tại tâm block u=[30,90,150] s; slope × 60 -> deg/min",
+  "r_squared": "1-SSE/SST; UNDEFINED nếu SST <= 1e-15; kẹp [0,1] chỉ trong 1e-12",
+  "ratio_epsilon_deg": 1e-09,
+  "sign_ratio": "max(n+,n-)/(n++n-); số 0 tuyệt đối bị loại; UNDEFINED nếu không có mẫu khác 0"
+ },
+ "status_vocabulary": [
+  "VALID",
+  "INSUFFICIENT_WINDOW",
+  "INVALID_INPUT",
+  "UNDEFINED_MATHEMATICALLY"
+ ],
+ "reason_codes": [
+  "WINDOW_HISTORY_SHORT",
+  "SAMPLING_RATE_MISMATCH",
+  "TIMESTAMP_GAP",
+  "TIME_SAMPLE_COVERAGE",
+  "SIGNAL_VALID_COVERAGE",
+  "ADJACENT_PAIR_COVERAGE",
+  "SEGMENT_BLOCK_COVERAGE",
+  "EARLY_RMS_AT_OR_BELOW_EPSILON",
+  "CONSTANT_RMS_TREND",
+  "NON_FINITE_RESULT"
+ ],
+ "invalid_value_encoding": "Feature không VALID có value = null (JSON) hoặc ô rỗng (CSV); không bao giờ 0.",
+ "input_representation": "Golden input là giá trị float32 (lưu dạng thập phân 9 chữ số, đọc lại chính xác vào float32).",
+ "index_base": "feature_index 0-based (0..22); STT trong tài liệu M1 là 1-based (C09)",
+ "reason_code_notes": {
+  "roll_dominant_sign_ratio_180": "mọi mẫu hữu hạn bằng 0 -> UNDEFINED_MATHEMATICALLY / NON_FINITE_RESULT (C08)",
+  "block_features": "cửa sổ 180 s không hợp lệ -> dùng lại status/reason của cửa sổ 180 s; block thiếu -> INVALID_INPUT / SEGMENT_BLOCK_COVERAGE"
+ },
+ "interchange_format": "ml/parity/fixtures/interchange_format.json",
+ "tolerance_spec": "ml/parity/fixtures/tolerance_spec.json",
+ "golden_manifest": "ml/parity/fixtures/manifest.json",
+ "open_issues": [],
+ "validity_policy_version": "svmg-angle23-validity-1.0.0",
+ "changelog": [
+  "Chốt C01-C03 thành semantic contract svmg-angle23-semantics-1.0.0.",
+  "Giữ nguyên numeric schema, feature formulas, tolerance, golden expected values và validity hiện tại.",
+  "Thay dung sai chung của v0.1 bằng dung sai theo feature (C07).",
+  "Giải quyết C04 bằng ranh giới validity timestamp-aware và restart end-to-end M1; giữ nguyên feature formulas và golden gap outputs.",
+  "Bổ sung ngữ nghĩa cửa sổ, endpoint, warmup, coverage, mẫu thiếu, mã trạng thái (C04-C06, C08, C09).",
+  "Công thức, tên, đơn vị, thứ tự 23 feature KHÔNG đổi so với v0.1."
+ ],
+ "features": [
+  {
+   "index": 0,
+   "name": "roll_rms_60",
+   "spec_id": 0,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "sqrt(mean(x^2)) trên (t-60,t]",
+   "embedded_strategy": "O(1) tổng bình phương trượt",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 1,
+   "name": "roll_std_60",
+   "spec_id": 1,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "độ lệch chuẩn quần thể (mẫu số n)",
+   "embedded_strategy": "O(1) moment trượt ổn định",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 2,
+   "name": "roll_mean_60",
+   "spec_id": 2,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "mean(x)",
+   "embedded_strategy": "O(1) tổng trượt",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 3,
+   "name": "roll_peak_to_peak_60",
+   "spec_id": 3,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "max(x)-min(x)",
+   "embedded_strategy": "O(1) khấu hao bằng deque đơn điệu",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 4,
+   "name": "roll_abs_p95_60",
+   "spec_id": 4,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "phân vị Type-7 0.95 của |x|",
+   "embedded_strategy": "sắp xếp 600 phần tử/lần cập nhật",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 5,
+   "name": "roll_abs_max_60",
+   "spec_id": 5,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "max(|x|)",
+   "embedded_strategy": "O(1) khấu hao bằng deque",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 6,
+   "name": "roll_iqr_60",
+   "spec_id": 6,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "Q0.75-Q0.25 Type-7",
+   "embedded_strategy": "sắp xếp 600 phần tử",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 7,
+   "name": "roll_diff_rms_60",
+   "spec_id": 7,
+   "signal": "roll",
+   "window_seconds": 60,
+   "unit": "deg/sample @10 Hz",
+   "definition": "RMS sai phân bậc 1 giữa mẫu kề đúng chu kỳ 0.1 s",
+   "embedded_strategy": "O(1); PHỤ THUỘC tần số lấy mẫu",
+   "group": "A_roll_60"
+  },
+  {
+   "index": 8,
+   "name": "roll_mean_180",
+   "spec_id": 11,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "mean(x)",
+   "embedded_strategy": "O(1) tổng trượt",
+   "group": "C_roll_offset_180"
+  },
+  {
+   "index": 9,
+   "name": "roll_median_180",
+   "spec_id": 12,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "Q0.50 Type-7",
+   "embedded_strategy": "sắp xếp 1800 phần tử",
+   "group": "C_roll_offset_180"
+  },
+  {
+   "index": 10,
+   "name": "roll_mean_abs_180",
+   "spec_id": 13,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "mean(|x|)",
+   "embedded_strategy": "O(1) tổng trượt",
+   "group": "C_roll_offset_180"
+  },
+  {
+   "index": 11,
+   "name": "roll_dominant_sign_ratio_180",
+   "spec_id": 14,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "1",
+   "definition": "max(n+,n-)/(n++n-), bỏ số 0 tuyệt đối",
+   "embedded_strategy": "O(1) bộ đếm dấu",
+   "group": "C_roll_offset_180"
+  },
+  {
+   "index": 12,
+   "name": "roll_segment_mean_std_180",
+   "spec_id": 15,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "std quần thể của 3 mean block 60 s",
+   "embedded_strategy": "O(1) sau tổng block",
+   "group": "C_roll_offset_180"
+  },
+  {
+   "index": 13,
+   "name": "roll_mean_shift_180",
+   "spec_id": 16,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "mean(block 3) - mean(block 1)",
+   "embedded_strategy": "O(1) sau tổng block",
+   "group": "C_roll_offset_180"
+  },
+  {
+   "index": 14,
+   "name": "roll_rms_early_60",
+   "spec_id": 17,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "RMS block 60 s cũ nhất",
+   "embedded_strategy": "O(1) sau tổng block",
+   "group": "D_roll_growth_180"
+  },
+  {
+   "index": 15,
+   "name": "roll_rms_late_60",
+   "spec_id": 18,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg",
+   "definition": "RMS block 60 s mới nhất (trùng số học với roll_rms_60)",
+   "embedded_strategy": "O(1)",
+   "group": "D_roll_growth_180"
+  },
+  {
+   "index": 16,
+   "name": "roll_rms_ratio_180",
+   "spec_id": 19,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "1",
+   "definition": "rms_late/rms_early; không xác định nếu rms_early <= 1e-9",
+   "embedded_strategy": "O(1)",
+   "group": "D_roll_growth_180"
+  },
+  {
+   "index": 17,
+   "name": "roll_rms_slope_180",
+   "spec_id": 20,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg/min",
+   "definition": "độ dốc OLS của 3 RMS block theo tâm [30,90,150] s, x60",
+   "embedded_strategy": "O(1)",
+   "group": "D_roll_growth_180"
+  },
+  {
+   "index": 18,
+   "name": "roll_rms_trend_r2_180",
+   "spec_id": 21,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "1",
+   "definition": "R^2 của hồi quy 3 điểm; không xác định nếu SST=0",
+   "embedded_strategy": "O(1)",
+   "group": "D_roll_growth_180"
+  },
+  {
+   "index": 19,
+   "name": "roll_p95_trend_slope_180",
+   "spec_id": 22,
+   "signal": "roll",
+   "window_seconds": 180,
+   "unit": "deg/min",
+   "definition": "độ dốc OLS của P95|x| 3 block, x60",
+   "embedded_strategy": "sắp xếp 3x600 phần tử",
+   "group": "D_roll_growth_180"
+  },
+  {
+   "index": 20,
+   "name": "pitch_rms_60",
+   "spec_id": 26,
+   "signal": "pitch",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "sqrt(mean(p^2))",
+   "embedded_strategy": "O(1)",
+   "group": "F_pitch_60"
+  },
+  {
+   "index": 21,
+   "name": "pitch_std_60",
+   "spec_id": 27,
+   "signal": "pitch",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "độ lệch chuẩn quần thể",
+   "embedded_strategy": "O(1)",
+   "group": "F_pitch_60"
+  },
+  {
+   "index": 22,
+   "name": "pitch_peak_to_peak_60",
+   "spec_id": 28,
+   "signal": "pitch",
+   "window_seconds": 60,
+   "unit": "deg",
+   "definition": "max(p)-min(p)",
+   "embedded_strategy": "O(1) deque",
+   "group": "F_pitch_60"
+  }
+ ]
+}

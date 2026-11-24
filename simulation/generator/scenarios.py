@@ -13,6 +13,8 @@ from typing import Any, Deque, Dict, Mapping, Optional, Tuple
 
 from simulation.generator.config import (
     DatasetSplit,
+    GrowthCriterion,
+    LabelingVersion,
     ScenarioCode,
     SimulationConfig,
     WaveExcitationConfig,
@@ -33,6 +35,8 @@ PERSISTENT_HEEL_THRESHOLD_RAD = math.radians(3.0)
 PERSISTENT_HEEL_DURATION_S = 120.0
 TRANSITION_DURATION_S = 90.0
 SAMPLE_COUNT_CONVENTION = "t_i = i*dt for i=0..N-1; duration is N*dt"
+LABEL_PRIORITY_V2 = (
+    "HIGH_ROLL", "PERSISTENT_OFFSET", "AMPLITUDE_GROWTH", "NORMAL")
 
 
 def _finite(name: str, value: float) -> float:
@@ -86,6 +90,250 @@ def assign_motion_label(
 
 
 @dataclass(frozen=True)
+class MotionPhenotypeFlags:
+    """Independent v2 phenotype states; ``None`` means not yet decidable."""
+
+    high_roll_active: Optional[bool]
+    persistent_offset_active: Optional[bool]
+    observed_amplitude_growth: Optional[bool]
+
+
+@dataclass(frozen=True)
+class MotionLabelMetrics:
+    """Causal v2 intermediate metrics, with units explicit in field names."""
+
+    rms_centered_60_rad: Optional[float]
+    mean_roll_180_rad: Optional[float]
+    persistent_offset_duration_s: Optional[float]
+    rms_trend_slope_deg_per_min: Optional[float]
+    growth_ratio_180: Optional[float]
+
+
+@dataclass(frozen=True)
+class CausalLabelStep:
+    """One streaming label decision and its independent phenotype evidence."""
+
+    label: Optional[str]
+    flags: MotionPhenotypeFlags
+    metrics: MotionLabelMetrics
+
+
+class CausalMotionLabelerV2:
+    """Streaming labeler that only consumes roll samples through current time.
+
+    A v2 decision requires configured HIGH_ROLL and growth criteria. Dataset
+    readiness additionally requires those thresholds to be marked calibrated.
+    The default config leaves criteria unset; then this class reports
+    metrics/flags where possible and returns no primary class. Heel evidence
+    comes from signed roll means, never scenario or generator metadata.
+    """
+
+    def __init__(self, config: SimulationConfig) -> None:
+        if not isinstance(config, SimulationConfig):
+            raise TypeError("config must be a SimulationConfig")
+        self.config = config.labeling
+        self.dt_s = config.time.dt_s
+        self._n60 = self._sample_count(60.0)
+        self._n_offset = self._sample_count(self.config.persistent_offset_window_s)
+        self._n_growth = self._sample_count(self.config.growth_window_s)
+        self._ratio_lag = self._sample_count(self.config.growth_ratio_lag_s)
+        self._roll60 = deque()
+        self._roll180 = deque()
+        self._mean60 = self._m2_60 = 0.0
+        self._sum180 = 0.0
+        self._growth_values = deque()
+        self._growth_sum = self._growth_sum_xy = 0.0
+        self._centered_history: List[Optional[float]] = []
+        self._sample_index = -1
+        self._last_timestamp: Optional[float] = None
+        self._offset_sign = 0
+        self._offset_since: Optional[float] = None
+        self._growth_since: Optional[float] = None
+        self._high_threshold_rad = (
+            None if self.config.high_roll_centered_threshold_deg is None else
+            math.radians(self.config.high_roll_centered_threshold_deg))
+        self._offset_threshold_rad = math.radians(
+            self.config.persistent_offset_threshold_deg)
+        self._ratio_floor_rad = (
+            None if self.config.growth_ratio_floor_deg is None else
+            math.radians(self.config.growth_ratio_floor_deg))
+
+    def _sample_count(self, duration_s: float) -> int:
+        count = duration_s / self.dt_s
+        rounded = round(count)
+        if not math.isclose(count, rounded, rel_tol=0.0, abs_tol=1e-9):
+            raise ValueError("labeling windows must be integral multiples of dt_s")
+        # Include both endpoints so the represented interval is exactly duration_s.
+        return int(rounded) + 1
+
+    @staticmethod
+    def _append_window(window: Any, value: float, maximum: int) -> Optional[float]:
+        window.append(value)
+        if len(window) > maximum:
+            return window.popleft()
+        return None
+
+    def _append_growth_value(self, value: float) -> Optional[float]:
+        count = len(self._growth_values)
+        if count < self._n_growth:
+            self._growth_sum_xy += count * value
+            self._growth_sum += value
+            self._growth_values.append(value)
+            return None
+        removed = self._growth_values.popleft()
+        # Shift the remaining sample indices left by one, then append at N-1.
+        self._growth_sum_xy = (
+            self._growth_sum_xy - (self._growth_sum - removed)
+            + (self._n_growth - 1) * value
+        )
+        self._growth_sum += value - removed
+        self._growth_values.append(value)
+        sum_x = self._n_growth * (self._n_growth - 1) / 2.0
+        sum_x2 = (self._n_growth * (self._n_growth - 1) *
+                  (2 * self._n_growth - 1) / 6.0)
+        denominator = self._n_growth * sum_x2 - sum_x * sum_x
+        slope_per_sample = (
+            self._n_growth * self._growth_sum_xy - sum_x * self._growth_sum
+        ) / denominator
+        slope_rad_s = slope_per_sample / self.dt_s
+        return math.degrees(slope_rad_s) * 60.0
+
+    def step(self, timestamp_s: float, roll_rad: float) -> CausalLabelStep:
+        """Consume one current sample and return a decision without look-ahead."""
+        timestamp = _finite("timestamp_s", timestamp_s)
+        roll = _finite("roll_rad", roll_rad)
+        if self._last_timestamp is not None:
+            expected = self._last_timestamp + self.dt_s
+            if not math.isclose(timestamp, expected, rel_tol=0.0, abs_tol=1e-9):
+                raise ValueError("labeler timestamps must increase by configured dt_s")
+        self._last_timestamp = timestamp
+        self._sample_index += 1
+
+        if len(self._roll60) == self._n60:
+            removed = self._roll60.popleft()
+            old_count = self._n60
+            new_count = old_count - 1
+            if new_count:
+                new_mean = (old_count * self._mean60 - removed) / new_count
+                self._m2_60 -= (removed - self._mean60) * (removed - new_mean)
+                self._mean60 = new_mean
+            else:
+                self._mean60 = self._m2_60 = 0.0
+        self._roll60.append(roll)
+        new_count = len(self._roll60)
+        delta = roll - self._mean60
+        self._mean60 += delta / new_count
+        self._m2_60 += delta * (roll - self._mean60)
+        rms_centered = None
+        if len(self._roll60) == self._n60:
+            variance = max(0.0, self._m2_60 / self._n60)
+            rms_centered = math.sqrt(variance)
+
+        removed180 = self._append_window(self._roll180, roll, self._n_offset)
+        if removed180 is not None:
+            self._sum180 -= removed180
+        self._sum180 += roll
+        mean180 = (self._sum180 / self._n_offset
+                   if len(self._roll180) == self._n_offset else None)
+
+        self._centered_history.append(rms_centered)
+        slope = None
+        if rms_centered is not None:
+            slope = self._append_growth_value(rms_centered)
+        ratio = None
+        old_index = self._sample_index - self._ratio_lag
+        if (rms_centered is not None and old_index >= 0 and
+                old_index < len(self._centered_history)):
+            older = self._centered_history[old_index]
+            if older is not None and older > 0.0:
+                floor = 0.0 if self._ratio_floor_rad is None else self._ratio_floor_rad
+                ratio = rms_centered / max(older, floor)
+
+        persistent_duration = None
+        persistent_active: Optional[bool] = None
+        if mean180 is not None:
+            if abs(mean180) >= self._offset_threshold_rad:
+                sign = 1 if mean180 > 0.0 else -1
+                if sign != self._offset_sign:
+                    self._offset_sign = sign
+                    self._offset_since = timestamp
+                persistent_duration = timestamp - (
+                    timestamp if self._offset_since is None else self._offset_since)
+                persistent_active = (
+                    persistent_duration >= self.config.persistent_offset_duration_s)
+            else:
+                self._offset_sign = 0
+                self._offset_since = None
+                persistent_duration = 0.0
+                persistent_active = False
+
+        high_active: Optional[bool] = None
+        if rms_centered is not None and self._high_threshold_rad is not None:
+            high_active = rms_centered >= self._high_threshold_rad
+
+        growth_condition: Optional[bool] = None
+        criterion = self.config.growth_criterion
+        slope_condition = (
+            None if slope is None or self.config.growth_slope_threshold_deg_per_min is None
+            else slope >= self.config.growth_slope_threshold_deg_per_min
+        )
+        ratio_condition = (
+            None if ratio is None or self.config.growth_ratio_threshold is None
+            else ratio >= self.config.growth_ratio_threshold
+        )
+        if criterion is GrowthCriterion.SLOPE and slope_condition is not None:
+            growth_condition = slope_condition
+        elif criterion is GrowthCriterion.RATIO and ratio_condition is not None:
+            growth_condition = ratio_condition
+        elif (criterion is GrowthCriterion.SLOPE_AND_RATIO and
+              slope_condition is not None and ratio_condition is not None):
+            growth_condition = slope_condition and ratio_condition
+        elif (criterion is GrowthCriterion.SLOPE_OR_RATIO and
+              slope_condition is not None and ratio_condition is not None):
+            growth_condition = slope_condition or ratio_condition
+
+        growth_active: Optional[bool] = None
+        if growth_condition is not None:
+            if growth_condition:
+                if self._growth_since is None:
+                    self._growth_since = timestamp
+                growth_active = (
+                    timestamp - self._growth_since >=
+                    self.config.growth_confirmation_s
+                )
+            else:
+                self._growth_since = None
+                growth_active = False
+
+        metrics = MotionLabelMetrics(
+            rms_centered_60_rad=rms_centered,
+            mean_roll_180_rad=mean180,
+            persistent_offset_duration_s=persistent_duration,
+            rms_trend_slope_deg_per_min=slope,
+            growth_ratio_180=ratio,
+        )
+        flags = MotionPhenotypeFlags(
+            high_roll_active=high_active,
+            persistent_offset_active=persistent_active,
+            observed_amplitude_growth=growth_active,
+        )
+
+        ready_metrics = (high_active is not None and persistent_active is not None and
+                         growth_active is not None)
+        label = None
+        if self.config.labeling_v2_configured and ready_metrics:
+            if high_active:
+                label = "HIGH_ROLL"
+            elif persistent_active:
+                label = "PERSISTENT_OFFSET"
+            elif growth_active:
+                label = "AMPLITUDE_GROWTH"
+            else:
+                label = "NORMAL"
+        return CausalLabelStep(label=label, flags=flags, metrics=metrics)
+
+
+@dataclass(frozen=True)
 class ScenarioResult:
     """Aligned truth, IMU measurements, labels and replay metadata for a run."""
 
@@ -102,6 +350,11 @@ class ScenarioResult:
     parametric_excitation_amplitude: Tuple[float, ...]
     rolling_rms_roll_rad: Tuple[Optional[float], ...]
     labels: Tuple[Optional[str], ...]
+    labels_v1: Tuple[Optional[str], ...]
+    labels_v2: Tuple[Optional[str], ...]
+    phenotype_flags_v2: Tuple[MotionPhenotypeFlags, ...]
+    labeling_metrics_v2: Tuple[MotionLabelMetrics, ...]
+    selected_labeling_version: LabelingVersion
     transition_flags: Tuple[bool, ...]
     imu_samples: Tuple[IMUSample, ...]
     events: Tuple[Dict[str, Any], ...]
@@ -120,11 +373,20 @@ class ScenarioResult:
             self.parametric_excitation_amplitude,
             self.rolling_rms_roll_rad,
             self.labels,
+            self.labels_v1,
+            self.labels_v2,
+            self.phenotype_flags_v2,
+            self.labeling_metrics_v2,
             self.transition_flags,
             self.imu_samples,
         )
         if any(len(values) != count for values in aligned_fields):
             raise ValueError("all scenario result streams must have equal length")
+
+    def labels_for(self, version: LabelingVersion) -> Tuple[Optional[str], ...]:
+        """Return one labeler stream without changing the selected ``labels``."""
+        parsed = version if isinstance(version, LabelingVersion) else LabelingVersion(version)
+        return self.labels_v1 if parsed is LabelingVersion.V1 else self.labels_v2
 
 
 class ScenarioRunner:
@@ -154,33 +416,45 @@ class ScenarioRunner:
         self,
         config: SimulationConfig,
         *,
-        sea_state_sigma_deg: Mapping[str, float],
+        sea_state_sigma_deg: Optional[Mapping[str, float]] = None,
         lever_arm_body_m: Tuple[float, float, float] = (0.0, 0.0, 0.0),
     ) -> None:
         if not isinstance(config, SimulationConfig):
             raise TypeError("config must be a SimulationConfig")
         if config.waves.generator is not WaveGeneratorKind.G1:
             raise ValueError("ScenarioRunner currently supports G1 wave forcing only")
-        if not isinstance(sea_state_sigma_deg, Mapping):
-            raise TypeError("sea_state_sigma_deg must be a mapping")
-        required_states = {"SS0", "SS1", "SS2", "SS3", "SS4", "SS5"}
-        if set(sea_state_sigma_deg) != required_states:
-            raise ValueError("sea_state_sigma_deg must define SS0 through SS5 exactly")
-        profile = {}
-        for sea_state, sigma_deg in sea_state_sigma_deg.items():
-            sigma = _finite("sea_state_sigma_deg[{}]".format(sea_state), sigma_deg)
-            if sigma < 0.0:
-                raise ValueError("sea-state sigma values must be non-negative")
-            profile[sea_state] = sigma
+        if sea_state_sigma_deg is None:
+            profile = config.sea_state_profile.sigma_w_by_state_deg
+            profile_rad = dict(config.sea_state_profile.sigma_w_by_state_rad)
+            profile_id = config.sea_state_profile.profile_id
+            profile_status = config.sea_state_profile.calibration_status.value
+        else:
+            if not isinstance(sea_state_sigma_deg, Mapping):
+                raise TypeError("sea_state_sigma_deg must be a mapping")
+            required_states = {"SS0", "SS1", "SS2", "SS3", "SS4", "SS5"}
+            if set(sea_state_sigma_deg) != required_states:
+                raise ValueError("sea_state_sigma_deg must define SS0 through SS5 exactly")
+            profile = {}
+            for sea_state, sigma_deg in sea_state_sigma_deg.items():
+                sigma = _finite("sea_state_sigma_deg[{}]".format(sea_state), sigma_deg)
+                if sigma < 0.0:
+                    raise ValueError("sea-state sigma values must be non-negative")
+                profile[sea_state] = sigma
+            if any(profile[left] >= profile[right]
+                   for left, right in zip(("SS0", "SS1", "SS2", "SS3", "SS4"),
+                                          ("SS1", "SS2", "SS3", "SS4", "SS5"))):
+                raise ValueError("sea-state sigma values must increase from SS0 to SS5")
+            profile_rad = {state: math.radians(value) for state, value in profile.items()}
+            profile_id = "caller-supplied-unverified"
+            profile_status = "candidate"
         if (not isinstance(lever_arm_body_m, (tuple, list)) or
                 len(lever_arm_body_m) != 3):
             raise ValueError("lever_arm_body_m must contain three coordinates")
         self.config = config
         self.sea_state_sigma_deg = profile
-        self._sea_state_sigma_rad = {
-            sea_state: math.radians(sigma_deg)
-            for sea_state, sigma_deg in profile.items()
-        }
+        self._sea_state_sigma_rad = profile_rad
+        self.sea_state_profile_id = profile_id
+        self.sea_state_profile_status = profile_status
         self.lever_arm_body_m = tuple(
             _finite("lever_arm_body_m", value) for value in lever_arm_body_m)
         self.dt_s = config.time.dt_s
@@ -245,27 +519,19 @@ class ScenarioRunner:
         event_sea_state = None
         event_sigma_deg = None
         if scenario in (ScenarioCode.S1, ScenarioCode.H1):
-            if scenario is ScenarioCode.S1:
-                event_sea_state = self._choice(rng, ("SS4", "SS5"))
-                # Explicitly supplied S1 forcing range from the task brief.
-                lower_bound = max(3.0, math.nextafter(baseline_sigma_deg, math.inf))
-                if lower_bound > 4.5:
-                    raise ValueError(
-                        "S1 baseline sea-state sigma must be below 4.5 degrees")
-                event_sigma_deg = self._uniform(rng, lower_bound, 4.5)
-            else:
-                eligible_high_states = tuple(
-                    sea_state for sea_state in ("SS4", "SS5")
-                    if self.sea_state_sigma_deg[sea_state] > baseline_sigma_deg
-                )
-                if not eligible_high_states:
-                    raise ValueError("H1 profile must provide SS4/SS5 sigma above baseline")
-                event_sea_state = self._choice(rng, eligible_high_states)
-                event_sigma_deg = self.sea_state_sigma_deg[event_sea_state]
-        event_sigma_rad = (None if event_sigma_deg is None else
-                           (self._sea_state_sigma_rad[event_sea_state]
-                            if scenario is ScenarioCode.H1
-                            else math.radians(event_sigma_deg)))
+            eligible_high_states = tuple(
+                sea_state for sea_state in ("SS4", "SS5")
+                if self.sea_state_sigma_deg[sea_state] > baseline_sigma_deg
+            )
+            if not eligible_high_states:
+                raise ValueError("profile must provide SS4/SS5 sigma above baseline")
+            event_sea_state = self._choice(rng, eligible_high_states)
+            event_sigma_deg = self.sea_state_sigma_deg[event_sea_state]
+            if scenario is ScenarioCode.S1 and not 3.0 <= event_sigma_deg <= 4.5:
+                raise ValueError(
+                    "S1 SS4/SS5 profile sigma must lie within the specified 3-4.5 degree range")
+        event_sigma_rad = (None if event_sea_state is None else
+                           self._sea_state_sigma_rad[event_sea_state])
 
         heel_offset_deg = None
         heel_duration_s = None
@@ -336,7 +602,8 @@ class ScenarioRunner:
 
     def generate(self, scenario_id: ScenarioCode,
                  *, seed: Optional[int] = None,
-                 dataset_split: DatasetSplit = DatasetSplit.TRAIN) -> ScenarioResult:
+                 dataset_split: DatasetSplit = DatasetSplit.TRAIN,
+                 labeling_version: LabelingVersion = LabelingVersion.V1) -> ScenarioResult:
         """Generate one full scenario session with sample-aligned metadata."""
         try:
             scenario = scenario_id if isinstance(scenario_id, ScenarioCode) else ScenarioCode(scenario_id)
@@ -346,6 +613,11 @@ class ScenarioRunner:
             split = dataset_split if isinstance(dataset_split, DatasetSplit) else DatasetSplit(dataset_split)
         except (ValueError, TypeError) as exc:
             raise ValueError("unknown dataset split: {!r}".format(dataset_split)) from exc
+        try:
+            label_version = (labeling_version if isinstance(labeling_version, LabelingVersion)
+                             else LabelingVersion(labeling_version))
+        except (ValueError, TypeError) as exc:
+            raise ValueError("unknown labeling version: {!r}".format(labeling_version)) from exc
 
         actual_seed = self.config.random_seed if seed is None else seed
         if actual_seed == 0:
@@ -389,6 +661,7 @@ class ScenarioRunner:
             time_config=self.config.time,
             rng=wave_rng,
         )
+        v2_labeler = CausalMotionLabelerV2(self.config)
 
         timestamps = []
         roll_angles = []
@@ -400,7 +673,10 @@ class ScenarioRunner:
         heel_values = []
         h_values = []
         rolling_rms_values = []
-        labels = []
+        labels_v1 = []
+        labels_v2 = []
+        phenotype_flags_v2 = []
+        labeling_metrics_v2 = []
         transition_flags = []
         imu_samples = []
         roll_square_window: Deque[float] = deque()
@@ -470,13 +746,17 @@ class ScenarioRunner:
             else:
                 heel_active_since = None
                 heel_duration = 0.0
-            label = assign_motion_label(
+            label_v1 = assign_motion_label(
                 rolling_rms,
                 parametric_excitation_active=h_value > 0.0,
                 heel_offset_rad=heel_rad,
                 heel_duration_s=heel_duration,
             )
-            labels.append(label)
+            v2_step = v2_labeler.step(timestamp_s, state.phi_rad)
+            labels_v1.append(label_v1)
+            labels_v2.append(v2_step.label)
+            phenotype_flags_v2.append(v2_step.flags)
+            labeling_metrics_v2.append(v2_step.metrics)
             t0_s = plan["t0_s"]
             transition_flags.append(
                 t0_s is not None and t0_s <= timestamp_s < t0_s + TRANSITION_DURATION_S)
@@ -496,11 +776,14 @@ class ScenarioRunner:
                     timestamp_s=(sample_index + 1) * self.dt_s,
                 )
 
-        observed_labels = sorted({value for value in labels if value is not None})
+        selected_labels = labels_v1 if label_version is LabelingVersion.V1 else labels_v2
+        observed_labels = sorted({value for value in labels_v1 if value is not None})
+        observed_labels_v2 = sorted({value for value in labels_v2 if value is not None})
         outcome_checks: Dict[str, Any] = {
             "observed_labels": observed_labels,
             "high_roll_threshold_reached": "HIGH_ROLL" in observed_labels,
             "persistent_offset_label_reached": "PERSISTENT_OFFSET" in observed_labels,
+            "observed_labels_v2": observed_labels_v2,
         }
         if scenario is ScenarioCode.S3:
             start_index = plan["t0_index"]
@@ -516,7 +799,8 @@ class ScenarioRunner:
                 "criterion": "late 60-second RMS greater than first post-t0 60-second RMS",
             }
         if scenario in (ScenarioCode.S0, ScenarioCode.S0B):
-            outcome_checks["expected_outcome_met"] = bool(labels and labels[-1] == "NORMAL")
+            outcome_checks["expected_outcome_met"] = bool(
+                labels_v1 and labels_v1[-1] == "NORMAL")
         elif scenario is ScenarioCode.S1:
             outcome_checks["expected_outcome_met"] = outcome_checks["high_roll_threshold_reached"]
         elif scenario is ScenarioCode.S2:
@@ -541,6 +825,57 @@ class ScenarioRunner:
                 "imu": imu_rng.state,
             },
             "config": self.config.to_dict(),
+            "labeling": {
+                "selected_version": label_version.value,
+                "available_versions": [LabelingVersion.V1.value,
+                                        LabelingVersion.V2.value],
+                "v1_status": "ready",
+                "v2_status": ("ready" if self.config.labeling.labeling_v2_ready
+                              else "not_ready_missing_calibrated_thresholds"),
+                "v2_ready": self.config.labeling.labeling_v2_ready,
+                "v2_configured": self.config.labeling.labeling_v2_configured,
+                "v2_threshold_calibration_status": (
+                    self.config.labeling.threshold_calibration_status.value),
+                "v2_thresholds": {
+                    "high_roll_centered_threshold_deg": (
+                        self.config.labeling.high_roll_centered_threshold_deg),
+                    "persistent_offset_threshold_deg": (
+                        self.config.labeling.persistent_offset_threshold_deg),
+                    "persistent_offset_window_s": (
+                        self.config.labeling.persistent_offset_window_s),
+                    "persistent_offset_duration_s": (
+                        self.config.labeling.persistent_offset_duration_s),
+                    "growth_criterion": (
+                        self.config.labeling.growth_criterion.value
+                        if self.config.labeling.growth_criterion is not None else None),
+                    "growth_window_s": self.config.labeling.growth_window_s,
+                    "growth_ratio_lag_s": self.config.labeling.growth_ratio_lag_s,
+                    "growth_slope_threshold_deg_per_min": (
+                        self.config.labeling.growth_slope_threshold_deg_per_min),
+                    "growth_ratio_threshold": self.config.labeling.growth_ratio_threshold,
+                    "growth_ratio_floor_deg": self.config.labeling.growth_ratio_floor_deg,
+                    "growth_confirmation_s": self.config.labeling.growth_confirmation_s,
+                },
+                "v2_unresolved_thresholds": list(
+                    self.config.labeling.unresolved_v2_thresholds),
+                "v2_priority": list(LABEL_PRIORITY_V2),
+                "v2_warmup_requirement_s": (
+                    60.0 + self.config.labeling.growth_window_s
+                    if self.config.labeling.growth_criterion in (
+                        GrowthCriterion.SLOPE, GrowthCriterion.SLOPE_AND_RATIO,
+                        GrowthCriterion.SLOPE_OR_RATIO)
+                    else max(60.0, self.config.labeling.persistent_offset_window_s,
+                             self.config.labeling.growth_ratio_lag_s)
+                ),
+                "official_dataset_ready": self.config.official_dataset_ready,
+            },
+            "sea_state_profile": {
+                "profile_id": self.sea_state_profile_id,
+                "calibration_status": self.sea_state_profile_status,
+                "sigma_w_by_state_deg_equivalent": dict(self.sea_state_sigma_deg),
+                "sigma_w_by_state_rad": dict(self._sea_state_sigma_rad),
+                "physical_wave_height_calibration": False,
+            },
             "sample_count": self.sample_count,
             "duration_s": self.config.time.duration_s,
             "dt_s": self.dt_s,
@@ -581,6 +916,12 @@ class ScenarioRunner:
             "events": [event] if event is not None else [],
             "outcome_checks": outcome_checks,
             "label_rules": {
+                "labeling_v1": {
+                    "high_roll_rms_threshold_deg": 6.0,
+                    "high_roll_metric": "60-second RMS about zero",
+                    "priority": ["HIGH_ROLL", "AMPLITUDE_GROWTH",
+                                 "PERSISTENT_OFFSET", "NORMAL"],
+                },
                 "high_roll_rms_threshold_deg": 6.0,
                 "persistent_heel_threshold_deg": 3.0,
                 "persistent_heel_duration_s": PERSISTENT_HEEL_DURATION_S,
@@ -602,7 +943,12 @@ class ScenarioRunner:
             heel_offset_rad=tuple(heel_values),
             parametric_excitation_amplitude=tuple(h_values),
             rolling_rms_roll_rad=tuple(rolling_rms_values),
-            labels=tuple(labels),
+            labels=tuple(selected_labels),
+            labels_v1=tuple(labels_v1),
+            labels_v2=tuple(labels_v2),
+            phenotype_flags_v2=tuple(phenotype_flags_v2),
+            labeling_metrics_v2=tuple(labeling_metrics_v2),
+            selected_labeling_version=label_version,
             transition_flags=tuple(transition_flags),
             imu_samples=tuple(imu_samples),
             events=tuple([event] if event is not None else []),
@@ -670,9 +1016,10 @@ def generate_scenario(
     config: SimulationConfig,
     scenario_id: ScenarioCode,
     *,
-    sea_state_sigma_deg: Mapping[str, float],
+    sea_state_sigma_deg: Optional[Mapping[str, float]] = None,
     seed: Optional[int] = None,
     dataset_split: DatasetSplit = DatasetSplit.TRAIN,
+    labeling_version: LabelingVersion = LabelingVersion.V1,
     lever_arm_body_m: Tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> ScenarioResult:
     """Convenience wrapper for generating one configured scenario session."""
@@ -680,4 +1027,5 @@ def generate_scenario(
         config,
         sea_state_sigma_deg=sea_state_sigma_deg,
         lever_arm_body_m=lever_arm_body_m,
-    ).generate(scenario_id, seed=seed, dataset_split=dataset_split)
+    ).generate(scenario_id, seed=seed, dataset_split=dataset_split,
+                labeling_version=labeling_version)

@@ -1,287 +1,136 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "contract_id": "SVMG-CONTRACT-FEAT-23",
-  "version": "2.4.0",
-  "title": "SVMG 23-Feature Kinematic Vector Contract",
-  "description": "Bản hợp đồng đặc tả 23 đặc trưng động học (Kinematic Feature Vector) phục vụ mô hình TinyML Random Forest và hệ thống giám sát Smart Vessel Motion Guard.",
-  "total_features": 23,
-  "source_export": "2026-11-23T07-38_export.csv",
-  "exported_at": "2026-11-23T07:38:00Z",
-  "status_summary": {
-    "valid_count": 23,
-    "warning_count": 0,
-    "invalid_count": 0
-  },
-  "groups": [
-    {
-      "id": "roll_60s",
-      "title": "Roll Động học ngắn hạn (60s)",
-      "feature_count": 8
-    },
-    {
-      "id": "roll_180s",
-      "title": "Roll Xu hướng dài hạn & Nghiêng lệch (180s)",
-      "feature_count": 12
-    },
-    {
-      "id": "pitch_60s",
-      "title": "Pitch Động học nhồi/chúi ngắn hạn (60s)",
-      "feature_count": 3
-    }
+  "feature_schema_version": "svmg-angle-23-v1",
+  "preprocessing_version": "imu-cf-bw4-20to10-v1",
+  "feature_count": 23,
+  "sampling_hz": 10,
+  "update_interval_s": 10,
+  "raw_imu_sampling_hz": 20,
+  "windows_s": [
+    60,
+    180
   ],
+  "window_endpoint": "(t-W,t]",
+  "minimum_valid_fraction": 0.95,
+  "quantile": "Type-7",
+  "std_ddof": 0,
+  "rms_centering": "zero",
+  "epsilon_rms_deg": 1e-09,
+  "r_squared_zero_tolerance": 1e-15,
   "features": [
     {
       "index": 0,
       "name": "roll_rms_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Root-mean-square của góc lắc ngang (roll) trong cửa sổ 60s",
-      "value": 0.5161259296517376,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 1,
       "name": "roll_std_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Độ lệch chuẩn của góc lắc ngang (roll) trong cửa sổ 60s",
-      "value": 0.5051693814158777,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 2,
       "name": "roll_mean_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Giá trị trung bình của góc roll trong cửa sổ 60s",
-      "value": 0.10578218819238827,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 3,
       "name": "roll_peak_to_peak_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Biên độ đỉnh-đáy (peak-to-peak) của góc roll trong 60s",
-      "value": 3.0441688299179077,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 4,
       "name": "roll_abs_p95_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Phân vị 95 của giá trị tuyệt đối |roll| trong 60s",
-      "value": 1.030670946836471,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 5,
       "name": "roll_abs_max_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Giá trị tuyệt đối lớn nhất |roll|max trong 60s",
-      "value": 1.7278995513916016,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 6,
       "name": "roll_iqr_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Khoảng tứ phân vị (interquartile range IQR) của roll trong 60s",
-      "value": 0.6950175762176514,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 7,
       "name": "roll_diff_rms_60",
-      "group": "roll_60s",
-      "window_s": 60,
-      "unit": "deg/s",
-      "description": "RMS vi phân bậc 1 của góc roll (tốc độ đổi góc d(roll)/dt) trong 60s",
-      "value": 0.17596957301462146,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg/sample"
     },
     {
       "index": 8,
       "name": "roll_mean_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg",
-      "description": "Giá trị trung bình góc roll trong cửa sổ dài 180s (chỉ dấu heel offset)",
-      "value": 0.10300347960529002,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 9,
       "name": "roll_median_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg",
-      "description": "Trung vị (median) của góc roll trong 180s",
-      "value": 0.09523814544081688,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 10,
       "name": "roll_mean_abs_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg",
-      "description": "Trung bình độ lệch tuyệt đối mean(|roll|) trong 180s",
-      "value": 0.3299935064978733,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 11,
       "name": "roll_dominant_sign_ratio_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "ratio",
-      "description": "Tỷ lệ dấu chiếm ưu thế (dominant sign ratio) của góc nghiêng trong 180s",
-      "value": 0.6061111111111112,
-      "status": "VALID",
-      "reason": ""
+      "unit": "dimensionless"
     },
     {
       "index": 12,
       "name": "roll_segment_mean_std_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg",
-      "description": "Độ lệch chuẩn giữa các phân đoạn con trong cửa sổ 180s",
-      "value": 0.00373250939974929,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 13,
       "name": "roll_mean_shift_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg",
-      "description": "Độ dịch chuyển trung bình giữa nửa đầu và nửa sau cửa sổ 180s",
-      "value": 0.008054774031455353,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 14,
       "name": "roll_rms_early_60",
-      "group": "roll_180s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "RMS góc roll trong phân đoạn 60s đầu của cửa sổ 180s",
-      "value": 0.29368438224038845,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 15,
       "name": "roll_rms_late_60",
-      "group": "roll_180s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "RMS góc roll trong phân đoạn 60s sau của cửa sổ 180s",
-      "value": 0.5161259296517376,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 16,
       "name": "roll_rms_ratio_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "ratio",
-      "description": "Tỷ số RMS late / early (phát hiện hiện tượng cộng hưởng / biên độ tăng dần)",
-      "value": 1.7574170124895334,
-      "status": "VALID",
-      "reason": ""
+      "unit": "dimensionless"
     },
     {
       "index": 17,
       "name": "roll_rms_slope_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg/min",
-      "description": "Hệ số góc xu hướng d(RMS)/dt trong cửa sổ dài 180s",
-      "value": 0.11122077370567461,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg/min"
     },
     {
       "index": 18,
       "name": "roll_rms_trend_r2_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "r2",
-      "description": "Hệ số xác định R² của đường hồi quy xu hướng RMS roll trong 180s",
-      "value": 0.9747373724404861,
-      "status": "VALID",
-      "reason": ""
+      "unit": "dimensionless"
     },
     {
       "index": 19,
       "name": "roll_p95_trend_slope_180",
-      "group": "roll_180s",
-      "window_s": 180,
-      "unit": "deg/min",
-      "description": "Hệ số góc hồi quy của phân vị 95 trong cửa sổ 180s",
-      "value": 0.21904898732900607,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg/min"
     },
     {
       "index": 20,
       "name": "pitch_rms_60",
-      "group": "pitch_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Root-mean-square của góc nhồi/chúi (pitch) trong cửa sổ 60s",
-      "value": 0.07279881522810941,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 21,
       "name": "pitch_std_60",
-      "group": "pitch_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Độ lệch chuẩn của góc pitch trong cửa sổ 60s",
-      "value": 0.07246316372054817,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     },
     {
       "index": 22,
       "name": "pitch_peak_to_peak_60",
-      "group": "pitch_60s",
-      "window_s": 60,
-      "unit": "deg",
-      "description": "Biên độ đỉnh-đáy của góc chúi/nhồi (pitch) trong cửa sổ 60s",
-      "value": 0.4026592969894409,
-      "status": "VALID",
-      "reason": ""
+      "unit": "deg"
     }
   ]
 }

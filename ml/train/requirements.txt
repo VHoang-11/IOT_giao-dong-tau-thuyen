@@ -1,0 +1,6 @@
+# Phiên bản đã dùng để chạy Random Forest PoC (Python 3.14.10); bổ sung cho ml/labeling/requirements.txt.
+-r ../labeling/requirements.txt
+scikit-learn==1.9.1
+joblib==1.6.0
+scipy==1.18.1
+threadpoolctl==3.8.0

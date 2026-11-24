@@ -7,6 +7,11 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+// Nguyên tắc: vòng lấy mẫu 20 Hz KHÔNG BAO GIỜ được chờ mạng.
+//  - esp_mqtt_client_publish() gửi ngay trong task gọi và có thể chặn tới network.timeout_ms khi mạng nghẽn -> dùng
+//    esp_mqtt_client_enqueue() (xếp vào outbox, task MQTT gửi) cho mọi bản tin;
+//  - subscribe làm trong trình xử lý sự kiện CONNECTED (task MQTT), không phải trong loop();
+//  - sự kiện đến/PUBACK đi qua hàng đợi FreeRTOS tới loop().
 namespace {
 constexpr int MAX_INFLIGHT = 4;
 constexpr uint32_t PUBACK_TIMEOUT_MS = 8000;
@@ -22,14 +27,17 @@ QueueHandle_t q_rx = nullptr, q_ack = nullptr;
 Inflight s_inf[MAX_INFLIGHT];
 int s_inf_n = 0;
 MsgIdent s_id;
-char T_telemetry[64], T_event[64], T_status[64], T_health[64], T_cmd[64], T_ack[64], T_config[64], T_trace[64], T_base[48];
+char T_cmd[64], T_config[64], T_status[64];
 char s_lwt[32];
-
-void topic(char *dst, size_t cap, const char *suffix) { snprintf(dst, cap, "svmg/%s/%s", SVMG_DEVICE_ID, suffix); }
 
 bool topic_is(const esp_mqtt_event_t *e, const char *t) {
   size_t n = strlen(t);
   return (size_t)e->topic_len == n && strncmp(e->topic, t, n) == 0;     // chỉ nhận đúng topic của chính thiết bị này
+}
+
+bool allowed_publish(const char *sub) {
+  for (int i = 0; i < MSG_PUBLISH_TOPIC_COUNT; i++) if (!strcmp(sub, MSG_PUBLISH_TOPICS[i])) return true;
+  return false;
 }
 
 void on_mqtt(void *, esp_event_base_t, int32_t id, void *data) {
@@ -38,6 +46,10 @@ void on_mqtt(void *, esp_event_base_t, int32_t id, void *data) {
     case MQTT_EVENT_CONNECTED:
       if (s_ever) s_reconnects = s_reconnects + 1;
       s_ever = true; s_connected = true; s_since_ms = millis(); s_flag_online = true;
+      for (int i = 0; i < MSG_SUBSCRIBE_TOPIC_COUNT; i++) {              // subscribe trong task MQTT (không chặn loop), QoS 1
+        char t[80]; snprintf(t, sizeof t, "svmg/%s/%s", SVMG_DEVICE_ID, MSG_SUBSCRIBE_TOPICS[i]);
+        esp_mqtt_client_subscribe_single(e->client, t, 1);
+      }
       break;
     case MQTT_EVENT_DISCONNECTED:
       s_connected = false; s_flag_requeue = true;
@@ -67,11 +79,9 @@ void drop_inflight(svmg_evbuf_t *buf) { svmg_evbuf_requeue_inflight(buf); s_inf_
 
 void net_begin(const MsgIdent &id, const char *) {
   s_id = id;
-  snprintf(T_base, sizeof T_base, "svmg/%s", SVMG_DEVICE_ID);
-  topic(T_telemetry, sizeof T_telemetry, "telemetry"); topic(T_event, sizeof T_event, "event");
-  topic(T_status, sizeof T_status, "status");          topic(T_health, sizeof T_health, "health");
-  topic(T_cmd, sizeof T_cmd, "cmd");                   topic(T_ack, sizeof T_ack, "cmd/ack");
-  topic(T_config, sizeof T_config, "config");          topic(T_trace, sizeof T_trace, "trace");
+  snprintf(T_cmd, sizeof T_cmd, "svmg/%s/cmd", SVMG_DEVICE_ID);
+  snprintf(T_config, sizeof T_config, "svmg/%s/config", SVMG_DEVICE_ID);
+  snprintf(T_status, sizeof T_status, "svmg/%s/status", SVMG_DEVICE_ID);
   q_rx = xQueueCreate(4, sizeof(RxItem));
   q_ack = xQueueCreate(16, sizeof(int));
 
@@ -82,12 +92,16 @@ void net_begin(const MsgIdent &id, const char *) {
   size_t ln = msg_build_status_offline(s_lwt, sizeof s_lwt);
   esp_mqtt_client_config_t c = {};
   c.broker.address.uri = SVMG_MQTT_URI;
+#ifdef SVMG_MQTT_TLS
+  c.broker.verification.certificate = SVMG_MQTT_CA_PEM;                 // xác thực broker bằng CA (URI mqtts://); CA định nghĩa trong secrets.h
+#endif
   if (SVMG_MQTT_USER[0]) { c.credentials.username = SVMG_MQTT_USER; c.credentials.authentication.password = SVMG_MQTT_PASS; }
   c.credentials.client_id = SVMG_DEVICE_ID;
   c.session.last_will.topic = T_status;
   c.session.last_will.msg = s_lwt; c.session.last_will.msg_len = (int)ln;
   c.session.last_will.qos = 1; c.session.last_will.retain = 1;
   c.session.keepalive = 30;
+  c.session.disable_clean_session = false;                              // clean session: không phát lại lệnh cũ sau khi nối lại
   c.network.reconnect_timeout_ms = 5000;
   c.network.timeout_ms = 5000;
   c.buffer.size = 1024; c.buffer.out_size = 1024;
@@ -95,10 +109,10 @@ void net_begin(const MsgIdent &id, const char *) {
   if (s_cli) esp_mqtt_client_register_event(s_cli, MQTT_EVENT_ANY, on_mqtt, nullptr);
 }
 
+bool net_connected() { return s_connected && !s_blackout; }
 #ifdef SVMG_FAULT_INJECT
 void net_inject_blackout(bool on) { s_blackout = on; }
 #endif
-bool net_connected() { return s_connected && !s_blackout; }
 int net_rssi() { return WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0; }
 uint32_t net_reconnects() { return s_reconnects; }
 uint32_t net_rx_dropped() { return s_rx_dropped; }
@@ -106,10 +120,9 @@ uint32_t net_connected_since_ms() { return s_since_ms; }
 
 int net_publish(const char *sub, const char *payload, int len, int qos, bool retain) {
   if (!s_cli || !s_connected || s_blackout) return -1;
-  const char *t = !strcmp(sub, "telemetry") ? T_telemetry : !strcmp(sub, "event") ? T_event : !strcmp(sub, "status") ? T_status
-                : !strcmp(sub, "health") ? T_health : !strcmp(sub, "cmd/ack") ? T_ack : !strcmp(sub, "trace") ? T_trace : nullptr;
-  if (!t) return -1;
-  return esp_mqtt_client_publish(s_cli, t, payload, len, qos, retain ? 1 : 0);
+  if (!allowed_publish(sub)) return -1;                                  // chỉ các topic ACL cho phép
+  char t[80]; snprintf(t, sizeof t, "svmg/%s/%s", SVMG_DEVICE_ID, sub);
+  return esp_mqtt_client_enqueue(s_cli, t, payload, len, qos, retain ? 1 : 0, true);   // không chặn: gửi trong task MQTT
 }
 
 bool net_pop_rx(RxItem *out) { return q_rx && xQueueReceive(q_rx, out, 0) == pdTRUE; }
@@ -120,12 +133,10 @@ void net_service(uint32_t now, svmg_evbuf_t *buf, uint32_t config_version) {
 
   if (s_flag_requeue) { s_flag_requeue = false; drop_inflight(buf); }           // mất kết nối: sự kiện đang bay quay lại hàng chờ
 
-  if (s_flag_online && s_connected) {
+  if (s_flag_online && s_connected && !s_blackout) {
     s_flag_online = false;
-    char js[200]; size_t n = msg_build_status_online(js, sizeof js, s_id, config_version);
-    if (n) esp_mqtt_client_publish(s_cli, T_status, js, (int)n, 1, 1);          // retained, QoS 1
-    esp_mqtt_client_subscribe(s_cli, T_cmd, 1);
-    esp_mqtt_client_subscribe(s_cli, T_config, 1);
+    char js[400]; size_t n = msg_build_status_online(js, sizeof js, s_id, config_version);
+    if (n) esp_mqtt_client_enqueue(s_cli, T_status, js, (int)n, 1, 1, true);    // retained, QoS 1
   }
 
   int m;
@@ -143,10 +154,11 @@ void net_service(uint32_t now, svmg_evbuf_t *buf, uint32_t config_version) {
     if (!svmg_evbuf_next(buf, &e)) break;
     char js[420];
     size_t n = msg_build_event(js, sizeof js, s_id, e);
-    if (!n) { svmg_evbuf_ack(buf, e.seq); continue; }                           // không tuần tự hóa được: bỏ để khỏi kẹt hàng chờ
-    int id = esp_mqtt_client_publish(s_cli, T_event, js, (int)n, 1, 0);
+    if (!n) { svmg_evbuf_ack(buf, e.seq); continue; }                           // không phải ALARM_STATE/không dựng được: bỏ để khỏi kẹt hàng chờ
+    char t[80]; snprintf(t, sizeof t, "svmg/%s/event", SVMG_DEVICE_ID);
+    int id = esp_mqtt_client_enqueue(s_cli, t, js, (int)n, 1, 0, true);
     if (id > 0) { s_inf[s_inf_n++] = { id, e.seq, now }; }
-    else { drop_inflight(buf); break; }                                         // lỗi/đầy outbox: thử lại vòng sau
+    else { drop_inflight(buf); break; }                                         // outbox đầy/lỗi: thử lại vòng sau
   }
 }
 

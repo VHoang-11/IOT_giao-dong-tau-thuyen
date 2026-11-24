@@ -1,4 +1,4 @@
-/* svmg_filter.h - M1-02: chuẩn hóa IMU, góc từ gia tốc, bộ lọc bù, lọc thông thấp, giảm mẫu 20 -> 2 Hz.
+/* svmg_filter.h - M1-02: chuẩn hóa IMU, góc từ gia tốc, bộ lọc bù, lọc thông thấp, giảm mẫu 20 -> 10 Hz.
  * Quy ước trục (chuẩn hàng không, xem NXP AN3461):
  *   roll  = atan2(ay, az),  tốc độ roll  = gx
  *   pitch = atan2(-ax, sqrt(ay^2 + az^2)), tốc độ pitch = gy
@@ -48,19 +48,21 @@ void  svmg_biquad_butter2_lp(svmg_biquad_coef_t *c, float fc_hz, float fs_hz);
 void  svmg_biquad_init(svmg_biquad_t *f, const svmg_biquad_coef_t *c, float x0);
 float svmg_biquad_step(svmg_biquad_t *f, float x);
 
-/* ---- 5. Pipeline 20 Hz -> 2 Hz ---- */
+/* ---- 5. Pipeline 20 Hz -> 10 Hz ---- */
 #define SVMG_PIPE_F_RESTARTED 0x01  /* có khoảng trống dữ liệu -> đã reset */
 #define SVMG_PIPE_F_GATED     0x02  /* trong khối có bước bị cổng gia tốc */
+#define SVMG_PIPE_F_WARMUP 0x08 /* first 2 s after filter initialization/reset */
 #define SVMG_PIPE_F_PARTIAL   0x04  /* khối thiếu mẫu hợp lệ */
-/* Bước lùi thời gian lớn hơn ngưỡng này (s) được hiểu là đồng hồ quấn vòng chứ không phải lỗi: dt = 1/fs. */
-#define SVMG_PIPE_WRAP_S      1000.0f
+/* firmware/src/motion_source.cpp giới hạn timestamp bằng fmod(..., 8192 s).
+ * Chỉ nhận wrap thực quanh chu kỳ này; bước lùi lớn bất kỳ không phải wrap. */
+#define SVMG_PIPE_WRAP_PERIOD_S 8192.0f
 
 typedef struct {
   float   tau_s;        /* hằng số thời gian bộ lọc bù (mặc định 7.5 s) */
-  float   fc_hz;        /* tần số cắt (0.5 Hz) */
+  float   fc_hz;        /* tần số cắt (4 Hz), Butterworth bậc 4 */
   float   fs_hz;        /* tần số lấy mẫu vào (20 Hz) */
-  float   max_gap_s;    /* dt lớn hơn thì reset (0.5 s) */
-  uint8_t decim;        /* hệ số giảm mẫu (10) */
+  float   max_gap_s;    /* dt lớn hơn thì reset (0.075 s) */
+  uint8_t decim;        /* hệ số giảm mẫu (2) */
 } svmg_pipeline_cfg_t;
 
 typedef struct {
@@ -69,15 +71,16 @@ typedef struct {
   float   gx_rads, gy_rads;
   uint8_t n_valid;      /* số mẫu hợp lệ trong khối (0..decim) */
   uint8_t flags;        /* SVMG_PIPE_F_* */
-} svmg_sample2hz_t;
+} svmg_sample10hz_t;
 
 typedef struct {
   svmg_pipeline_cfg_t cfg;
   svmg_cf_t           cf;
-  svmg_biquad_coef_t  coef;
-  svmg_biquad_t       lp[4];       /* roll, pitch, gx, gy */
+  svmg_biquad_coef_t  coef[2];
+  svmg_biquad_t       lp[8];       /* roll, pitch, gx, gy */
   float               y[4];        /* giá trị lọc gần nhất */
   uint8_t             lp_init;
+  uint8_t             warmup_outputs;
   uint8_t             phase, n_valid, blk_flags;
   uint8_t             pending_restart;
   uint8_t             have_t;
@@ -89,8 +92,10 @@ void svmg_pipeline_default_cfg(svmg_pipeline_cfg_t *cfg);
 void svmg_pipeline_init(svmg_pipeline_t *p, const svmg_pipeline_cfg_t *cfg);
 /* Xóa trạng thái lọc (giữ bộ đếm thống kê). */
 void svmg_pipeline_reset(svmg_pipeline_t *p);
-/* Đẩy một mẫu 20 Hz. Trả 1 nếu *out được ghi (mỗi `decim` mẫu). Mẫu valid=0 vẫn phải được đẩy vào. */
-int  svmg_pipeline_push(svmg_pipeline_t *p, const svmg_motion_sample_t *s, svmg_sample2hz_t *out);
+/* Đẩy một mẫu 20 Hz. Trả 1 nếu *out được ghi (mỗi `decim` mẫu).
+ * Mẫu valid=0 vẫn phải được đẩy vào. Timestamp NaN/Inf bị loại: pipeline
+ * reset continuity, tăng bộ đếm invalid/gap và không tính mẫu đó vào decimation. */
+int  svmg_pipeline_push(svmg_pipeline_t *p, const svmg_motion_sample_t *s, svmg_sample10hz_t *out);
 
 #ifdef __cplusplus
 }

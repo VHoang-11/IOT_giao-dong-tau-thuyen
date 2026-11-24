@@ -1,0 +1,122 @@
+{
+ "c_output_csv_columns": [
+  "schema_version",
+  "case_id",
+  "input_sha256",
+  "endpoint_index",
+  "endpoint_time_seconds",
+  "feature_index",
+  "feature_name",
+  "status",
+  "reason_code",
+  "value"
+ ],
+ "c_output_jsonl_record": {
+  "case_id": "string",
+  "endpoint_index": "int (chỉ số 0-based trong file input)",
+  "endpoint_time_seconds": "float",
+  "feature_names": "23 tên theo thứ tự contract (tùy chọn)",
+  "input_sha256": "hex sha256",
+  "reason_code": "23 chuỗi (tùy chọn)",
+  "schema_version": "string",
+  "status": "23 chuỗi trạng thái",
+  "values": "23 số hoặc null"
+ },
+ "c_output_metadata_json": {
+  "golden_manifest_sha256": "<sha256 của ml/parity/fixtures/manifest.json đã dùng>",
+  "interchange_schema": "svmg-parity-output-v1",
+  "notes": "",
+  "producer": {
+   "accumulator_type": "float32|float64",
+   "compiler": "<vd. gcc 13.2 / xtensa-esp32-elf-gcc>",
+   "compiler_flags": "<vd. -O2 -ffp-contract=off>",
+   "float_type": "float32|float64",
+   "kind": "independent_c_implementation",
+   "name": "svmg_feature23_host_test",
+   "quantile_algorithm": "<vd. sort + Type-7>",
+   "source_commit": "<git commit của mã C>",
+   "std_algorithm": "<two-pass|Welford>",
+   "target": "host|esp32",
+   "version": "0.0.0"
+  },
+  "schema_version": "svmg-angle23-0.2.0-proposal"
+ },
+ "feature_order": [
+  "roll_rms_60",
+  "roll_std_60",
+  "roll_mean_60",
+  "roll_peak_to_peak_60",
+  "roll_abs_p95_60",
+  "roll_abs_max_60",
+  "roll_iqr_60",
+  "roll_diff_rms_60",
+  "roll_mean_180",
+  "roll_median_180",
+  "roll_mean_abs_180",
+  "roll_dominant_sign_ratio_180",
+  "roll_segment_mean_std_180",
+  "roll_mean_shift_180",
+  "roll_rms_early_60",
+  "roll_rms_late_60",
+  "roll_rms_ratio_180",
+  "roll_rms_slope_180",
+  "roll_rms_trend_r2_180",
+  "roll_p95_trend_slope_180",
+  "pitch_rms_60",
+  "pitch_std_60",
+  "pitch_peak_to_peak_60"
+ ],
+ "input_csv_columns": [
+  "sample_index",
+  "time_seconds",
+  "roll_deg",
+  "pitch_deg",
+  "source_sample_index"
+ ],
+ "input_notes": [
+  "time_seconds: float64 repr; roll_deg/pitch_deg: chuỗi float32 ngắn nhất round-trip (đọc bằng strtof); 'nan'/'inf'/'-inf' là mẫu không hữu hạn có timestamp.",
+  "source_sample_index nhảy cóc = timestamp bị bỏ (gap) — C phải phát hiện bằng time_seconds, không bằng chỉ số.",
+  "C đánh giá tại các endpoint_index liệt kê trong golden; không tự chọn endpoint."
+ ],
+ "interchange_schema": "svmg-parity-output-v1",
+ "producer_kinds": [
+  "independent_c_implementation",
+  "python_float32_emulation",
+  "python_reference_self_consistency"
+ ],
+ "record_key": [
+  "case_id",
+  "endpoint_index",
+  "feature_index"
+ ],
+ "required_columns": [
+  "schema_version",
+  "case_id",
+  "input_sha256",
+  "endpoint_index",
+  "endpoint_time_seconds",
+  "feature_index",
+  "feature_name",
+  "status",
+  "value"
+ ],
+ "rules": [
+  "Một bản ghi cho mỗi (case_id, endpoint_index, feature_index) có trong golden expected_features.csv; không thiếu, không thừa, không trùng.",
+  "endpoint_index là chỉ số 0-based của dòng trong file input (cột sample_index); khóa so khớp chính.",
+  "endpoint_time_seconds phải khớp golden trong 1e-6 s (kiểm tra chéo).",
+  "endpoint_time_seconds phải là số hữu hạn; NaN/Inf bị từ chối.",
+  "feature_name phải khớp feature_index theo thứ tự contract.",
+  "input_sha256 là sha256 của file input đã đọc (chứng minh cùng chuỗi đầu vào).",
+  "status thuộc VALID|INSUFFICIENT_WINDOW|INVALID_INPUT|UNDEFINED_MATHEMATICALLY.",
+  "value: thập phân >= 9 chữ số có nghĩa (float32) hoặc 17 (float64) khi VALID; rỗng/null khi không VALID. Ghi 0 cho feature không VALID là FAIL.",
+  "reason_code tùy chọn; harness chỉ báo khác biệt reason_code như cảnh báo.",
+  "Kèm file metadata JSON (interchange_schema, schema_version và golden_manifest_sha256 phải khớp; producer.kind = independent_c_implementation, source_commit, compiler, float_type). Schema/manifest sai -> FAIL_METADATA; thiếu metadata -> UNATTRIBUTED, không chứng minh parity C."
+ ],
+ "schema_version": "svmg-angle23-0.2.0-proposal",
+ "status_vocabulary": [
+  "VALID",
+  "INSUFFICIENT_WINDOW",
+  "INVALID_INPUT",
+  "UNDEFINED_MATHEMATICALLY"
+ ]
+}

@@ -1,5 +1,6 @@
 /* cmd.c - M1-07. Xem svmg_cmd.h. */
 #include "svmg_cmd.h"
+#include "svmg_decision.h"
 #include <string.h>
 
 const char *svmg_reason_name(svmg_reason_t r) {
@@ -46,15 +47,26 @@ static void fill_ack(svmg_cmd_ack_t *a, const char *id, uint8_t applied, svmg_re
   a->applied = applied; a->reason = r; a->config_version = ver;
 }
 
-/* Kiểm tra tham số thuần túy (không phụ thuộc trạng thái thiết bị). */
+/* Kiểm tra tham số thuần túy (không phụ thuộc trạng thái thiết bị). Tham số có mặt nhưng sai kiểu/miền -> BAD_PARAM. */
 static svmg_reason_t validate(const svmg_cmd_t *m) {
   switch (m->type) {
-    case SVMG_CMD_ACK: return SVMG_R_OK;
-    case SVMG_CMD_MUTE:
-      if (!(m->has & SVMG_CP_DURATION) || m->duration_s < 1 || m->duration_s > 300) return SVMG_R_BAD_PARAM;
+    case SVMG_CMD_ACK_ALARM:
+    case SVMG_CMD_START_VOYAGE:
+    case SVMG_CMD_STOP_VOYAGE:
+    case SVMG_CMD_RESTART_DEVICE:
+      return SVMG_R_OK;
+    case SVMG_CMD_MUTE_ALARM:                        /* duration_s tùy chọn (mặc định 60 s), 1..300 s */
+      if ((m->has & SVMG_CP_DURATION) && (m->duration_s < 1 || m->duration_s > SVMG_MUTE_MAX_S)) return SVMG_R_BAD_PARAM;
       return SVMG_R_OK;
     case SVMG_CMD_SET_PROFILE:
       if (!(m->has & SVMG_CP_PROFILE) || m->profile > SVMG_PROFILE_SENSITIVE) return SVMG_R_BAD_PARAM;
+      return SVMG_R_OK;
+    case SVMG_CMD_SET_THRESHOLD:                     /* biên theo contracts/schemas/config.json */
+      if (!(m->has & (SVMG_CP_PHI | SVMG_CP_MAI | SVMG_CP_DEBOUNCE | SVMG_CP_REPORT))) return SVMG_R_BAD_PARAM;
+      if ((m->has & SVMG_CP_PHI) && !(m->phi_hard_deg >= SVMG_PHI_HARD_MIN_DEG && m->phi_hard_deg <= SVMG_PHI_HARD_MAX_DEG)) return SVMG_R_BAD_PARAM;   /* cũng bắt NaN */
+      if ((m->has & SVMG_CP_MAI) && (m->mai_caution < SVMG_CFG_MAI_MIN || m->mai_caution > SVMG_CFG_MAI_MAX)) return SVMG_R_BAD_PARAM;
+      if ((m->has & SVMG_CP_DEBOUNCE) && (m->debounce_n < SVMG_CFG_N_MIN || m->debounce_n > SVMG_CFG_N_MAX)) return SVMG_R_BAD_PARAM;
+      if ((m->has & SVMG_CP_REPORT) && (m->report_interval_s < SVMG_CFG_REPORT_MIN || m->report_interval_s > SVMG_CFG_REPORT_MAX)) return SVMG_R_BAD_PARAM;
       return SVMG_R_OK;
     case SVMG_CMD_CALIBRATE_ZERO:
       if ((m->has & SVMG_CP_DURATION) && m->duration_s != 30) return SVMG_R_BAD_PARAM;
@@ -81,10 +93,14 @@ static svmg_reason_t validate(const svmg_cmd_t *m) {
 
 static svmg_reason_t dispatch(const svmg_cmd_hooks_t *h, const svmg_cmd_t *m) {
   switch (m->type) {
-    case SVMG_CMD_ACK:        return h->ack ? h->ack(h->ctx, m->alarm_id, (m->has & SVMG_CP_ALARM) != 0) : SVMG_R_UNSUPPORTED;
-    case SVMG_CMD_MUTE:       return h->mute ? h->mute(h->ctx, m->duration_s) : SVMG_R_UNSUPPORTED;
+    case SVMG_CMD_ACK_ALARM:  return h->ack_alarm ? h->ack_alarm(h->ctx, m->alarm_id, (m->has & SVMG_CP_ALARM) != 0) : SVMG_R_UNSUPPORTED;
+    case SVMG_CMD_MUTE_ALARM: return h->mute_alarm ? h->mute_alarm(h->ctx, (m->has & SVMG_CP_DURATION) ? m->duration_s : SVMG_MUTE_DEFAULT_S) : SVMG_R_UNSUPPORTED;
     case SVMG_CMD_SET_PROFILE:return h->set_profile ? h->set_profile(h->ctx, m->profile) : SVMG_R_UNSUPPORTED;
+    case SVMG_CMD_SET_THRESHOLD: return h->set_threshold ? h->set_threshold(h->ctx, m) : SVMG_R_UNSUPPORTED;
     case SVMG_CMD_CALIBRATE_ZERO: return h->calibrate_zero ? h->calibrate_zero(h->ctx) : SVMG_R_UNSUPPORTED;
+    case SVMG_CMD_RESTART_DEVICE: return h->restart_device ? h->restart_device(h->ctx) : SVMG_R_UNSUPPORTED;
+    case SVMG_CMD_START_VOYAGE: return h->start_voyage ? h->start_voyage(h->ctx) : SVMG_R_UNSUPPORTED;
+    case SVMG_CMD_STOP_VOYAGE:  return h->stop_voyage ? h->stop_voyage(h->ctx) : SVMG_R_UNSUPPORTED;
     case SVMG_CMD_SET_SCENARIO:
       return h->set_scenario ? h->set_scenario(h->ctx, m->scenario, (m->has & SVMG_CP_SEA) ? (int)m->sea_state : -1) : SVMG_R_UNSUPPORTED;
     case SVMG_CMD_SET_MODE:   return h->set_mode ? h->set_mode(h->ctx, m->mode) : SVMG_R_UNSUPPORTED;

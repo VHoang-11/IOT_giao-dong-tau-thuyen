@@ -1,0 +1,47 @@
+# Random Forest Proof of Concept cho proxy motion phenotype (KHÔNG phải bộ phân loại an toàn hàng hải).
+model_version: rf_proxy_phenotype_poc_v0.1.0
+feature_schema_version: svmg-angle23-v0.1-proposal
+seed: 20261117
+domain: hohai                      # miền duy nhất có >= 3 nhóm độc lập
+proxy_output_root: ml/data/labels/proxy_v1
+proxy_summary: ml/reports/ml/proxy_dataset_summary.json
+model_output_root: ml/data/models/rf_poc_v1
+results_path: ml/reports/ml/rf_poc_results.json
+model_card_path: ml/reports/ml/rf_poc_model_card.json
+
+inner_group_splits: 4
+n_estimators: 200
+max_features: sqrt
+grid:                              # thứ tự từ đơn giản đến phức tạp; hòa điểm -> chọn cấu hình đứng trước
+  - {max_depth: 8, min_samples_leaf: 10, class_weight: null}
+  - {max_depth: 8, min_samples_leaf: 10, class_weight: balanced_subsample}
+  - {max_depth: 8, min_samples_leaf: 1, class_weight: null}
+  - {max_depth: 8, min_samples_leaf: 1, class_weight: balanced_subsample}
+  - {max_depth: null, min_samples_leaf: 10, class_weight: null}
+  - {max_depth: null, min_samples_leaf: 10, class_weight: balanced_subsample}
+  - {max_depth: null, min_samples_leaf: 1, class_weight: null}
+  - {max_depth: null, min_samples_leaf: 1, class_weight: balanced_subsample}
+
+# Cấu hình nhỏ khai báo TRƯỚC (không tinh chỉnh trên test) để ước lượng chi phí ESP32.
+compact_model: {n_estimators: 25, max_depth: 6, min_samples_leaf: 10, class_weight: balanced_subsample, max_features: sqrt}
+
+feature_sets:
+  full_23: all
+  no_direct_alias:                 # bỏ feature định nghĩa trực tiếp proxy và bí danh số học của nó
+    drop: [roll_std_60, roll_rms_60, roll_rms_late_60]
+  no_roll_amplitude:               # bỏ mọi feature biên độ/độ phân tán Roll; còn offset/hình dạng Roll + Pitch
+    drop: [roll_rms_60, roll_std_60, roll_peak_to_peak_60, roll_abs_p95_60, roll_abs_max_60, roll_iqr_60,
+           roll_diff_rms_60, roll_mean_abs_180, roll_rms_early_60, roll_rms_late_60, roll_rms_ratio_180,
+           roll_rms_slope_180, roll_p95_trend_slope_180]
+
+baseline_quantile_from_rule: true   # baseline feature-rule dùng cùng positive_quantile với proxy rule
+bootstrap_replicates: 2000
+permutation_repeats: 5
+
+# M2-R1: export C cho demo replay cô lập (KHÔNG phải model firmware). Dùng nguyên compact_model ở trên, ngưỡng 0.5.
+demo_export:
+  target: RELATIVE_HIGH_ROLL
+  holdout_group: hohai|T9            # fold LOGO có sẵn: nhóm này không dùng để train lẫn hiệu chuẩn nhãn model demo
+  model_version: rf_proxy_demo_m2r1_v0.1.0
+  c_name: svmg_rf_proxy_demo
+  output_root: ml/data/models/rf_demo_m2r1   # gitignored

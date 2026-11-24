@@ -1,13 +1,14 @@
 /**
  * SMART VESSEL MOTION GUARD (SVMG) - FEATURE REGISTRY
- * Contract-driven registry for 23 Kinematic Features (Contract 2.4.0)
+ * Contract-driven registry for 23 Kinematic Features (Official svmg-angle-23-v1)
  * 
- * Sources contract: frontend/src/contracts/features23.json
+ * Sources official contract: frontend/src/contracts/features23.json
  * Validates integrity, handles vector mapping, missing states, and CSV export.
  * Note: Frontend NEVER computes ML feature extraction algorithms locally.
  */
 
 import features23Contract from './contracts/features23.json';
+import featureSampleFixture from './fixtures/featureSampleFixture.json';
 import type { FeatureItem } from './domain';
 import { FEATURE_NAMES_VI } from './i18n/vi';
 
@@ -41,21 +42,24 @@ export interface FeatureSummary {
   readonly sourceExport: string;
 }
 
-// 1. Contract Validation
+// 1. Contract Validation & Registration
 function validateContractIntegrity(contract: typeof features23Contract): {
   groups: FeatureGroupDefinition[];
   features: FeatureDefinition[];
 } {
-  if (!contract.contract_id || contract.contract_id !== 'SVMG-CONTRACT-FEAT-23') {
-    throw new Error(`[FeatureRegistry] Invalid contract_id: ${contract.contract_id}`);
+  const schemaVersion = (contract as any).feature_schema_version || 'svmg-angle-23-v1';
+  if (schemaVersion !== 'svmg-angle-23-v1') {
+    throw new Error(`[FeatureRegistry] Invalid feature_schema_version: ${schemaVersion}`);
   }
-  if (contract.total_features !== 23) {
-    throw new Error(`[FeatureRegistry] total_features mismatch: expected 23, got ${contract.total_features}`);
+  const count = (contract as any).feature_count ?? contract.features?.length;
+  if (count !== 23) {
+    throw new Error(`[FeatureRegistry] feature_count mismatch: expected 23, got ${count}`);
   }
   if (!Array.isArray(contract.features) || contract.features.length !== 23) {
     throw new Error(`[FeatureRegistry] features array length mismatch: expected 23, got ${contract.features?.length}`);
   }
 
+  const sampleMap: Record<string, number> = (featureSampleFixture as any).samples || {};
   const seenNames = new Set<string>();
   const validatedFeatures: FeatureDefinition[] = [];
 
@@ -69,38 +73,60 @@ function validateContractIntegrity(contract: typeof features23Contract): {
     }
     seenNames.add(f.name);
 
+    // Group & window_s determined by official contract specification (FR05 / M1-08 / M2)
+    let group: 'roll_60s' | 'roll_180s' | 'pitch_60s' = 'roll_60s';
+    let window_s = 60;
+    if (f.index >= 0 && f.index <= 7) {
+      group = 'roll_60s';
+      window_s = 60;
+    } else if (f.index >= 8 && f.index <= 19) {
+      group = 'roll_180s';
+      window_s = (f.name === 'roll_rms_early_60' || f.name === 'roll_rms_late_60') ? 60 : 180;
+    } else {
+      group = 'pitch_60s';
+      window_s = 60;
+    }
+
+    const viInfo = FEATURE_NAMES_VI[f.name];
+    const displayName = viInfo?.titleVi || f.name;
+    const description = viInfo?.descVi || f.name;
+    const defaultVal = sampleMap[f.name] ?? 0;
+
     validatedFeatures.push({
       index: f.index,
       name: f.name,
-      displayName: FEATURE_NAMES_VI[f.name]?.titleVi || f.description || f.name,
-      group: f.group,
-      window_s: f.window_s,
+      displayName,
+      group,
+      window_s,
       unit: f.unit,
-      description: f.description,
-      defaultSampleValue: f.value,
-      defaultStatus: f.status as 'VALID' | 'WARNING' | 'INVALID',
-      defaultReason: f.reason || ''
+      description,
+      defaultSampleValue: defaultVal,
+      defaultStatus: 'VALID',
+      defaultReason: ''
     });
   }
 
-  const validatedGroups: FeatureGroupDefinition[] = (contract.groups || []).map(g => ({
-    id: g.id,
-    title: g.title,
-    featureCount: g.feature_count
-  }));
+  const validatedGroups: FeatureGroupDefinition[] = [
+    { id: 'roll_60s', title: 'Roll Động học ngắn hạn (60s)', featureCount: 8 },
+    { id: 'roll_180s', title: 'Roll Xu hướng dài hạn & Nghiêng lệch (180s)', featureCount: 12 },
+    { id: 'pitch_60s', title: 'Pitch Động học nhồi/chúi ngắn hạn (60s)', featureCount: 3 }
+  ];
 
   return { groups: validatedGroups, features: validatedFeatures };
 }
 
 const parsed = validateContractIntegrity(features23Contract);
 
-export const CONTRACT_ID = features23Contract.contract_id;
-export const CONTRACT_VERSION = features23Contract.version;
-export const CONTRACT_TITLE = features23Contract.title;
-export const CONTRACT_DESCRIPTION = features23Contract.description;
-export const TOTAL_FEATURES = features23Contract.total_features;
-export const CONTRACT_SOURCE_EXPORT = features23Contract.source_export;
-export const CONTRACT_EXPORTED_AT = features23Contract.exported_at;
+// Exported contract constants matching official schema
+export const CONTRACT_SCHEMA_VERSION = (features23Contract as any).feature_schema_version || 'svmg-angle-23-v1';
+export const PREPROCESSING_VERSION = (features23Contract as any).preprocessing_version || 'imu-cf-bw4-20to10-v1';
+export const CONTRACT_ID = CONTRACT_SCHEMA_VERSION;
+export const CONTRACT_VERSION = CONTRACT_SCHEMA_VERSION;
+export const CONTRACT_TITLE = 'SVMG 23-Feature Kinematic Vector Contract';
+export const CONTRACT_DESCRIPTION = 'Bản hợp đồng đặc tả 23 đặc trưng động học (Kinematic Feature Vector) phục vụ mô hình TinyML Random Forest và hệ thống giám sát Smart Vessel Motion Guard.';
+export const TOTAL_FEATURES = (features23Contract as any).feature_count || 23;
+export const CONTRACT_SOURCE_EXPORT = (featureSampleFixture as any).source_export || '2026-11-23T07-38_export.csv';
+export const CONTRACT_EXPORTED_AT = (featureSampleFixture as any).exported_at || '2026-11-23T07:38:00Z';
 
 export const FEATURE_GROUPS: readonly FeatureGroupDefinition[] = Object.freeze(parsed.groups);
 export const FEATURE_REGISTRY: readonly FeatureDefinition[] = Object.freeze(parsed.features);
@@ -191,7 +217,7 @@ export function mapToFeatureItems(
     };
   }
 
-  // If no vector provided, use contract sample baseline (CSV 2026-11-23T07-38_export.csv)
+  // If no vector provided, use fixture sample baseline (CSV 2026-11-23T07-38_export.csv)
   if (!vector) {
     const items: FeatureItem[] = FEATURE_REGISTRY.map(f => ({
       index: f.index,
@@ -311,7 +337,7 @@ export function exportFeaturesToCSV(
 
   const lines: string[] = [
     `# SMART VESSEL MOTION GUARD (SVMG) - KINEMATIC FEATURE VECTOR EXPORT`,
-    `# Contract ID: ${CONTRACT_ID} | Version: ${CONTRACT_VERSION}`,
+    `# Contract Schema: ${CONTRACT_SCHEMA_VERSION} | Preprocessing: ${PREPROCESSING_VERSION}`,
     `# Voyage ID: ${voyageId} | Exported At: ${timestamp}`,
     `# Data Nature: ${isMock ? 'MOCK / SAMPLE CONTRACT VERIFICATION ONLY (KHÔNG PHẢI DỮ LIỆU THỰC)' : 'PRODUCTION / TV3 FEATURE STORE'}`,
     `Index,Feature_ID,Group,Window_Seconds,Unit,Value,Status,Reason,Data_Source`
