@@ -23,6 +23,7 @@ venv/
 # Node
 node_modules/
 frontend/dist/
+mobile/.expo/
 
 # C / firmware build
 build/
