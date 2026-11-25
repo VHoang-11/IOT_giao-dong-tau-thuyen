@@ -1,0 +1,34 @@
+{
+  "source_export": "2026-11-23T07-38_export.csv",
+  "exported_at": "2026-11-23T07:38:00Z",
+  "status_summary": {
+    "valid_count": 23,
+    "warning_count": 0,
+    "invalid_count": 0
+  },
+  "samples": {
+    "roll_rms_60": 0.5161259296517376,
+    "roll_std_60": 0.5051693814158777,
+    "roll_mean_60": 0.10578218819238827,
+    "roll_peak_to_peak_60": 3.0441688299179077,
+    "roll_abs_p95_60": 1.030670946836471,
+    "roll_abs_max_60": 1.7278995513916016,
+    "roll_iqr_60": 0.6950175762176514,
+    "roll_diff_rms_60": 0.17596957301462146,
+    "roll_mean_180": 0.10300347960529002,
+    "roll_median_180": 0.09523814544081688,
+    "roll_mean_abs_180": 0.3299935064978733,
+    "roll_dominant_sign_ratio_180": 0.6061111111111112,
+    "roll_segment_mean_std_180": 0.00373250939974929,
+    "roll_mean_shift_180": 0.008054774031455353,
+    "roll_rms_early_60": 0.29368438224038845,
+    "roll_rms_late_60": 0.5161259296517376,
+    "roll_rms_ratio_180": 1.7574170124895334,
+    "roll_rms_slope_180": 0.11122077370567461,
+    "roll_rms_trend_r2_180": 0.9747373724404861,
+    "roll_p95_trend_slope_180": 0.21904898732900607,
+    "pitch_rms_60": 0.07279881522810941,
+    "pitch_std_60": 0.07246316372054817,
+    "pitch_peak_to_peak_60": 0.4026592969894409
+  }
+}

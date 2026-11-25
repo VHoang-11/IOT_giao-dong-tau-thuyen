@@ -1,0 +1,136 @@
+{
+  "feature_schema_version": "svmg-angle-23-v1",
+  "preprocessing_version": "imu-cf-bw4-20to10-v1",
+  "feature_count": 23,
+  "sampling_hz": 10,
+  "update_interval_s": 10,
+  "raw_imu_sampling_hz": 20,
+  "windows_s": [
+    60,
+    180
+  ],
+  "window_endpoint": "(t-W,t]",
+  "minimum_valid_fraction": 0.95,
+  "quantile": "Type-7",
+  "std_ddof": 0,
+  "rms_centering": "zero",
+  "epsilon_rms_deg": 1e-09,
+  "r_squared_zero_tolerance": 1e-15,
+  "features": [
+    {
+      "index": 0,
+      "name": "roll_rms_60",
+      "unit": "deg"
+    },
+    {
+      "index": 1,
+      "name": "roll_std_60",
+      "unit": "deg"
+    },
+    {
+      "index": 2,
+      "name": "roll_mean_60",
+      "unit": "deg"
+    },
+    {
+      "index": 3,
+      "name": "roll_peak_to_peak_60",
+      "unit": "deg"
+    },
+    {
+      "index": 4,
+      "name": "roll_abs_p95_60",
+      "unit": "deg"
+    },
+    {
+      "index": 5,
+      "name": "roll_abs_max_60",
+      "unit": "deg"
+    },
+    {
+      "index": 6,
+      "name": "roll_iqr_60",
+      "unit": "deg"
+    },
+    {
+      "index": 7,
+      "name": "roll_diff_rms_60",
+      "unit": "deg/sample"
+    },
+    {
+      "index": 8,
+      "name": "roll_mean_180",
+      "unit": "deg"
+    },
+    {
+      "index": 9,
+      "name": "roll_median_180",
+      "unit": "deg"
+    },
+    {
+      "index": 10,
+      "name": "roll_mean_abs_180",
+      "unit": "deg"
+    },
+    {
+      "index": 11,
+      "name": "roll_dominant_sign_ratio_180",
+      "unit": "dimensionless"
+    },
+    {
+      "index": 12,
+      "name": "roll_segment_mean_std_180",
+      "unit": "deg"
+    },
+    {
+      "index": 13,
+      "name": "roll_mean_shift_180",
+      "unit": "deg"
+    },
+    {
+      "index": 14,
+      "name": "roll_rms_early_60",
+      "unit": "deg"
+    },
+    {
+      "index": 15,
+      "name": "roll_rms_late_60",
+      "unit": "deg"
+    },
+    {
+      "index": 16,
+      "name": "roll_rms_ratio_180",
+      "unit": "dimensionless"
+    },
+    {
+      "index": 17,
+      "name": "roll_rms_slope_180",
+      "unit": "deg/min"
+    },
+    {
+      "index": 18,
+      "name": "roll_rms_trend_r2_180",
+      "unit": "dimensionless"
+    },
+    {
+      "index": 19,
+      "name": "roll_p95_trend_slope_180",
+      "unit": "deg/min"
+    },
+    {
+      "index": 20,
+      "name": "pitch_rms_60",
+      "unit": "deg"
+    },
+    {
+      "index": 21,
+      "name": "pitch_std_60",
+      "unit": "deg"
+    },
+    {
+      "index": 22,
+      "name": "pitch_peak_to_peak_60",
+      "unit": "deg"
+    }
+  ]
+}
