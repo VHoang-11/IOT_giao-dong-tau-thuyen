@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,11 +32,20 @@ class VoyageOut(BaseModel):
 
 
 class DataQuality(BaseModel):
+    """Chat luong nhan theo BANG CHUNG (reports/metrics.py). seq dung chung telemetry/event/health/trace nen khoang trong
+    seq khong dong nghia mat goi; ty le nhan chi co khi moi khoang trong da duoc xac minh."""
     samples: int
-    expected_samples: int            # tong (seq_max - seq_min + 1) cua TUNG boot_id, tru cac seq do event chiem
-    missing_samples: int
-    seq_used_by_events: int = 0      # so seq trong dai bi event chiem (seq dung chung telemetry + event)
-    received_rate: Optional[float] = None   # samples / expected_samples; None neu khong co mau
+    receive_status: Literal["VERIFIED", "NO_LOSS_EVIDENCE", "INSUFFICIENT_EVIDENCE", "NO_DATA"] = "NO_DATA"
+    expected_samples: Optional[int] = None   # chi khi VERIFIED: so telemetry thiet bi da gui trong dai seq (= da nhan)
+    missing_samples: Optional[int] = None    # chi khi VERIFIED (= 0); None = chua du bang chung, KHONG phai 0
+    received_rate: Optional[float] = None    # chi khi VERIFIED; None khi chua du bang chung hoac chua co mau
+    received_rate_lower_bound: Optional[float] = None   # truong hop xau nhat: moi khoang trong chua xac minh la telemetry mat
+    seq_span: int = 0                        # tong (seq_max - seq_min + 1) cua TUNG boot_id
+    seq_gaps: int = 0                        # seq_span - samples
+    seq_used_by_events: int = 0              # da xac minh: seq cua AlarmEvent cung boot
+    seq_telemetry_outside_voyage: int = 0    # da xac minh: telemetry cung boot o chuyen khac / khong chuyen (den tre)
+    seq_gaps_health_timing: int = 0          # phu hop ban tin health theo thoi gian (health khong mang seq)
+    seq_gaps_unclassified: int = 0           # chua phan loai
     boots: int                       # so lan khoi dong (boot_id) trong chuyen
     sensor_fault_samples: int        # mau co sensor_ok = false (bi LOAI khoi thong ke chuyen dong)
 

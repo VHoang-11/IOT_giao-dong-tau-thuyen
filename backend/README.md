@@ -181,8 +181,11 @@ Công thức (để tính lại độc lập, xem thêm đầu file `reports/met
 | Số liệu | Cách tính |
 |---|---|
 | `samples` | Số dòng telemetry có `(device_id, voyage_id)` của chuyến |
-| `expected_samples` | Tổng theo từng `boot_id` của `seq_max − seq_min + 1` (`seq` đếm lại sau mỗi lần khởi động) |
-| `received_rate` | `samples / expected_samples` |
+| `seq_span`, `seq_gaps` | Tổng theo từng `boot_id` của `seq_max − seq_min + 1` (`seq` đếm lại sau mỗi lần khởi động); `seq_gaps = seq_span − samples` |
+| Phân loại khoảng trống | Firmware dùng **một** bộ đếm `seq` cho telemetry, event, health, trace; health tiêu thụ `seq` nhưng không gửi `seq`. Mỗi `seq` thiếu được xếp: `seq_used_by_events` (có `AlarmEvent` cùng boot, đã xác minh), `seq_telemetry_outside_voyage` (telemetry cùng boot ở chuyến khác/đến trễ, đã xác minh), `seq_gaps_health_timing` (khớp 1–1 với bản tin health nhận giữa hai telemetry kề bên cùng boot), `seq_gaps_unclassified` |
+| `receive_status` | `VERIFIED` (mọi khoảng trống đã xác minh) · `NO_LOSS_EVIDENCE` (còn lại đều khớp health) · `INSUFFICIENT_EVIDENCE` (còn khoảng trống chưa phân loại) · `NO_DATA` |
+| `received_rate`, `expected_samples`, `missing_samples` | Chỉ khi `VERIFIED` (`1.0`, `samples + outside`, `0`); ngược lại `null` — khoảng trống seq **không** được coi là mất gói |
+| `received_rate_lower_bound` | `(samples + outside) / (samples + outside + health_timing + unclassified)`: trường hợp xấu nhất |
 | Thống kê roll/pitch/heel/rms | **Chỉ** mẫu `sensor_ok = true`; mẫu `sensor_ok = false` chỉ được đếm riêng |
 | `p95_abs_roll_deg` | Nearest-rank: `sorted(|roll|)[ceil(0.95·n) − 1]` |
 | `mean_rms_roll_deg` | Trung bình `rms_roll_deg` do thiết bị gửi (backend không tự tính lại từ roll) |
