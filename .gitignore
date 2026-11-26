@@ -57,3 +57,6 @@ Thumbs.db
 /ml/data/simulation_four_class_exp_v02/
 /ml/data/simulation_pitch_imu_diag/
 /ml/data/simulation_four_class_exp_v03/
+
+# Tệp tạm chứa tài khoản kiểm thử LIVE (không bao giờ commit)
+.svmg_live_test.env
