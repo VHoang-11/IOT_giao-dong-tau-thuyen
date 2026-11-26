@@ -297,3 +297,11 @@ def test_config_publish_failure_leaves_no_version(client, db, pub, device):
     assert put_cfg(client, {"profile": "SENSITIVE"}).status_code == 503
     pub.fail = False
     assert put_cfg(client, {"profile": "SENSITIVE"}).json()["payload"]["config_version"] == 8
+
+
+@pytest.mark.parametrize("user", ["op01", "sup01", "admin01"])
+def test_ack_alarm_cannot_be_sent_directly_by_any_role(client, pub, device, auth, user):
+    """ack_alarm co trong hop dong nhung CHI duoc gui kem POST /alarms/{id}/ack (DB va thiet bi khong lech nhau)."""
+    r = client.post(f"/api/v1/devices/{DEV}/commands", json={"cmd": "ack_alarm", "params": {"alarm_id": "A-0001"}},
+                    headers=auth(user))
+    assert r.status_code == 422 and "alarms" in r.json()["detail"] and pub.sent == []

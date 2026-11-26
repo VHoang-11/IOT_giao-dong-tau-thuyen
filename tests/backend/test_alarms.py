@@ -145,6 +145,8 @@ def test_previous_boot_alarm_is_history_and_does_not_block_mute(db, client):
     service.ensure_mute_allowed(db, DEV)                              # canh bao boot cu khong con chan
     db.refresh(old)
     assert old.state == AlarmState.ACKED and old.level == AlarmLevel.CRITICAL   # khong xoa, khong tu dong giai toa
+    rows = {a["alarm_id"]: a for a in client.get("/api/v1/alarms").json()}
+    assert rows["A-0002"]["boot_current"] is False and rows["A-0001"]["boot_current"] is True
     s = client.get("/api/v1/alarms/stats").json()
     assert s["open_previous_boot"] == 1 and s["active"] == 1
 

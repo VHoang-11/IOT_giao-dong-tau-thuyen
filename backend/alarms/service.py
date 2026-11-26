@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 
 from alarms.realtime import hub
 from app.core.config import settings
-from app.models import Alarm, AlarmEvent, Device, Telemetry
-from app.models.enums import AlarmLabel, AlarmLevel, AlarmState, SourceMode
-from app.schemas.alarm import AlarmOut, AlarmStats
+from app.models import Alarm, AlarmEvent, Command, Device, Telemetry
+from app.models.enums import AlarmLabel, AlarmLevel, AlarmState, CommandState, SourceMode
+from app.schemas.alarm import AlarmOut, AlarmStats, DeviceAck
 from app.services.audit import audit
 from app.services.voyages import active_voyage_id
 from notify.service import notify_alarm
@@ -192,6 +192,62 @@ def ensure_mute_allowed(db: Session, device_id: str) -> None:
     if last_level != AlarmLevel.WARNING or not any(a.level == AlarmLevel.WARNING and a.state == AlarmState.ACTIVE for a in alarms):
         raise MuteNotAllowed("Thiết bị chỉ cho tắt còi khi đang ở mức WARNING và cảnh báo của lần khởi động hiện tại "
                              "chưa được ACK")
+
+
+# ---------------------------------------------------------------- ACK tren thiet bi + boot hien tai
+
+ACK_CMD_PREFIX = "ack-"
+DEVICE_ACKERS = ("remote", "device_button")   # acked_by do THIET BI phat trong ALARM_STATE
+
+
+def ack_cmd_id(alarm: Alarm) -> str:
+    """cmd_id co dinh cho lenh ack_alarm cua mot canh bao (id hang DB, duy nhat ke ca khi alarm_id lap lai sau khoi dong)."""
+    return f"{ACK_CMD_PREFIX}{alarm.id}"
+
+
+def _naive_utc(dt: datetime) -> datetime:
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def _device_ack(db: Session, alarm: Alarm, cmd: Optional[Command]) -> Optional[DeviceAck]:
+    if alarm.acked_at is None:
+        return None
+    if alarm.acked_by in DEVICE_ACKERS:              # ACK phat sinh tu chinh thiet bi (nut bam / ack_alarm cu)
+        return DeviceAck(state="CONFIRMED", reason="ACK do thiết bị báo (ALARM_STATE kèm acked_by)",
+                         confirmed_at=alarm.acked_at)
+    if cmd is None:
+        return DeviceAck(state="NOT_REQUESTED",
+                         reason="ACK chỉ ghi nhận trên Backend: không có lệnh ack_alarm gửi xuống thiết bị "
+                                "(dữ liệu trước khi hỗ trợ, thiết bị đã khởi động lại, hoặc gửi thất bại)")
+    if cmd.state in (CommandState.SENT, CommandState.DELIVERED):
+        return DeviceAck(state="PENDING", cmd_id=cmd.cmd_id, reason="Đã gửi lệnh ack_alarm, đang chờ thiết bị phản hồi")
+    if cmd.state in (CommandState.REJECTED, CommandState.TIMEOUT):
+        return DeviceAck(state=cmd.state.value, cmd_id=cmd.cmd_id, reason=cmd.reason)
+    ev = db.scalar(select(AlarmEvent).where(
+        AlarmEvent.device_id == alarm.device_id, AlarmEvent.boot_id == alarm.boot_id, AlarmEvent.alarm_id == alarm.alarm_id,
+        AlarmEvent.acked_by.in_(DEVICE_ACKERS)).order_by(AlarmEvent.server_rx_time.desc()).limit(1))
+    if ev is not None and _naive_utc(ev.server_rx_time) >= _naive_utc(cmd.created_at):
+        return DeviceAck(state="CONFIRMED", cmd_id=cmd.cmd_id, confirmed_at=ev.server_rx_time,
+                         reason="Thiết bị đã phát ALARM_STATE kèm acked_by sau lệnh ack_alarm")
+    return DeviceAck(state="APPLIED_UNCONFIRMED", cmd_id=cmd.cmd_id,
+                     reason="Thiết bị trả APPLIED nhưng chưa phát ALARM_STATE kèm acked_by: cảnh báo trên thiết bị có thể "
+                            "đã khác, đã được ACK hoặc dưới mức WARNING (APPLIED không tác dụng)")
+
+
+def annotate_alarms(db: Session, alarms: list[Alarm]) -> list[AlarmOut]:
+    """AlarmOut kem boot_current va device_ack (tinh tu du lieu hien co; KHONG ghi gi, khong doi y nghia ACK lich su)."""
+    devices = {a.device_id for a in alarms}
+    boots = dict(db.execute(select(Device.device_id, Device.boot_id).where(Device.device_id.in_(devices))).all()) if devices else {}
+    ids = [ack_cmd_id(a) for a in alarms if a.acked_at is not None]
+    cmds = {c.cmd_id: c for c in db.scalars(select(Command).where(Command.cmd_id.in_(ids)))} if ids else {}
+    out = []
+    for a in alarms:
+        o = AlarmOut.model_validate(a)
+        boot = boots.get(a.device_id)
+        o.boot_current = None if boot is None else a.boot_id == boot
+        o.device_ack = _device_ack(db, a, cmds.get(ack_cmd_id(a)))
+        out.append(o)
+    return out
 
 
 def compute_stats(db: Session, device_id: Optional[str] = None,
