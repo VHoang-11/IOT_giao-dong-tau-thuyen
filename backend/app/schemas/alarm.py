@@ -63,3 +63,5 @@ class AlarmStats(BaseModel):
     label_coverage: Optional[float] = None      # labeled / total
     # FALSE / (TRUE + FALSE): chi tinh canh bao da ket luan, bo qua UNCLEAR; None neu chua co ket luan nao
     false_alarm_rate: Optional[float] = None
+    # canh bao chua giai toa nhung thuoc lan khoi dong TRUOC cua thiet bi (thiet bi khong con giu): lich su, khong chan mute
+    open_previous_boot: int = 0

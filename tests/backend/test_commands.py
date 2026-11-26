@@ -144,9 +144,27 @@ def test_mute_blocked_when_critical_and_audited(client, db, pub, device):
     assert audits(db, "CMD_BLOCKED")  # lan bi chan van co dau vet
 
 
-def test_mute_allowed_below_critical(client, db, pub, device):
-    event(db, "CAUTION", 1)
+def test_mute_only_when_firmware_would_accept_it(client, db, pub, device):
+    from conftest import firmware_mute_state
+    firmware_mute_state(db, level="CAUTION")
+    r = send(client, {"cmd": "mute_alarm", "params": {"duration_s": 60}})
+    assert r.status_code == 409 and "WARNING" in r.json()["detail"] and pub.sent == []   # thiet bi se tu choi -> khong gui
+    firmware_mute_state(db, level="WARNING", alarm_id="A-2")
     assert send(client, {"cmd": "mute_alarm", "params": {"duration_s": 60}}).status_code == 202
+    assert pub.sent[-1][0] == f"svmg/{DEV}/cmd"
+
+
+def test_command_stats_count_every_applied_command(client, db, pub, device):
+    """Regression (Dashboard: 'Tổng lệnh 2' nhưng 'APPLIED 1'): thong ke dem dung moi lenh da APPLIED."""
+    ids = [send(client, body).json()["cmd_id"] for body in (
+        {"cmd": "set_profile", "params": {"profile": "STANDARD"}}, {"cmd": "set_threshold", "params": {"mai_caution": 80}})]
+    for i, cid in enumerate(ids):
+        handle_message(db, f"svmg/{DEV}/cmd/ack", json.dumps({"cmd_id": cid, "result": "APPLIED",
+                                                               "config_version": 2 + i, "reason": None}).encode())
+    s = client.get("/api/v1/commands/stats", params={"device_id": DEV}).json()
+    assert s["total"] == 2 and s["by_state"] == {"APPLIED": 2}
+    rows = client.get("/api/v1/commands", params={"device_id": DEV}).json()
+    assert sorted(r["state"] for r in rows) == ["APPLIED", "APPLIED"]
 
 
 def test_unknown_device_404(client, pub):

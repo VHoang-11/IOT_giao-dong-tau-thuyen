@@ -171,15 +171,27 @@ def escalate_overdue(db: Session, now: Optional[datetime] = None,
     return rows
 
 
+def _current_boot(db: Session, device_id: str) -> Optional[str]:
+    return db.scalar(select(Device.boot_id).where(Device.device_id == device_id))
+
+
 def ensure_mute_allowed(db: Session, device_id: str) -> None:
-    """Chan MUTE khi dang CRITICAL. M3-04 (command service) phai goi ham nay truoc khi gui mute_alarm."""
-    critical_open = db.scalar(select(Alarm.id).where(
-        Alarm.device_id == device_id, Alarm.state != AlarmState.CLEARED,
-        Alarm.level == AlarmLevel.CRITICAL).limit(1))
-    last_level = db.scalar(select(Telemetry.alarm_level).where(Telemetry.device_id == device_id)
-                           .order_by(Telemetry.server_rx_time.desc(), Telemetry.id.desc()).limit(1))
-    if critical_open is not None or last_level == AlarmLevel.CRITICAL:
+    """Dieu kien MUTE dong bo voi firmware (core/src/alarm_fsm.c svmg_alarm_mute): thiet bi CHI cho tat coi khi muc hien tai
+    dung bang WARNING va canh bao chua duoc ACK; CRITICAL luon bi chan. Chi xet canh bao/telemetry cua LAN KHOI DONG HIEN TAI:
+    canh bao cua boot cu khong con tren thiet bi nen khong duoc chan (hay mo) viec mute cua boot moi.
+    Chua biet boot hien tai (thiet bi chua gui gi) -> xet tat ca (than trong)."""
+    boot = _current_boot(db, device_id)
+    alarms = [a for a in db.scalars(select(Alarm).where(Alarm.device_id == device_id, Alarm.state != AlarmState.CLEARED))
+              if boot is None or a.boot_id == boot]
+    tq = select(Telemetry.alarm_level).where(Telemetry.device_id == device_id)
+    if boot is not None:
+        tq = tq.where(Telemetry.boot_id == boot)
+    last_level = db.scalar(tq.order_by(Telemetry.server_rx_time.desc(), Telemetry.id.desc()).limit(1))
+    if any(a.level == AlarmLevel.CRITICAL for a in alarms) or last_level == AlarmLevel.CRITICAL:
         raise MuteNotAllowed("Không được MUTE khi cảnh báo đang ở mức CRITICAL")
+    if last_level != AlarmLevel.WARNING or not any(a.level == AlarmLevel.WARNING and a.state == AlarmState.ACTIVE for a in alarms):
+        raise MuteNotAllowed("Thiết bị chỉ cho tắt còi khi đang ở mức WARNING và cảnh báo của lần khởi động hiện tại "
+                             "chưa được ACK")
 
 
 def compute_stats(db: Session, device_id: Optional[str] = None,
@@ -192,6 +204,8 @@ def compute_stats(db: Session, device_id: Optional[str] = None,
     if since:
         q = q.where(Alarm.opened_at >= since)
     rows = list(db.scalars(q))
+    devices = {a.device_id for a in rows}
+    boots = dict(db.execute(select(Device.device_id, Device.boot_id).where(Device.device_id.in_(devices))).all()) if devices else {}
     ttas = [AlarmOut.model_validate(a).time_to_ack_s for a in rows if a.acked_at is not None]
     by_level: dict[str, int] = {}
     for a in rows:
@@ -216,4 +230,6 @@ def compute_stats(db: Session, device_id: Optional[str] = None,
         labeled=labeled, by_label=by_label,
         label_coverage=(labeled / total) if total else None,
         # mau so chi gom canh bao DA KET LUAN (dung + sai); UNCLEAR va chua danh gia khong tinh
-        false_alarm_rate=(false_n / (true_n + false_n)) if (true_n + false_n) else None)
+        false_alarm_rate=(false_n / (true_n + false_n)) if (true_n + false_n) else None,
+        open_previous_boot=sum(1 for a in rows if a.state != AlarmState.CLEARED and boots.get(a.device_id) is not None
+                               and a.boot_id != boots[a.device_id]))

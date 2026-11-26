@@ -60,3 +60,22 @@ def client(db):
     """Mac dinh dang nhap la supervisor 'sup01' (khop vi du hop dong). Muon doi quyen: truyen headers=auth(...)."""
     with TestClient(app, headers=bearer("sup01")) as c:
         yield c
+
+
+def firmware_mute_state(db, device_id="vessel-demo-01", boot="b1", level="WARNING", alarm_state="ACTIVE", alarm_id="A-1"):
+    """Dung trang thai ma FIRMWARE xet khi mute (core/src/alarm_fsm.c): canh bao cua boot + telemetry moi nhat o muc `level`.
+    Chi ghi vao CSDL test trong bo nho. Tra ve Alarm."""
+    from datetime import datetime, timezone
+
+    from app.models import Alarm, Telemetry
+    from app.models.enums import AlarmLevel, AlarmState, MotionClass, SourceMode
+    now = datetime.now(timezone.utc)
+    a = Alarm(alarm_id=alarm_id, boot_id=boot, device_id=device_id, last_seq=1, state=AlarmState(alarm_state),
+              level=AlarmLevel(level), max_level=AlarmLevel(level), source_mode=SourceMode.SIMULATION, opened_at=now,
+              escalated=False)
+    db.add(a)
+    db.add(Telemetry(device_id=device_id, boot_id=boot, seq=1000 + db.query(Telemetry).count(), t_sim_s=1.0, uptime_ms=1,
+                     source_mode=SourceMode.SIMULATION, roll_deg=0.0, pitch_deg=0.0, class_rf=MotionClass.UNKNOWN,
+                     alarm_level=AlarmLevel(level), model_version="none", config_version=1, sensor_ok=True, server_rx_time=now))
+    db.commit()
+    return a
