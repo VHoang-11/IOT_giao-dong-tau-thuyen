@@ -10,7 +10,8 @@ CONG THUC (de M4/T11 tinh lai):
 - p95_abs_roll_deg   = nearest-rank: sorted(|roll|)[ceil(0.95 * n) - 1]
 - mean_rms_roll_deg  = trung binh rms_roll_deg do THIET BI gui (backend khong tu tinh lai tu roll)
 - phan bo lop        = dem theo SO MAU (khong phai theo thoi gian); tinh tren tat ca mau
-- rf_baseline_agreement_rate = (#mau class_rf == class_baseline_b) / (#mau co ca hai)
+- rf_baseline_agreement_rate = (#mau class_rf == class_baseline_b) / (#mau ma CA HAI la lop phan loai hop le)
+                       [UNKNOWN/FAULT bi loai: hai mo hinh cung UNKNOWN KHONG phai dong thuan; khong co cap -> None]
 - duration_s         = last_sample_at - first_sample_at   (theo server_rx_time)
 - false_alarms_per_hour = (#canh bao FALSE_ALARM) / (duration_s / 3600), chi khi duration_s > 0 VA co it nhat
                           1 canh bao da duoc danh gia (neu khong: None, vi '0' se la ket luan chua co can cu)
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from alarms.service import compute_stats
 from app.models import AlarmEvent, Command, Voyage
+from app.models.enums import is_classified_pair
 from app.schemas.voyage import (
     CommandSummary, DataQuality, Distribution, MotionStats, ReportSummary, VoyageOut,
 )
@@ -67,6 +69,7 @@ class _Pass:
         self.cls_b: dict[str, int] = {}
         self.levels: dict[str, int] = {}
         self.both = 0
+        self.unclassified = 0   # co Baseline nhung RF hoac Baseline la UNKNOWN/FAULT: khong vao ty le dong thuan
         self.agree = 0
         self.fault = 0
         self.abs_roll: list[float] = []
@@ -89,8 +92,11 @@ class _Pass:
         self.levels[t.alarm_level.value] = self.levels.get(t.alarm_level.value, 0) + 1
         if t.class_baseline_b is not None:
             self.cls_b[t.class_baseline_b.value] = self.cls_b.get(t.class_baseline_b.value, 0) + 1
-            self.both += 1
-            self.agree += t.class_rf == t.class_baseline_b
+            if is_classified_pair(t.class_rf, t.class_baseline_b):
+                self.both += 1
+                self.agree += t.class_rf == t.class_baseline_b
+            else:
+                self.unclassified += 1
         if not t.sensor_ok:
             self.fault += 1  # so do loi: khong dua vao thong ke chuyen dong
             return
@@ -141,11 +147,15 @@ def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None)
         notes.append("Chưa có telemetry nào mang voyage_id này từ thiết bị "
                      f"'{voyage.device_id}': báo cáo chưa có số liệu.")
     if label == "MIXED":
-        notes.append("Dữ liệu trộn SENSOR và SIMULATION trong cùng một chuyến: cần diễn giải thận trọng.")
+        notes.append("Dữ liệu trộn SENSOR và SIMULATION trong cùng một chuyến: cần diễn giải thận trọng; "
+                     "không gộp tỉ lệ đồng thuận RF – Baseline B của hai nguồn.")
     if expected > p.rows:
         notes.append(f"Thiếu {expected - p.rows} bản tin so với dải seq đã nhận (mất gói hoặc chưa gửi lại dữ liệu đệm).")
     if p.fault:
         notes.append(f"{p.fault} mẫu có sensor_ok=false đã bị loại khỏi thống kê chuyển động.")
+    if p.unclassified:
+        notes.append(f"{p.unclassified} mẫu có RF hoặc Baseline B là UNKNOWN/FAULT không được tính vào tỉ lệ đồng thuận"
+                     + ("; chưa đủ dữ liệu để đánh giá đồng thuận." if not p.both else "."))
     if p.boots and len(p.boots) > 1:
         notes.append(f"Thiết bị khởi động lại {len(p.boots) - 1} lần trong chuyến (seq được tính riêng theo từng boot_id).")
 
@@ -172,7 +182,8 @@ def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None)
             mean_rms_roll_deg=(p.rms_sum / p.rms_n) if p.rms_n else None,
             max_abs_pitch_deg=p.max_pitch, max_abs_heel_offset_deg=p.max_heel),
         class_rf=_distribution(p.cls_rf), class_baseline_b=_distribution(p.cls_b),
-        rf_baseline_agreement_rate=(p.agree / p.both) if p.both else None,
+        # Khong tron nguon: chuyen co ca SENSOR va SIMULATION -> None (mot ty le chung se gay hieu nham)
+        rf_baseline_agreement_rate=(p.agree / p.both) if p.both and label != "MIXED" else None,
         alarm_levels=_distribution(p.levels), alarms=alarms,
         # None (khong phai 0) khi chua co canh bao nao duoc danh gia: '0 canh bao sai' se la ket luan chua co can cu
         false_alarms_per_hour=(false_n / (duration / 3600.0)) if duration and duration > 0 and alarms.labeled > 0 else None,

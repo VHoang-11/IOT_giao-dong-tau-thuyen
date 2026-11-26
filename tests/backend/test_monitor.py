@@ -80,7 +80,8 @@ def test_agreement_without_data_is_null_not_zero(client, dev):
     s = agreement(client)
     assert s["samples_considered"] == 0 and s["agreement_rate"] is None and s["by_rf_class"] == {}
     assert s["source_label"] == "UNKNOWN" and s["source_modes"] == [] and s["first_sample_at"] is None
-    assert any("Chưa có mẫu" in n for n in s["notes"])
+    assert s["status"] == "INSUFFICIENT_DATA" and s["excluded_unclassified"] == 0
+    assert any("Chưa đủ dữ liệu để đánh giá đồng thuận" in n for n in s["notes"])
 
 
 def test_agreement_exact_numbers_and_per_class(client, db, dev):
@@ -129,12 +130,68 @@ def test_agreement_always_reports_source_mode(client, db, dev):
     assert any("trộn SENSOR và SIMULATION" in n for n in s["notes"])
 
 
-def test_agreement_rf_fault_can_never_match_and_is_explained(client, db, dev):
+def test_agreement_rf_fault_is_excluded_and_explained(client, db, dev):
     db.add_all([tele(0, N, N), tele(1, F, U)])                      # sensor_ok = true nhung RF khong chac chan
     db.commit()
     s = agreement(client)
-    assert s["by_rf_class"]["FAULT"]["matched"] == 0
-    assert any("FAULT" in n and "Baseline" in n for n in s["notes"])
+    assert "FAULT" not in s["by_rf_class"] and s["samples_considered"] == 1 and s["agreement_rate"] == 1.0
+    assert s["excluded_unclassified"] == 1 and s["unclassified_labels"] == {"class_rf=FAULT": 1, "class_baseline_b=UNKNOWN": 1}
+    assert any("FAULT" in n and "đã bị loại" in n for n in s["notes"])
+
+
+# ---------------------------------------------------------------- UNKNOWN khong phai dong thuan (G6 audit)
+
+def test_unknown_equals_unknown_is_not_agreement(client, db, dev):
+    db.add_all([tele(0, U, U), tele(1, U, U), tele(2, U, N), tele(3, N, U), tele(4, F, F)])
+    db.commit()
+    s = agreement(client)
+    assert s["status"] == "INSUFFICIENT_DATA" and s["agreement_rate"] is None          # khong phai 40% hay 0%
+    assert s["samples_considered"] == 0 and s["matched"] == 0 and s["by_rf_class"] == {}
+    assert s["excluded_unclassified"] == 5
+    assert s["unclassified_labels"] == {"class_rf=UNKNOWN": 3, "class_rf=FAULT": 1, "class_baseline_b=UNKNOWN": 3,
+                                        "class_baseline_b=FAULT": 1}
+    assert any("Chưa đủ dữ liệu để đánh giá đồng thuận" in n for n in s["notes"])
+    assert any("cùng UNKNOWN không được tính là đồng thuận" in n for n in s["notes"])
+
+
+def test_rf_not_deployed_gives_no_misleading_rate(client, db, dev):
+    # Tinh huong dashboard: firmware chinh chua nap RF -> class_rf luon UNKNOWN; Baseline B co luc UNKNOWN (khoi dong)
+    db.add_all([tele(i, U, U if i % 2 else N) for i in range(20)])
+    db.commit()
+    s = agreement(client)
+    assert s["agreement_rate"] is None and s["status"] == "INSUFFICIENT_DATA" and s["excluded_unclassified"] == 20
+
+
+def test_baseline_unknown_with_valid_rf_is_excluded(client, db, dev):
+    db.add_all([tele(0, N, N), tele(1, H, U), tele(2, P, P)])
+    db.commit()
+    s = agreement(client)
+    assert s["samples_considered"] == 2 and s["matched"] == 2 and s["agreement_rate"] == 1.0 and s["status"] == "OK"
+    assert s["unclassified_labels"] == {"class_baseline_b=UNKNOWN": 1}
+
+
+def test_limit_counts_only_valid_pairs(client, db, dev):
+    db.add_all([tele(i, N, H, rx=T0 + timedelta(minutes=i)) for i in range(3)])            # cap hop le cu hon
+    db.add_all([tele(10 + i, U, U, rx=T0 + timedelta(hours=1, minutes=i)) for i in range(5)])   # moi hon, khong hop le
+    db.commit()
+    s = agreement(client, limit=2)
+    assert s["samples_considered"] == 2 and s["matched"] == 0 and s["agreement_rate"] == 0.0
+
+
+def test_mixed_sources_are_not_pooled(client, db, dev):
+    db.add_all([tele(0, N, N, mode=SourceMode.SENSOR), tele(1, N, H, mode=SourceMode.SENSOR),
+                tele(2, H, H, mode=SourceMode.SIMULATION), tele(3, H, H, mode=SourceMode.SIMULATION),
+                tele(4, U, U, mode=SourceMode.SENSOR)])
+    db.commit()
+    s = agreement(client)
+    assert s["status"] == "MIXED_SOURCES" and s["agreement_rate"] is None and s["by_rf_class"] == {}
+    assert s["by_source_mode"]["SENSOR"]["samples_considered"] == 2 and s["by_source_mode"]["SENSOR"]["agreement_rate"] == 0.5
+    assert s["by_source_mode"]["SIMULATION"]["agreement_rate"] == 1.0
+    sensor = agreement(client, source_mode="SENSOR")
+    assert sensor["status"] == "OK" and sensor["agreement_rate"] == 0.5 and sensor["source_modes"] == ["SENSOR"]
+    assert sensor["excluded_unclassified"] == 1
+    assert agreement(client, source_mode="SIMULATION")["agreement_rate"] == 1.0
+    assert client.get("/api/v1/monitor/agreement", params={"device_id": DEV, "source_mode": "BOTH"}).status_code == 422
 
 
 def test_agreement_filters_by_voyage_and_device(client, db, dev):

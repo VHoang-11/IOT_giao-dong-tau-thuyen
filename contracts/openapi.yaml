@@ -1260,10 +1260,16 @@ paths:
       description: 'Tỉ lệ Random Forest trùng Baseline B. Đây là độ **nhất quán**
         giữa hai mô hình, không phải độ chính xác
 
-        (không có nhãn thật) và không phải dự báo nguy hiểm. Mẫu `sensor_ok=false`
-        bị loại và được đếm riêng.
+        (không có nhãn thật) và không phải dự báo nguy hiểm. Chỉ tính cặp mà **cả
+        hai** mô hình có lớp phân loại hợp lệ;
 
-        `agreement_rate = null` khi chưa có mẫu nào đủ điều kiện (không phải 0%).'
+        UNKNOWN/FAULT bị loại và đếm riêng (UNKNOWN == UNKNOWN không phải đồng thuận).
+        Mẫu `sensor_ok=false` bị loại.
+
+        `agreement_rate = null` khi không có cặp hợp lệ (`status=INSUFFICIENT_DATA`)
+        hoặc trộn SENSOR/SIMULATION
+
+        (`status=MIXED_SOURCES`, xem `by_source_mode`) — không phải 0%.'
       operationId: monitor_agreement_api_v1_monitor_agreement_get
       security:
       - OAuth2PasswordBearer: []
@@ -1299,10 +1305,24 @@ paths:
           type: integer
           maximum: 10000
           minimum: 1
-          description: Lấy tối đa N mẫu gần nhất có đủ RF và Baseline
+          description: Lấy tối đa N cặp hợp lệ gần nhất (cả RF và Baseline có lớp
+            phân loại)
           default: 1000
           title: Limit
-        description: Lấy tối đa N mẫu gần nhất có đủ RF và Baseline
+        description: Lấy tối đa N cặp hợp lệ gần nhất (cả RF và Baseline có lớp phân
+          loại)
+      - name: source_mode
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/SourceMode'
+          - type: 'null'
+          description: Chỉ tính một nguồn (SENSOR/SIMULATION); bỏ trống = tách theo
+            nguồn
+          title: Source Mode
+        description: Chỉ tính một nguồn (SENSOR/SIMULATION); bỏ trống = tách theo
+          nguồn
       responses:
         '200':
           description: Successful Response
@@ -1470,12 +1490,30 @@ components:
             type: string
           type: array
           title: Source Modes
+        status:
+          type: string
+          enum:
+          - OK
+          - INSUFFICIENT_DATA
+          - MIXED_SOURCES
+          title: Status
+          default: OK
         samples_considered:
           type: integer
           title: Samples Considered
         excluded_sensor_fault:
           type: integer
           title: Excluded Sensor Fault
+        excluded_unclassified:
+          type: integer
+          title: Excluded Unclassified
+          default: 0
+        unclassified_labels:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Unclassified Labels
+          default: {}
         matched:
           type: integer
           title: Matched
@@ -1486,12 +1524,19 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Agreement Rate
-          description: None neu samples_considered = 0
+          description: Chi co khi status = OK; None neu khong co cap hop le hoac tron
+            nguon
         by_rf_class:
           additionalProperties:
             $ref: '#/components/schemas/ClassAgreement'
           type: object
           title: By Rf Class
+        by_source_mode:
+          additionalProperties:
+            $ref: '#/components/schemas/ModeAgreement'
+          type: object
+          title: By Source Mode
+          default: {}
         limit:
           type: integer
           title: Limit
@@ -2526,6 +2571,34 @@ components:
       - by_device
       - recent_errors
       title: IngestStatsOut
+    ModeAgreement:
+      properties:
+        samples_considered:
+          type: integer
+          title: Samples Considered
+        matched:
+          type: integer
+          title: Matched
+        agreement_rate:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Agreement Rate
+        by_rf_class:
+          additionalProperties:
+            $ref: '#/components/schemas/ClassAgreement'
+          type: object
+          title: By Rf Class
+      type: object
+      required:
+      - samples_considered
+      - matched
+      - by_rf_class
+      title: ModeAgreement
+      description: Dong thuan cua MOT nguon du lieu (SENSOR hoac SIMULATION); khong
+        tron nguon.
     MotionClass:
       type: string
       enum:
