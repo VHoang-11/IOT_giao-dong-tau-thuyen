@@ -138,6 +138,8 @@ def test_operator_permissions(client, db, pub, device, auth):
     h = auth("op01")
     assert client.get("/api/v1/devices", headers=h).status_code == 200
     assert client.post("/api/v1/alarms/9999/ack", headers=h).status_code == 404       # du quyen ACK
+    from conftest import firmware_mute_state
+    firmware_mute_state(db)                                                              # WARNING chua ACK: thiet bi cho mute
     assert cmd(client, {"cmd": "mute_alarm"}, h).status_code == 202                      # du quyen mute
     assert cmd(client, {"cmd": "set_profile", "params": {"profile": "STANDARD"}}, h).status_code == 403
     assert cmd(client, {"cmd": "calibrate_zero"}, h).status_code == 403

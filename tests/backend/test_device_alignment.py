@@ -415,46 +415,80 @@ class _RecPub:
             on_delivered()
 
 
-@pytest.fixture()
-def ack_alarm_in_contract(tmp_path, monkeypatch):
-    """Hop dong GIA LAP trong tmp: ban sao schemas + them 'ack_alarm' vao enum (de thu hanh vi khi M1 chap nhan)."""
-    import shutil
-    from app.core.config import settings
-    from ingest import validator
-    src = Path(__file__).resolve().parents[2] / "contracts" / "schemas"
-    dst = tmp_path / "schemas"
-    shutil.copytree(src, dst)
-    f = dst / "command.json"
-    c = json.loads(f.read_text(encoding="utf-8"))
-    c["properties"]["cmd"]["enum"].append("ack_alarm")
-    f.write_text(json.dumps(c), encoding="utf-8")
-    monkeypatch.setattr(settings, "contracts_dir", str(dst))
-    validator._validator.cache_clear()
-    yield
-    monkeypatch.undo()
-    validator._validator.cache_clear()
-
-
 def _open_alarm(db):
     send(db, "telemetry", device_telemetry(1), T0)                   # thiet bi bao boot_id a1b2c3d4
     send(db, "event", device_event(2, "WARNING"), T0)
     return db.scalar(select(Alarm)).id
 
 
-def test_ack_succeeds_even_when_contract_has_no_ack_alarm_command(client, db, auth):
+def test_real_contract_includes_ack_alarm():
+    """M1 CONTRACT_PROPOSALS A2/B9: thiet bi da xu ly ack_alarm; hop dong dung chung phai co lenh nay."""
+    c = json.loads((Path(__file__).resolve().parents[2] / "contracts/schemas/command.json").read_text(encoding="utf-8"))
+    assert "ack_alarm" in c["properties"]["cmd"]["enum"]
+
+
+def _alarm(client, pk):
+    r = client.get(f"/api/v1/alarms/{pk}")
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_user_ack_and_device_ack_are_distinct_lifecycles(client, db, auth):
+    """ACK nguoi truc (backend) != ACK thiet bi. 'sent' / APPLIED chua phai xac nhan; chi ALARM_STATE kem acked_by moi la CONFIRMED."""
     from commands.publisher import set_publisher
     pub = _RecPub()
     set_publisher(pub)
     try:
         pk = _open_alarm(db)
-        r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
-        assert r.status_code == 200 and r.json()["alarm"]["state"] == "ACKED"
-        assert r.json()["device_ack"] == "unsupported" and pub.sent == []
+        r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01")).json()
+        assert r["device_ack"] == "sent" and r["device_ack_cmd_id"] == f"ack-{pk}"
+        assert r["alarm"]["state"] == "ACKED" and r["alarm"]["acked_by"] == "op01"
+        assert r["alarm"]["device_ack"]["state"] == "PENDING" and r["alarm"]["boot_current"] is True
+        topic, msg = pub.sent[0]
+        assert msg["cmd_id"] == f"ack-{pk}" and msg["cmd"] == "ack_alarm" and msg["params"] == {"alarm_id": "A-0001"}
+
+        now = datetime.now(timezone.utc)
+        send(db, "cmd/ack", {"cmd_id": f"ack-{pk}", "result": "APPLIED", "config_version": 1, "reason": None},
+             now + timedelta(seconds=1))
+        a = _alarm(client, pk)
+        assert a["device_ack"]["state"] == "APPLIED_UNCONFIRMED"           # APPLIED co the 'khong tac dung' (M1 A2)
+
+        send(db, "event", device_event(3, "WARNING", acked_by="remote"), now + timedelta(seconds=2))
+        a = _alarm(client, pk)
+        assert a["device_ack"]["state"] == "CONFIRMED" and a["device_ack"]["confirmed_at"]
+        assert a["acked_by"] == "op01" and a["state"] == "ACKED"              # ACK cua nguoi truc giu nguyen
     finally:
         set_publisher(None)
 
 
-def test_ack_is_pushed_to_device_when_contract_allows_it(client, db, auth, ack_alarm_in_contract):
+def test_device_rejection_of_ack_is_reported_not_hidden(client, db, auth):
+    from commands.publisher import set_publisher
+    set_publisher(_RecPub())
+    try:
+        pk = _open_alarm(db)
+        client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
+        send(db, "cmd/ack", {"cmd_id": f"ack-{pk}", "result": "REJECTED", "config_version": 1, "reason": "EXPIRED"},
+             datetime.now(timezone.utc))
+        d = _alarm(client, pk)["device_ack"]
+        assert d["state"] == "REJECTED" and d["reason"] == "EXPIRED"
+    finally:
+        set_publisher(None)
+
+
+def test_historical_backend_only_ack_keeps_its_meaning(client, db):
+    """ACK luu truoc khi ho tro ack_alarm (khong co lenh): van ACKED boi nguoi truc, thiet bi = NOT_REQUESTED, khong suy dien."""
+    from alarms import service as alarm_service
+    pk = _open_alarm(db)
+    alarm_service.ack_alarm(db, pk, "admin")                          # chi ghi backend (nhu A-0002 cu)
+    a = _alarm(client, pk)
+    assert a["state"] == "ACKED" and a["acked_by"] == "admin" and a["device_ack"]["state"] == "NOT_REQUESTED"
+
+
+def test_unacked_alarm_has_no_device_ack(client, db):
+    assert _alarm(client, _open_alarm(db))["device_ack"] is None
+
+
+def test_ack_is_pushed_to_device_once(client, db, auth):
     from commands.publisher import set_publisher
     pub = _RecPub()
     set_publisher(pub)
@@ -471,7 +505,7 @@ def test_ack_is_pushed_to_device_when_contract_allows_it(client, db, auth, ack_a
         set_publisher(None)
 
 
-def test_ack_not_pushed_when_device_rebooted_since_the_alarm(client, db, auth, ack_alarm_in_contract):
+def test_ack_not_pushed_when_device_rebooted_since_the_alarm(client, db, auth):
     from commands.publisher import set_publisher
     pub = _RecPub()
     set_publisher(pub)
@@ -480,13 +514,15 @@ def test_ack_not_pushed_when_device_rebooted_since_the_alarm(client, db, auth, a
         send(db, "telemetry", device_telemetry(1, boot="newboot1"), T0 + timedelta(seconds=5))
         r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
         assert r.status_code == 200 and r.json()["device_ack"] == "not_applicable" and pub.sent == []
+        assert r.json()["alarm"]["boot_current"] is False and r.json()["alarm"]["device_ack"]["state"] == "NOT_REQUESTED"
     finally:
         set_publisher(None)
 
 
-def test_ack_survives_publish_failure(client, db, auth, ack_alarm_in_contract):
+def test_ack_survives_publish_failure(client, db, auth):
     from commands.publisher import set_publisher
     set_publisher(None)                                              # chua co kenh MQTT
     pk = _open_alarm(db)
     r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
     assert r.status_code == 200 and r.json()["alarm"]["state"] == "ACKED" and r.json()["device_ack"] == "failed"
+    assert r.json()["alarm"]["device_ack"]["state"] == "TIMEOUT"           # khong bao gio hien la thanh cong
