@@ -1,13 +1,18 @@
-import {useEffect,useMemo,useState} from 'react';
-import type {ReactNode,FormEvent} from 'react';
+import {useCallback,useEffect,useMemo,useState} from 'react';
+import type {FormEvent} from 'react';
 import type {Alarm,Command,Page,Scenario,Session,MotionSnapshot,ZeroCalibration,ReplayPoint,FeatureItem} from './domain';
 import {computeHealth,computeModelInfo,INITIAL_ALARMS,makeTelemetry,mockLogin,mockRegister,mockForgotPassword,MOCK_VOYAGES,REPLAY_SAMPLES,samples,SCENARIOS} from './mock';
+import {loginBackend} from './api';
+import {LivePage} from './live/LivePages';
+import {useLiveCore} from './live/useLive';
+import type {LiveAuthResponse} from './api';
 import {exportFeaturesToCSV,CONTRACT_ID,CONTRACT_VERSION,CONTRACT_SOURCE_EXPORT,TOTAL_FEATURES} from './featureRegistry';
 import { ShipMotionVisualizer } from './ShipMotionVisualizer';
 import { LiveMotionChart } from './LiveMotionChart';
 import { MaiAlarmsChart } from './MaiAlarmsChart';
 import { VoyageKinematicDistributionChart, VoyageRfDistributionChart } from './VoyageAnalyticsCharts';
 import { ModelConcordanceChart } from './ModelConcordanceChart';
+import {Pill,Panel,Metric,Button} from './ui';
 import { i18n, getRoleNameVi, getAlarmLevelNameVi, getAlarmStatusNameVi, getRFClassNameVi, getScenarioNameVi, FEATURE_NAMES_VI } from './i18n/vi';
 
 const NAV:{key:Page;label:string;mini:string}[]=[
@@ -24,10 +29,6 @@ const format=(n:number|null|undefined,unit='°')=>n==null?'—':`${n>0?'+':''}${
 const time=(iso?:string)=>iso?new Date(iso).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
 const canOperate=(s:Session|null)=>!!s&&s.role!=='Operator';
 const isAdmin=(s:Session|null)=>s?.role==='Admin';
-function Pill({children,kind='neutral'}:{children:ReactNode;kind?:string}){return <span className={`pill ${kind.toLowerCase()}`}>{children}</span>}
-function Panel({title,tag,children,footer}:{title:string;tag?:string;children:ReactNode;footer?:ReactNode}){return <section className="panel"><header className="panel-head"><h3>{title}</h3>{tag&&<span className="micro">{tag}</span>}</header>{children}{footer&&<footer className="panel-foot">{footer}</footer>}</section>}
-function Metric({label,value,note,tone='cyan',className}:{label:string;value:string;note?:string;tone?:string;className?:string}){return <div className={`metric ${className||''}`}><span className="label">{label}</span><strong className={`metric-value ${tone}`}>{value}</strong>{note&&<span className="micro">{note}</span>}</div>}
-function Button({children,onClick,disabled=false,kind='primary',title,style}:{children:ReactNode;onClick?:()=>void;disabled?:boolean;kind?:string;title?:string;style?:React.CSSProperties}){return <button type="button" className={`btn ${kind}`} style={style} onClick={onClick} disabled={disabled} title={title}>{children}</button>}
 export function MotionChart({s,tick,height=190,offline=false}:{s:Scenario;tick:number;height?:number;offline?:boolean}){
  const arr=samples(s,tick,64),w=650,h=height,pad=15;const scale=(v:number)=>h/2-v*(h-2*pad)/42;
  const poly=(key:'roll'|'pitch')=>arr.map((v,i)=>`${(i/(arr.length-1))*w},${scale(v[key])}`).join(' ');
@@ -216,6 +217,8 @@ export default function App(){
  },[theme]);
  const [session,setSession]=useState<Session|null>(null);
  const [authView,setAuthView]=useState<'login'|'register'|'forgot'>('login');
+ const [authMode,setAuthMode]=useState<'MOCK'|'LIVE'>('MOCK');
+ const [liveAuth,setLiveAuth]=useState<LiveAuthResponse|null>(null);
  const [loginName,setLoginName]=useState('operator');
  const [loginPass,setLoginPass]=useState('demo123');
  const [showPassword,setShowPassword]=useState(false);
@@ -245,6 +248,11 @@ export default function App(){
  const telemetry=useMemo(()=>makeTelemetry(scenario,tick,configVersion),[scenario,tick,configVersion]);
  const health=useMemo(()=>computeHealth(scenario,tick),[scenario,tick]);
  const modelInfo=useMemo(()=>computeModelInfo(activeModel,scenario,telemetry?.sensor_ok),[activeModel,scenario,telemetry?.sensor_ok]);
+ // LIVE: cùng khung giao diện; dữ liệu từ FastAPI thật. JWT chỉ nằm trong state (liveAuth), không ghi log/localStorage.
+ const [liveDevice,setLiveDevice]=useState<string|null>(null);
+ const isLive=authMode==='LIVE'&&!!liveAuth?.access_token&&!!session;
+ const expireLive=useCallback(()=>{setLiveAuth(null);setSession(null);setPage('overview');setLiveDevice(null);setLoginError('Phiên LIVE đã hết hạn hoặc không hợp lệ (HTTP 401). Vui lòng đăng nhập lại.')},[]);
+ const liveCore=useLiveCore(isLive?liveAuth!.access_token:null,liveDevice,expireLive);
  const downloadFeaturesCSV=(items:FeatureItem[])=>{
   const content=exportFeaturesToCSV(items,{voyageId:selectedVoyage.id,isMock:true});
   const blob=new Blob([content],{type:'text/csv;charset=utf-8'});
@@ -277,8 +285,32 @@ export default function App(){
   return()=>clearInterval(id);
  },[playing,speed]);
  const goto=(p:Page)=>{setPage(p);setAlarmId(null);window.scrollTo({top:0,behavior:'smooth'})};
- const submitLogin=(e:FormEvent)=>{
+ const submitLogin=async(e:FormEvent)=>{
   e.preventDefault();
+  if(authMode==='LIVE'){
+   setAuthLoading(true);
+   setLoginError('');
+   try {
+    const auth=await loginBackend(loginName,loginPass);
+    const role=auth.role.toUpperCase();
+    if(!['ADMIN','SUPERVISOR','OPERATOR'].includes(role)){
+     throw new Error('Vai trò Backend không được hỗ trợ.');
+    }
+    setLiveAuth(auth);
+    setSession({
+     username:auth.username,
+     role:role==='ADMIN'?'Admin':role==='SUPERVISOR'?'Supervisor':'Operator',
+     displayName:auth.username
+    });
+    setLoginPass('');
+    setPage('overview');
+   }catch(error){
+    setLoginError(error instanceof Error?error.message:'Không thể kết nối Backend.');
+   }finally{
+    setAuthLoading(false);
+   }
+   return;
+  }
   setAuthLoading(true);
   const result=mockLogin(loginName,loginPass);
   if(!result){
@@ -332,7 +364,7 @@ export default function App(){
   }
   setForgotPendingNotice(res.message);
  };
- const logout=()=>{setSession(null);setPage('overview');setPlaying(false);setNotice('')};
+ const logout=()=>{setLiveAuth(null);setLiveDevice(null);setSession(null);setPage('overview');setPlaying(false);setNotice('')};
  const ackAlarm=(id:string)=>{setAlarms(old=>old.map(a=>a.id===id&&a.status==='RAISED'?{...a,status:'ACKED',ackedAt:new Date().toISOString()}:a));setNotice(`ACK ${id} — chỉ cập nhật DEMO; không gửi MQTT`)};
  const muteAlarm=(id:string)=>{const a=alarms.find(item=>item.id===id);if(!a||a.level==='CRITICAL'){setNotice('REJECTED: không thể MUTE khi mức CRITICAL.');return}setAlarms(old=>old.map(v=>v.id===id?{...v,mutedUntil:new Date(Date.now()+300000).toISOString()}:v));setNotice(`MUTE ${id} 300s (DEMO)`) };
  const reviewAlarm=(id:string,label:'TRUE'|'FALSE'|'UNCERTAIN')=>{
@@ -442,6 +474,7 @@ export default function App(){
   {!detail&&<Button kind="ghost" onClick={()=>{setAlarmId(a.id);setPage('alarms')}}>Xem chi tiết →</Button>}
  </div>;
  const renderPage=()=>{
+  if(isLive&&page!=='more')return <LivePage page={page} core={liveCore} session={session!} token={liveAuth!.access_token} notify={setNotice} onUnauthorized={expireLive} goto={goto} setDevice={setLiveDevice}/>;
   switch(page){
   case 'overview':{
    const raisedAlarms = alarms.filter(a => a.status === 'RAISED');
@@ -1692,7 +1725,7 @@ export default function App(){
      <Button kind={theme==='dark'?'primary':'secondary'} onClick={()=>setTheme('dark')}>🌙 Giao diện Tối</Button>
     </div>
    </Panel>
-   <Panel title="Công cụ giám sát"><div className="more-list">{NAV.filter(n=>['control','replay','health','model'].includes(n.key)).map(n=><button type="button" key={n.key} onClick={()=>goto(n.key)}>{n.label}<span>→</span></button>)}</div></Panel><Panel title="Tài khoản"><dl className="kv"><dt>Tên đăng nhập</dt><dd>{session?.username}</dd><dt>Vai trò</dt><dd>{getRoleNameVi(session?.role)} ({session?.role})</dd><dt>Chế độ</dt><dd>Mô phỏng (DEMO AUTH)</dd></dl><Button kind="danger" onClick={logout}>Đăng xuất</Button></Panel></>;
+   <Panel title="Công cụ giám sát"><div className="more-list">{NAV.filter(n=>['control','replay','health','model'].includes(n.key)).map(n=><button type="button" key={n.key} onClick={()=>goto(n.key)}>{n.label}<span>→</span></button>)}</div></Panel><Panel title="Tài khoản"><dl className="kv"><dt>Tên đăng nhập</dt><dd>{session?.username}</dd><dt>Vai trò</dt><dd>{getRoleNameVi(session?.role)} ({session?.role})</dd><dt>Chế độ</dt><dd>{isLive?'LIVE (JWT Backend FastAPI)':'Mô phỏng (DEMO AUTH)'}</dd></dl><Button kind="danger" onClick={logout}>Đăng xuất</Button></Panel></>;
   }
  };
   if (!session) {
@@ -1712,6 +1745,33 @@ export default function App(){
 
 
             <h2>Đăng nhập Buồng lái</h2>
+
+            <div className="button-line" style={{marginBottom:16}}>
+              <Button
+                kind={authMode==='MOCK'?'primary':'secondary'}
+                onClick={()=>{
+                  setAuthMode('MOCK');
+                  setLoginName('operator');
+                  setLoginPass('demo123');
+                  setLoginError('');
+                }}
+              >MOCK – Dữ liệu demo</Button>
+              <Button
+                kind={authMode==='LIVE'?'primary':'secondary'}
+                onClick={()=>{
+                  setAuthMode('LIVE');
+                  setLoginName('admin');
+                  setLoginPass('');
+                  setLoginError('');
+                }}
+              >LIVE – Backend thật</Button>
+            </div>
+            <p className="auth-sub">
+              {authMode==='MOCK'
+                ? 'Chế độ demo: dữ liệu và tài khoản mô phỏng.'
+                : 'Chế độ LIVE: sử dụng tài khoản Backend và dữ liệu ESP32 thật.'}
+            </p>
+
             <p className="auth-sub">Nhập thông tin định danh sĩ quan trực ca hoặc giám sát viên:</p>
 
             <label>
@@ -1931,5 +1991,5 @@ export default function App(){
       </div>
     );
   }
- return <div className="app-layout"><aside className="sidebar"><div className="brand"><div className="brand-mark">≋</div><div><strong>Smart Vessel</strong><small>Motion Guard</small></div></div><span className="nav-label">Vận hành</span><nav aria-label="Menu chính">{NAV.map(n=>{const isRestricted=n.key==='model'&&session.role==='Operator';return <button key={n.key} className={page===n.key||(page==='report-detail'&&n.key==='reports')?'active':''} onClick={()=>goto(n.key)} title={isRestricted?'Chỉ dành cho Supervisor / Admin':undefined}><span style={{display:'inline-flex',alignItems:'center',gap:6}}>{n.label}{isRestricted&&<span style={{fontSize:'0.65rem',opacity:0.75}}>🔒</span>}</span></button>})}</nav><div className="sidebar-bottom"><small>{getRoleNameVi(session.role)} · {session.username}</small><Button kind="ghost" onClick={logout}>Đăng xuất</Button></div></aside><div className="workspace"><div className="topbar"><div><b>SV<span>MG</span></b><span className="topbar-name">Tàu MV SVMG-01</span></div><div className="topbar-right"><div className="theme-selector" role="group" aria-label="Giao diện hiển thị"><button type="button" className={`theme-opt-btn ${theme==='light'?'active':''}`} onClick={()=>setTheme('light')} title="Giao diện Sáng (Mặc định)">☀ Sáng</button><button type="button" className={`theme-opt-btn ${theme==='dark'?'active':''}`} onClick={()=>setTheme('dark')} title="Giao diện Tối">🌙 Tối</button></div><Pill kind="caution">Dữ liệu mô phỏng</Pill><span className="micro">{getRoleNameVi(session.role)} · {session.username}</span></div></div>{notice&&<div className="toast" role="status"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Đóng thông báo">×</button></div>}<main className="main"><div key={page} className="page-transition">{renderPage()}</div><div className="disclaimer">SMART VESSEL MOTION GUARD • PHIÊN BẢN MÔ PHỎNG GIAO DIỆN TV4 • Không thay thế hệ thống cảnh báo hàng hải chính thức</div></main><nav className="mobile-nav" aria-label="Điều hướng điện thoại">{([{key:'overview',label:'Tổng quan'},{key:'motion',label:'Chuyển động'},{key:'alarms',label:'Cảnh báo'},{key:'reports',label:'Báo cáo'},{key:'more',label:'Thêm'}] as const).map(n=><button key={n.key} className={page===n.key||(n.key==='reports'&&page==='report-detail')||(n.key==='more'&&['control','replay','health','model'].includes(page))?'active':''} onClick={()=>goto(n.key)}>{n.label}</button>)}</nav></div></div>
+ return <div className="app-layout"><aside className="sidebar"><div className="brand"><div className="brand-mark">≋</div><div><strong>Smart Vessel</strong><small>Motion Guard</small></div></div><span className="nav-label">Vận hành</span><nav aria-label="Menu chính">{NAV.map(n=>{const isRestricted=n.key==='model'&&session.role==='Operator';return <button key={n.key} className={page===n.key||(page==='report-detail'&&n.key==='reports')?'active':''} onClick={()=>goto(n.key)} title={isRestricted?'Chỉ dành cho Supervisor / Admin':undefined}><span style={{display:'inline-flex',alignItems:'center',gap:6}}>{n.label}{isRestricted&&<span style={{fontSize:'0.65rem',opacity:0.75}}>🔒</span>}</span></button>})}</nav><div className="sidebar-bottom"><small>{getRoleNameVi(session.role)} · {session.username}</small><Button kind="ghost" onClick={logout}>Đăng xuất</Button></div></aside><div className="workspace"><div className="topbar"><div><b>SV<span>MG</span></b><span className="topbar-name">Tàu MV SVMG-01</span></div><div className="topbar-right"><div className="theme-selector" role="group" aria-label="Giao diện hiển thị"><button type="button" className={`theme-opt-btn ${theme==='light'?'active':''}`} onClick={()=>setTheme('light')} title="Giao diện Sáng (Mặc định)">☀ Sáng</button><button type="button" className={`theme-opt-btn ${theme==='dark'?'active':''}`} onClick={()=>setTheme('dark')} title="Giao diện Tối">🌙 Tối</button></div>{isLive?<Pill kind={liveCore.link.kind}>{`LIVE • ${liveCore.link.label}`}</Pill>:<Pill kind="caution">Dữ liệu mô phỏng</Pill>}<span className="micro">{getRoleNameVi(session.role)} · {session.username}</span></div></div>{notice&&<div className="toast" role="status"><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Đóng thông báo">×</button></div>}<main className="main"><div key={page} className="page-transition">{renderPage()}</div><div className="disclaimer">{isLive?`SMART VESSEL MOTION GUARD • LIVE • Thiết bị ${liveCore.deviceId??'—'} • Dữ liệu ESP32 qua MQTT/FastAPI • Không thay thế hệ thống cảnh báo hàng hải chính thức`:'SMART VESSEL MOTION GUARD • PHIÊN BẢN MÔ PHỎNG GIAO DIỆN TV4 • Không thay thế hệ thống cảnh báo hàng hải chính thức'}</div></main><nav className="mobile-nav" aria-label="Điều hướng điện thoại">{([{key:'overview',label:'Tổng quan'},{key:'motion',label:'Chuyển động'},{key:'alarms',label:'Cảnh báo'},{key:'reports',label:'Báo cáo'},{key:'more',label:'Thêm'}] as const).map(n=><button key={n.key} className={page===n.key||(n.key==='reports'&&page==='report-detail')||(n.key==='more'&&['control','replay','health','model'].includes(page))?'active':''} onClick={()=>goto(n.key)}>{n.label}</button>)}</nav></div></div>
 }
