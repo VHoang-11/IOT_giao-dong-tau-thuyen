@@ -2113,21 +2113,59 @@ components:
         samples:
           type: integer
           title: Samples
+        receive_status:
+          type: string
+          enum:
+          - VERIFIED
+          - NO_LOSS_EVIDENCE
+          - INSUFFICIENT_EVIDENCE
+          - NO_DATA
+          title: Receive Status
+          default: NO_DATA
         expected_samples:
-          type: integer
+          anyOf:
+          - type: integer
+          - type: 'null'
           title: Expected Samples
         missing_samples:
-          type: integer
+          anyOf:
+          - type: integer
+          - type: 'null'
           title: Missing Samples
-        seq_used_by_events:
-          type: integer
-          title: Seq Used By Events
-          default: 0
         received_rate:
           anyOf:
           - type: number
           - type: 'null'
           title: Received Rate
+        received_rate_lower_bound:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Received Rate Lower Bound
+        seq_span:
+          type: integer
+          title: Seq Span
+          default: 0
+        seq_gaps:
+          type: integer
+          title: Seq Gaps
+          default: 0
+        seq_used_by_events:
+          type: integer
+          title: Seq Used By Events
+          default: 0
+        seq_telemetry_outside_voyage:
+          type: integer
+          title: Seq Telemetry Outside Voyage
+          default: 0
+        seq_gaps_health_timing:
+          type: integer
+          title: Seq Gaps Health Timing
+          default: 0
+        seq_gaps_unclassified:
+          type: integer
+          title: Seq Gaps Unclassified
+          default: 0
         boots:
           type: integer
           title: Boots
@@ -2137,11 +2175,14 @@ components:
       type: object
       required:
       - samples
-      - expected_samples
-      - missing_samples
       - boots
       - sensor_fault_samples
       title: DataQuality
+      description: 'Chat luong nhan theo BANG CHUNG (reports/metrics.py). seq dung
+        chung telemetry/event/health/trace nen khoang trong
+
+        seq khong dong nghia mat goi; ty le nhan chi co khi moi khoang trong da duoc
+        xac minh.'
     DeviceCreate:
       properties:
         device_id:

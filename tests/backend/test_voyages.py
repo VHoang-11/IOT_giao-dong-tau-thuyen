@@ -189,7 +189,7 @@ def test_summary_numbers_are_exact(client, db, voyage):
     assert s["class_rf"]["share"]["NORMAL"] == pytest.approx(6 / 11)
     assert s["class_baseline_b"]["counts"] == {"NORMAL": 8}
     assert s["rf_baseline_agreement_rate"] == pytest.approx(6 / 8)           # 8 mau co ca hai; RF==B o 6 mau dau
-    assert q["expected_samples"] == 11 and q["received_rate"] == 1.0
+    assert q["expected_samples"] == 11 and q["received_rate"] == 1.0 and q["receive_status"] == "VERIFIED"
     assert s["telemetry_rows"] == 11 and s["duration_s"] == 10.0
     assert "sensor_ok=false" in " ".join(s["notes"])
 
@@ -206,10 +206,11 @@ def test_received_rate_is_computed_per_boot_and_counts_gaps(client, db, voyage):
     db.add_all(a + b)
     db.commit()
     q = summary(client)["data_quality"]
-    assert (q["samples"], q["expected_samples"], q["missing_samples"], q["boots"]) == (8, 10, 2, 2)
-    assert q["received_rate"] == pytest.approx(0.8)
+    assert (q["samples"], q["seq_span"], q["seq_gaps"], q["seq_gaps_unclassified"], q["boots"]) == (8, 10, 2, 2, 2)
+    assert q["receive_status"] == "INSUFFICIENT_EVIDENCE" and q["received_rate"] is None and q["missing_samples"] is None
+    assert q["received_rate_lower_bound"] == pytest.approx(0.8)
     notes = " ".join(summary(client)["notes"])
-    assert "Thiếu 2" in notes and "khởi động lại 1 lần" in notes
+    assert "2 khoảng trống seq chưa phân loại" in notes and "khởi động lại 1 lần" in notes
 
 
 def test_agreement_excludes_unknown_pairs(client, db, voyage):
@@ -436,6 +437,40 @@ def test_pdf_escapes_markup_in_dynamic_text(client, db, voyage):
     s.voyage.device_id = "a<b>&c"
     s.voyage.started_by = "x</para>y"
     assert build_pdf(s, series).startswith(b"%PDF")        # khong nem loi parse XML
+
+
+def _pdf_pages(data: bytes) -> list[str]:
+    plumber = pytest.importorskip("pdfplumber")
+    with plumber.open(io.BytesIO(data)) as pdf:
+        return [p.extract_text() or "" for p in pdf.pages]
+
+
+def test_pdf_typical_voyage_fits_two_a4_pages(client, db, voyage):
+    from reports.pdf import build_pdf
+    db.add_all(tele(i, roll=float(i % 7) - 3) for i in range(62))
+    db.commit()
+    s, series = metrics.compute_summary(db, db.scalar(select(Voyage)))
+    s.notes = s.notes + ["11 khoảng trống seq trùng thời điểm bản tin health (health dùng chung bộ đếm seq nhưng không gửi seq): "
+                         "phù hợp health, không phải bằng chứng mất telemetry; chưa xác minh tuyệt đối nên không tính tỉ lệ nhận.",
+                         "Cận dưới tỉ lệ nhận (coi mọi khoảng trống chưa xác minh là telemetry mất): 84.9%."]
+    pages = _pdf_pages(build_pdf(s, series))
+    assert len(pages) == 2
+    assert "Góc roll theo thời gian" in pages[0] and "8. Ghi chú về số liệu" in pages[1]
+
+
+def test_pdf_notes_section_is_never_split_across_pages(client, db, voyage):
+    from reports.pdf import build_pdf
+    db.add_all(tele(i, roll=float(i % 5)) for i in range(40))
+    db.commit()
+    s, series = metrics.compute_summary(db, db.scalar(select(Voyage)))
+    s.notes = [f"Ghi chú dài số {k}: " + "nội dung giải thích chất lượng dữ liệu và giới hạn của số liệu báo cáo " * 3
+               for k in range(12)]                                  # du dai de khoi ghi chu khong vua cuoi trang 2
+    pages = _pdf_pages(build_pdf(s, series))
+    where = [i for i, t in enumerate(pages) if "8. Ghi chú về số liệu" in t]
+    assert len(where) == 1
+    notes_page = pages[where[0]].replace("\n", " ")
+    assert "Ghi chú dài số 0" in notes_page and "Ghi chú dài số 11" in notes_page   # ca khoi tren mot trang
+    assert s.telemetry_csv_sha256 in pages[where[0]].replace("\n", "")             # dau van tay di cung khoi
 
 
 def test_pdf_is_built_off_the_event_loop(client, db, voyage, monkeypatch):
