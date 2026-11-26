@@ -1467,6 +1467,11 @@ components:
           - type: string
           - type: 'null'
           title: Device Ack Detail
+        device_ack_cmd_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Ack Cmd Id
       type: object
       required:
       - alarm
@@ -1669,6 +1674,15 @@ components:
             format: date-time
           - type: 'null'
           title: Labeled At
+        boot_current:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Boot Current
+        device_ack:
+          anyOf:
+          - $ref: '#/components/schemas/DeviceAck'
+          - type: 'null'
         time_to_ack_s:
           anyOf:
           - type: number
@@ -1748,6 +1762,10 @@ components:
           - type: number
           - type: 'null'
           title: False Alarm Rate
+        open_previous_boot:
+          type: integer
+          title: Open Previous Boot
+          default: 0
       type: object
       required:
       - total
@@ -2113,21 +2131,59 @@ components:
         samples:
           type: integer
           title: Samples
+        receive_status:
+          type: string
+          enum:
+          - VERIFIED
+          - NO_LOSS_EVIDENCE
+          - INSUFFICIENT_EVIDENCE
+          - NO_DATA
+          title: Receive Status
+          default: NO_DATA
         expected_samples:
-          type: integer
+          anyOf:
+          - type: integer
+          - type: 'null'
           title: Expected Samples
         missing_samples:
-          type: integer
+          anyOf:
+          - type: integer
+          - type: 'null'
           title: Missing Samples
-        seq_used_by_events:
-          type: integer
-          title: Seq Used By Events
-          default: 0
         received_rate:
           anyOf:
           - type: number
           - type: 'null'
           title: Received Rate
+        received_rate_lower_bound:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Received Rate Lower Bound
+        seq_span:
+          type: integer
+          title: Seq Span
+          default: 0
+        seq_gaps:
+          type: integer
+          title: Seq Gaps
+          default: 0
+        seq_used_by_events:
+          type: integer
+          title: Seq Used By Events
+          default: 0
+        seq_telemetry_outside_voyage:
+          type: integer
+          title: Seq Telemetry Outside Voyage
+          default: 0
+        seq_gaps_health_timing:
+          type: integer
+          title: Seq Gaps Health Timing
+          default: 0
+        seq_gaps_unclassified:
+          type: integer
+          title: Seq Gaps Unclassified
+          default: 0
         boots:
           type: integer
           title: Boots
@@ -2137,11 +2193,53 @@ components:
       type: object
       required:
       - samples
-      - expected_samples
-      - missing_samples
       - boots
       - sensor_fault_samples
       title: DataQuality
+      description: 'Chat luong nhan theo BANG CHUNG (reports/metrics.py). seq dung
+        chung telemetry/event/health/trace nen khoang trong
+
+        seq khong dong nghia mat goi; ty le nhan chi co khi moi khoang trong da duoc
+        xac minh.'
+    DeviceAck:
+      properties:
+        state:
+          type: string
+          enum:
+          - NOT_REQUESTED
+          - PENDING
+          - CONFIRMED
+          - APPLIED_UNCONFIRMED
+          - REJECTED
+          - TIMEOUT
+          title: State
+        cmd_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cmd Id
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+      type: object
+      required:
+      - state
+      title: DeviceAck
+      description: 'ACK tren THIET BI (khac ACK cua nguoi truc tren backend: acked_by/acked_at).
+
+        CONFIRMED chi khi thiet bi phat ALARM_STATE kem acked_by sau lenh ack_alarm
+        (hoac ACK bang nut tren thiet bi);
+
+        APPLIED cua lenh ack_alarm KHONG du: thiet bi tra APPLIED ca khi id cu / muc
+        < WARNING (khong tac dung, M1 A2).'
     DeviceCreate:
       properties:
         device_id:

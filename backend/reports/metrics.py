@@ -3,9 +3,22 @@ va co the tinh lai doc lap).
 
 CONG THUC (de M4/T11 tinh lai):
 - samples            = so ban ghi telemetry co (device_id, voyage_id) cua chuyen
-- expected_samples   = tong tren tung boot_id cua (seq_max - seq_min + 1) tru so event co seq nam trong dai do
-                       [seq dem lai sau moi lan khoi dong; seq DUNG CHUNG voi event nen seq cua event khong tinh la mat]
-- received_rate      = samples / expected_samples
+- CHAT LUONG NHAN (bang chung, khong suy doan): firmware dung MOT bo dem seq cho telemetry, event, health, trace
+  (app.cpp: SEQ). Health tieu thu seq nhung KHONG gui seq/boot_id -> khoang trong seq KHONG dong nghia mat goi.
+  Theo tung boot_id, moi seq trong dai [seq_min, seq_max] khong co telemetry cua chuyen duoc phan loai:
+    * seq_used_by_events           : co AlarmEvent cung (device, boot, seq)            -> DA XAC MINH, khong phai telemetry
+    * seq_telemetry_outside_voyage : co telemetry cung (device, boot, seq) o chuyen khac / khong chuyen (den tre)
+                                     -> DA XAC MINH da nhan
+    * seq_gaps_health_timing       : con lai, ghep 1-1 voi ban tin health nhan GIUA hai telemetry ke ben cung boot
+                                     -> PHU HOP health theo thoi gian (khong xac minh tuyet doi vi health khong mang seq)
+    * seq_gaps_unclassified        : con lai -> CHUA PHAN LOAI (co the mat telemetry/health/event hoac ban tin khac)
+  receive_status / received_rate:
+    VERIFIED              moi khoang trong da xac minh -> expected = samples + outside, missing = 0, received_rate = 1
+    NO_LOSS_EVIDENCE      khoang trong con lai deu khop health theo thoi gian -> received_rate = None (khong co bang chung mat goi)
+    INSUFFICIENT_EVIDENCE con khoang trong chua phan loai -> received_rate = None
+    NO_DATA               chuyen chua co telemetry
+  received_rate_lower_bound = (samples + outside) / (samples + outside + health_timing + unclassified): truong hop XAU NHAT
+  coi moi khoang trong chua xac minh la telemetry bi mat (cung la cong thuc 'ty le nhan' cu, chi la can duoi).
 - thong ke chuyen dong (roll/pitch/heel/rms) CHI tren mau sensor_ok = true; mau sensor_ok = false chi duoc DEM rieng
 - p95_abs_roll_deg   = nearest-rank: sorted(|roll|)[ceil(0.95 * n) - 1]
 - mean_rms_roll_deg  = trung binh rms_roll_deg do THIET BI gui (backend khong tu tinh lai tu roll)
@@ -21,11 +34,11 @@ import math
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from alarms.service import compute_stats
-from app.models import AlarmEvent, Command, Voyage
+from app.models import AlarmEvent, Command, DeviceHealth, Telemetry, Voyage
 from app.models.enums import is_classified_pair
 from app.schemas.voyage import (
     CommandSummary, DataQuality, Distribution, MotionStats, ReportSummary, VoyageOut,
@@ -65,6 +78,7 @@ class _Pass:
         self.last: Optional[datetime] = None
         self.sources: set[str] = set()
         self.boots: dict[str, list[int]] = {}      # boot_id -> [seq_min, seq_max, count]
+        self.points: dict[str, list[tuple[int, datetime]]] = {}   # boot_id -> [(seq, server_rx_time)] cho phan loai khoang trong
         self.cls_rf: dict[str, int] = {}
         self.cls_b: dict[str, int] = {}
         self.levels: dict[str, int] = {}
@@ -88,6 +102,7 @@ class _Pass:
         self.sources.add(t.source_mode.value)
         b = self.boots.setdefault(t.boot_id, [t.seq, t.seq, 0])
         b[0], b[1], b[2] = min(b[0], t.seq), max(b[1], t.seq), b[2] + 1
+        self.points.setdefault(t.boot_id, []).append((t.seq, rx))
         self.cls_rf[t.class_rf.value] = self.cls_rf.get(t.class_rf.value, 0) + 1
         self.levels[t.alarm_level.value] = self.levels.get(t.alarm_level.value, 0) + 1
         if t.class_baseline_b is not None:
@@ -112,20 +127,68 @@ class _Pass:
             self.rms_n += 1
 
 
+def seq_accounting(db: Session, voyage: Voyage, p: "_Pass") -> dict:
+    """Phan loai khoang trong seq theo BANG CHUNG (xem docstring dau tep). Khong bao gio coi khoang trong la mat goi."""
+    span = sum(hi - lo + 1 for lo, hi, _ in p.boots.values())
+    events = outside = timing = unclassified = 0
+    health: list[tuple[int, datetime]] = []
+    if p.first and p.last:
+        health = sorted(((hid, utc(rx)) for hid, rx in db.execute(
+            select(DeviceHealth.id, DeviceHealth.server_rx_time).where(
+                DeviceHealth.device_id == voyage.device_id, DeviceHealth.server_rx_time.between(p.first, p.last)))),
+            key=lambda h: h[1])
+    used: set[int] = set()
+    for boot, (lo, hi, _) in p.boots.items():
+        pts = sorted(p.points[boot])
+        have = {sq for sq, _ in pts}
+        if hi - lo + 1 == len(have):
+            continue
+        in_boot = [Telemetry.device_id == voyage.device_id, Telemetry.boot_id == boot, Telemetry.seq.between(lo, hi)]
+        ev = set(db.scalars(select(AlarmEvent.seq).where(AlarmEvent.device_id == voyage.device_id, AlarmEvent.boot_id == boot,
+                                                         AlarmEvent.seq.between(lo, hi)))) - have
+        out = set(db.scalars(select(Telemetry.seq).where(*in_boot, or_(Telemetry.voyage_id.is_(None),
+                                                                        Telemetry.voyage_id != voyage.voyage_id)))) - have - ev
+        events, outside = events + len(ev), outside + len(out)
+        for (sa, ra), (sb, rb) in zip(pts, pts[1:]):            # tung doan seq trong giua hai telemetry ke ben cung boot
+            run = [sq for sq in range(sa + 1, sb) if sq not in ev and sq not in out]
+            if not run:
+                continue
+            t0, t1 = min(ra, rb), max(ra, rb)
+            cands = [hid for hid, hrx in health if hid not in used and t0 < hrx < t1]
+            k = min(len(run), len(cands))                        # moi ban tin health giai thich toi da MOT seq
+            used.update(cands[:k])
+            timing, unclassified = timing + k, unclassified + len(run) - k
+    received = p.rows + outside
+    worst = received + timing + unclassified
+    status = ("NO_DATA" if p.rows == 0 else "VERIFIED" if timing == 0 and unclassified == 0
+              else "NO_LOSS_EVIDENCE" if unclassified == 0 else "INSUFFICIENT_EVIDENCE")
+    notes: list[str] = []
+    if status == "VERIFIED" and span > p.rows:
+        notes.append(f"{span - p.rows} khoảng trống seq đã xác minh không phải telemetry bị mất ({events} seq của sự kiện cảnh báo, "
+                     f"{outside} telemetry ghi nhận ngoài chuyến).")
+    if timing:
+        notes.append(f"{timing} khoảng trống seq trùng thời điểm bản tin health (health dùng chung bộ đếm seq nhưng không gửi seq): "
+                     "phù hợp health, không phải bằng chứng mất telemetry; chưa xác minh tuyệt đối nên không tính tỉ lệ nhận.")
+    if unclassified:
+        notes.append(f"{unclassified} khoảng trống seq chưa phân loại (có thể là telemetry, health hoặc sự kiện bị mất, hay bản tin khác): "
+                     "chưa đủ bằng chứng để tính tỉ lệ nhận telemetry.")
+    if status in ("NO_LOSS_EVIDENCE", "INSUFFICIENT_EVIDENCE"):
+        notes.append(f"Cận dưới tỉ lệ nhận (coi mọi khoảng trống chưa xác minh là telemetry mất): {received / worst * 100:.1f}%.")
+    return {"receive_status": status, "expected_samples": received if status == "VERIFIED" else None,
+            "missing_samples": 0 if status == "VERIFIED" else None,
+            "received_rate": 1.0 if status == "VERIFIED" else None,
+            "received_rate_lower_bound": (received / worst) if worst else None,
+            "seq_span": span, "seq_gaps": span - p.rows, "seq_used_by_events": events, "seq_telemetry_outside_voyage": outside,
+            "seq_gaps_health_timing": timing, "seq_gaps_unclassified": unclassified, "notes": notes}
+
+
 def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None) -> tuple[ReportSummary, list[tuple[float, float]]]:
     """Tra ve (ReportSummary, series_roll [(giay_ke_tu_mau_dau, roll_deg)] da lay mau thua de ve bieu do)."""
     p = _Pass()
     for (t,) in db.execute(telemetry_query(voyage.device_id, voyage.voyage_id)):
         p.add(t)
 
-    # seq DUNG CHUNG cho telemetry va event (M1, CONTRACT_PROPOSALS B7): so seq bi event chiem KHONG phai ban tin
-    # telemetry bi mat. Tru chung ra khoi dai seq, neu khong ty le nhan se bi tinh thieu moi khi co canh bao.
-    seq_range = sum(b[1] - b[0] + 1 for b in p.boots.values())
-    event_seqs = sum(
-        db.scalar(select(func.count()).select_from(AlarmEvent).where(
-            AlarmEvent.device_id == voyage.device_id, AlarmEvent.boot_id == boot, AlarmEvent.seq.between(lo, hi))) or 0
-        for boot, (lo, hi, _) in p.boots.items())
-    expected = max(0, seq_range - event_seqs)
+    q = seq_accounting(db, voyage, p)
     duration = (p.last - p.first).total_seconds() if p.first and p.last else None
     alarms = compute_stats(db, device_id=voyage.device_id, voyage_id=voyage.voyage_id)
     false_n = alarms.by_label.get("FALSE_ALARM", 0)
@@ -149,8 +212,7 @@ def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None)
     if label == "MIXED":
         notes.append("Dữ liệu trộn SENSOR và SIMULATION trong cùng một chuyến: cần diễn giải thận trọng; "
                      "không gộp tỉ lệ đồng thuận RF – Baseline B của hai nguồn.")
-    if expected > p.rows:
-        notes.append(f"Thiếu {expected - p.rows} bản tin so với dải seq đã nhận (mất gói hoặc chưa gửi lại dữ liệu đệm).")
+    notes += q.pop("notes")
     if p.fault:
         notes.append(f"{p.fault} mẫu có sensor_ok=false đã bị loại khỏi thống kê chuyển động.")
     if p.unclassified:
@@ -171,9 +233,7 @@ def compute_summary(db: Session, voyage: Voyage, now: Optional[datetime] = None)
         source_label=label, source_modes=sources,
         first_sample_at=p.first, last_sample_at=p.last, duration_s=duration,
         data_quality=DataQuality(
-            samples=p.rows, expected_samples=expected, missing_samples=max(0, expected - p.rows),
-            seq_used_by_events=event_seqs,
-            received_rate=(p.rows / expected) if expected else None, boots=len(p.boots),
+            samples=p.rows, **q, boots=len(p.boots),
             sensor_fault_samples=p.fault),
         motion=MotionStats(
             samples_used=len(abs_sorted),

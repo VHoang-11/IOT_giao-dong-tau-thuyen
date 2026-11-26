@@ -132,14 +132,89 @@ def test_seq_used_by_events_is_not_counted_as_lost_telemetry(client, db, registe
     assert q["received_rate"] == 1.0
 
 
-def test_real_telemetry_loss_is_still_detected_alongside_events(client, db, registered):
+def test_unexplained_gaps_are_unclassified_not_assumed_lost(client, db, registered):
     client.post("/api/v1/voyages", json={"device_id": DEV, "voyage_id": "V-SEQ2"})
-    for i in (1, 2, 5, 6, 10):                                                  # mat 4 seq (3,4,7,8,9 tru event) ...
+    for i in (1, 2, 5, 6, 10):                                                  # khoang trong 3,4,7,8,9; seq 3 la event
         send(db, "telemetry", device_telemetry(i), T0 + timedelta(seconds=i))
-    send(db, "event", device_event(3, "CAUTION"), T0 + timedelta(seconds=3))    # seq 3 la event
+    send(db, "event", device_event(3, "CAUTION"), T0 + timedelta(seconds=3))
     q = summary(client, "V-SEQ2")["data_quality"]
-    assert q["samples"] == 5 and q["expected_samples"] == 9 and q["missing_samples"] == 4      # 10 seq - 1 event = 9
-    assert q["received_rate"] == pytest.approx(5 / 9)
+    assert q["receive_status"] == "INSUFFICIENT_EVIDENCE" and q["samples"] == 5
+    assert (q["seq_span"], q["seq_gaps"], q["seq_used_by_events"], q["seq_gaps_unclassified"]) == (10, 5, 1, 4)
+    assert q["received_rate"] is None and q["expected_samples"] is None and q["missing_samples"] is None   # khong doan
+    assert q["received_rate_lower_bound"] == pytest.approx(5 / 9)               # truong hop xau nhat
+
+
+# ================= seq dung chung voi health (health khong gui seq) =================
+
+def device_health(uptime_ms):
+    return {"device_id": DEV, "free_heap_bytes": 150000, "uptime_ms": uptime_ms, "sensor_ok": True}
+
+
+def _voyage_with(client, db, vid, seqs, health_at=(), events=(), boot="a1b2c3d4", step=5):
+    client.post("/api/v1/voyages", json={"device_id": DEV, "voyage_id": vid})
+    for s in seqs:
+        send(db, "telemetry", device_telemetry(s, boot=boot), T0 + timedelta(seconds=s * step))
+    for s in events:
+        send(db, "event", device_event(s, "CAUTION", boot=boot), T0 + timedelta(seconds=s * step))
+    for t in health_at:                                                        # giay ke tu T0
+        send(db, "health", device_health(int(t * 1000)), T0 + timedelta(seconds=t))
+    return summary(client, vid)["data_quality"]
+
+
+def test_health_between_neighbours_explains_gap_by_timing(client, db, registered):
+    q = _voyage_with(client, db, "V-H1", [1, 2, 3, 5, 6], health_at=[22])      # seq 4 trong (15s..25s), health luc 22s
+    assert q["receive_status"] == "NO_LOSS_EVIDENCE" and q["seq_gaps_health_timing"] == 1 and q["seq_gaps_unclassified"] == 0
+    assert q["received_rate"] is None and q["received_rate_lower_bound"] == pytest.approx(5 / 6)
+
+
+def test_health_outside_the_gap_window_explains_nothing(client, db, registered):
+    q = _voyage_with(client, db, "V-H2", [1, 2, 3, 5, 6], health_at=[7, 28])   # 7s nam giua seq 1-2, 28s giua seq 5-6
+    assert q["seq_gaps_health_timing"] == 0 and q["seq_gaps_unclassified"] == 1 and q["receive_status"] == "INSUFFICIENT_EVIDENCE"
+
+
+def test_one_health_message_explains_at_most_one_seq(client, db, registered):
+    q = _voyage_with(client, db, "V-H3", [1, 2, 5, 6], health_at=[17])         # 2 seq trong (3,4), chi 1 health
+    assert q["seq_gaps_health_timing"] == 1 and q["seq_gaps_unclassified"] == 1
+
+
+def test_events_and_health_interleaved_with_telemetry_are_all_accounted(client, db, registered):
+    q = _voyage_with(client, db, "V-H4", [1, 2, 4, 5, 7, 8], health_at=[17], events=[6])   # 3 = health, 6 = event
+    assert (q["seq_used_by_events"], q["seq_gaps_health_timing"], q["seq_gaps_unclassified"]) == (1, 1, 0)
+    assert q["receive_status"] == "NO_LOSS_EVIDENCE"
+
+
+def test_gaps_are_classified_per_boot(client, db, registered):
+    client.post("/api/v1/voyages", json={"device_id": DEV, "voyage_id": "V-H5"})
+    for s in (1, 2, 4):
+        send(db, "telemetry", device_telemetry(s, boot="bootAAAA"), T0 + timedelta(seconds=s))
+    for s in (1, 2, 4):                                                          # seq dem lai sau khoi dong
+        send(db, "telemetry", device_telemetry(s, boot="bootBBBB"), T0 + timedelta(seconds=100 + s))
+    send(db, "event", device_event(3, "CAUTION", boot="bootAAAA"), T0 + timedelta(seconds=3))   # chi boot A co event seq 3
+    q = summary(client, "V-H5")["data_quality"]
+    assert q["seq_used_by_events"] == 1 and q["seq_gaps_unclassified"] == 1 and q["receive_status"] == "INSUFFICIENT_EVIDENCE"
+
+
+def test_late_telemetry_outside_the_voyage_is_verified_not_lost(client, db, registered):
+    client.post("/api/v1/voyages", json={"device_id": DEV, "voyage_id": "V-H6"})
+    for s in (1, 2, 4):
+        send(db, "telemetry", device_telemetry(s), T0 + timedelta(seconds=s))
+    client.post("/api/v1/voyages/V-H6/end")
+    send(db, "telemetry", device_telemetry(3), T0 + timedelta(seconds=60))       # den tre sau khi ket thuc chuyen
+    q = summary(client, "V-H6")["data_quality"]
+    assert q["seq_telemetry_outside_voyage"] == 1 and q["receive_status"] == "VERIFIED"
+    assert (q["expected_samples"], q["missing_samples"], q["received_rate"]) == (4, 0, 1.0)
+
+
+def test_regression_v_2026_001_shared_seq_with_30s_health(client, db, registered):
+    """Tai hien hinh dang chuyen V-2026-001: telemetry seq 472..544, 11 seq trong, moi seq trong co dung 1 health
+    nhan giua hai telemetry ke ben (health ~30 s). Cong thuc cu bao 84,9% 'ty le nhan'; thuc te khong co bang chung mat goi."""
+    gaps = [475, 481, 488, 495, 501, 508, 514, 521, 528, 534, 541]
+    seqs = [s for s in range(472, 545) if s not in gaps]
+    q = _voyage_with(client, db, "V-REG", seqs, health_at=[g * 5 for g in gaps], step=5)
+    assert q["samples"] == 62 and q["seq_span"] == 73 and q["seq_gaps"] == 11
+    assert q["seq_gaps_health_timing"] == 11 and q["seq_gaps_unclassified"] == 0 and q["receive_status"] == "NO_LOSS_EVIDENCE"
+    assert q["received_rate"] is None and q["missing_samples"] is None
+    assert q["received_rate_lower_bound"] == pytest.approx(62 / 73)            # 84,9% chi la can duoi
 
 
 def test_events_of_other_boots_do_not_affect_the_count(client, db, registered):
@@ -340,46 +415,80 @@ class _RecPub:
             on_delivered()
 
 
-@pytest.fixture()
-def ack_alarm_in_contract(tmp_path, monkeypatch):
-    """Hop dong GIA LAP trong tmp: ban sao schemas + them 'ack_alarm' vao enum (de thu hanh vi khi M1 chap nhan)."""
-    import shutil
-    from app.core.config import settings
-    from ingest import validator
-    src = Path(__file__).resolve().parents[2] / "contracts" / "schemas"
-    dst = tmp_path / "schemas"
-    shutil.copytree(src, dst)
-    f = dst / "command.json"
-    c = json.loads(f.read_text(encoding="utf-8"))
-    c["properties"]["cmd"]["enum"].append("ack_alarm")
-    f.write_text(json.dumps(c), encoding="utf-8")
-    monkeypatch.setattr(settings, "contracts_dir", str(dst))
-    validator._validator.cache_clear()
-    yield
-    monkeypatch.undo()
-    validator._validator.cache_clear()
-
-
 def _open_alarm(db):
     send(db, "telemetry", device_telemetry(1), T0)                   # thiet bi bao boot_id a1b2c3d4
     send(db, "event", device_event(2, "WARNING"), T0)
     return db.scalar(select(Alarm)).id
 
 
-def test_ack_succeeds_even_when_contract_has_no_ack_alarm_command(client, db, auth):
+def test_real_contract_includes_ack_alarm():
+    """M1 CONTRACT_PROPOSALS A2/B9: thiet bi da xu ly ack_alarm; hop dong dung chung phai co lenh nay."""
+    c = json.loads((Path(__file__).resolve().parents[2] / "contracts/schemas/command.json").read_text(encoding="utf-8"))
+    assert "ack_alarm" in c["properties"]["cmd"]["enum"]
+
+
+def _alarm(client, pk):
+    r = client.get(f"/api/v1/alarms/{pk}")
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_user_ack_and_device_ack_are_distinct_lifecycles(client, db, auth):
+    """ACK nguoi truc (backend) != ACK thiet bi. 'sent' / APPLIED chua phai xac nhan; chi ALARM_STATE kem acked_by moi la CONFIRMED."""
     from commands.publisher import set_publisher
     pub = _RecPub()
     set_publisher(pub)
     try:
         pk = _open_alarm(db)
-        r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
-        assert r.status_code == 200 and r.json()["alarm"]["state"] == "ACKED"
-        assert r.json()["device_ack"] == "unsupported" and pub.sent == []
+        r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01")).json()
+        assert r["device_ack"] == "sent" and r["device_ack_cmd_id"] == f"ack-{pk}"
+        assert r["alarm"]["state"] == "ACKED" and r["alarm"]["acked_by"] == "op01"
+        assert r["alarm"]["device_ack"]["state"] == "PENDING" and r["alarm"]["boot_current"] is True
+        topic, msg = pub.sent[0]
+        assert msg["cmd_id"] == f"ack-{pk}" and msg["cmd"] == "ack_alarm" and msg["params"] == {"alarm_id": "A-0001"}
+
+        now = datetime.now(timezone.utc)
+        send(db, "cmd/ack", {"cmd_id": f"ack-{pk}", "result": "APPLIED", "config_version": 1, "reason": None},
+             now + timedelta(seconds=1))
+        a = _alarm(client, pk)
+        assert a["device_ack"]["state"] == "APPLIED_UNCONFIRMED"           # APPLIED co the 'khong tac dung' (M1 A2)
+
+        send(db, "event", device_event(3, "WARNING", acked_by="remote"), now + timedelta(seconds=2))
+        a = _alarm(client, pk)
+        assert a["device_ack"]["state"] == "CONFIRMED" and a["device_ack"]["confirmed_at"]
+        assert a["acked_by"] == "op01" and a["state"] == "ACKED"              # ACK cua nguoi truc giu nguyen
     finally:
         set_publisher(None)
 
 
-def test_ack_is_pushed_to_device_when_contract_allows_it(client, db, auth, ack_alarm_in_contract):
+def test_device_rejection_of_ack_is_reported_not_hidden(client, db, auth):
+    from commands.publisher import set_publisher
+    set_publisher(_RecPub())
+    try:
+        pk = _open_alarm(db)
+        client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
+        send(db, "cmd/ack", {"cmd_id": f"ack-{pk}", "result": "REJECTED", "config_version": 1, "reason": "EXPIRED"},
+             datetime.now(timezone.utc))
+        d = _alarm(client, pk)["device_ack"]
+        assert d["state"] == "REJECTED" and d["reason"] == "EXPIRED"
+    finally:
+        set_publisher(None)
+
+
+def test_historical_backend_only_ack_keeps_its_meaning(client, db):
+    """ACK luu truoc khi ho tro ack_alarm (khong co lenh): van ACKED boi nguoi truc, thiet bi = NOT_REQUESTED, khong suy dien."""
+    from alarms import service as alarm_service
+    pk = _open_alarm(db)
+    alarm_service.ack_alarm(db, pk, "admin")                          # chi ghi backend (nhu A-0002 cu)
+    a = _alarm(client, pk)
+    assert a["state"] == "ACKED" and a["acked_by"] == "admin" and a["device_ack"]["state"] == "NOT_REQUESTED"
+
+
+def test_unacked_alarm_has_no_device_ack(client, db):
+    assert _alarm(client, _open_alarm(db))["device_ack"] is None
+
+
+def test_ack_is_pushed_to_device_once(client, db, auth):
     from commands.publisher import set_publisher
     pub = _RecPub()
     set_publisher(pub)
@@ -396,7 +505,7 @@ def test_ack_is_pushed_to_device_when_contract_allows_it(client, db, auth, ack_a
         set_publisher(None)
 
 
-def test_ack_not_pushed_when_device_rebooted_since_the_alarm(client, db, auth, ack_alarm_in_contract):
+def test_ack_not_pushed_when_device_rebooted_since_the_alarm(client, db, auth):
     from commands.publisher import set_publisher
     pub = _RecPub()
     set_publisher(pub)
@@ -405,13 +514,15 @@ def test_ack_not_pushed_when_device_rebooted_since_the_alarm(client, db, auth, a
         send(db, "telemetry", device_telemetry(1, boot="newboot1"), T0 + timedelta(seconds=5))
         r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
         assert r.status_code == 200 and r.json()["device_ack"] == "not_applicable" and pub.sent == []
+        assert r.json()["alarm"]["boot_current"] is False and r.json()["alarm"]["device_ack"]["state"] == "NOT_REQUESTED"
     finally:
         set_publisher(None)
 
 
-def test_ack_survives_publish_failure(client, db, auth, ack_alarm_in_contract):
+def test_ack_survives_publish_failure(client, db, auth):
     from commands.publisher import set_publisher
     set_publisher(None)                                              # chua co kenh MQTT
     pk = _open_alarm(db)
     r = client.post(f"/api/v1/alarms/{pk}/ack", headers=auth("op01"))
     assert r.status_code == 200 and r.json()["alarm"]["state"] == "ACKED" and r.json()["device_ack"] == "failed"
+    assert r.json()["alarm"]["device_ack"]["state"] == "TIMEOUT"           # khong bao gio hien la thanh cong

@@ -30,7 +30,7 @@ async def list_alarms(
     unlabeled: bool = False,
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
-) -> list[Alarm]:
+) -> list[AlarmOut]:
     """Loc theo thiet bi, trang thai, nhan danh gia. `unlabeled=true` -> chi cac canh bao chua duoc danh gia."""
     if label is not None and unlabeled:
         raise HTTPException(status_code=422, detail="Không dùng đồng thời 'label' và 'unlabeled'")
@@ -43,7 +43,7 @@ async def list_alarms(
         q = q.where(Alarm.label == label.value)
     if unlabeled:
         q = q.where(Alarm.label.is_(None))
-    return list(db.scalars(q))
+    return service.annotate_alarms(db, list(db.scalars(q)))
 
 
 # Dat truoc /{alarm_pk} de "stats" khong bi hieu la id
@@ -54,11 +54,11 @@ async def alarm_stats(device_id: Optional[str] = None, since: Optional[datetime]
 
 
 @router.get("/api/v1/alarms/{alarm_pk}", response_model=AlarmOut)
-async def get_alarm(alarm_pk: int, db: Session = Depends(get_db)) -> Alarm:
+async def get_alarm(alarm_pk: int, db: Session = Depends(get_db)) -> AlarmOut:
     alarm = db.get(Alarm, alarm_pk)
     if alarm is None:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy cảnh báo #{alarm_pk}")
-    return alarm
+    return service.annotate_alarms(db, [alarm])[0]
 
 
 @router.post("/api/v1/alarms/{alarm_pk}/ack", response_model=AckResult)
@@ -72,13 +72,15 @@ async def ack_alarm(alarm_pk: int, db: Session = Depends(get_db),
     except service.AlarmConflict as e:
         raise HTTPException(status_code=409, detail=str(e))
     status, detail = ("not_applicable", None) if already else _push_ack_to_device(db, alarm, actor)
-    return AckResult(alarm=AlarmOut.model_validate(alarm), already_acked=already,
-                     device_ack=status, device_ack_detail=detail)
+    return AckResult(alarm=service.annotate_alarms(db, [alarm])[0], already_acked=already,
+                     device_ack=status, device_ack_detail=detail,
+                     device_ack_cmd_id=service.ack_cmd_id(alarm) if status == "sent" else None)
 
 
 def _push_ack_to_device(db: Session, alarm: Alarm, actor: str) -> tuple[str, Optional[str]]:
     """Bao thiet bi la nguoi truc da ACK (de coi/ho tro dong bo), neu thiet bi con cung lan khoi dong voi canh bao.
-    Best-effort: loi o day KHONG lam hong ACK da ghi. ack_alarm khong bao gio tat canh bao cuc bo."""
+    Best-effort: loi o day KHONG lam hong ACK da ghi. ack_alarm khong bao gio tat canh bao cuc bo.
+    cmd_id co dinh 'ack-<id canh bao>' de truy lai ket qua tren thiet bi (alarm.device_ack); 'sent' != thiet bi da ACK."""
     from app.models import Device
     from app.models.enums import CommandName
     from commands import service as cmd_service
@@ -88,7 +90,7 @@ def _push_ack_to_device(db: Session, alarm: Alarm, actor: str) -> tuple[str, Opt
         return "not_applicable", "Thiết bị đã khởi động lại: cảnh báo này không còn trên thiết bị"
     try:
         cmd_service.create_command(db, alarm.device_id, CommandName.ack_alarm, {"alarm_id": alarm.alarm_id},
-                                   None, actor, internal=True)
+                                   None, actor, cmd_id=service.ack_cmd_id(alarm), internal=True)
         return "sent", None
     except CommandInvalid as e:
         return "unsupported", str(e)
@@ -98,14 +100,14 @@ def _push_ack_to_device(db: Session, alarm: Alarm, actor: str) -> tuple[str, Opt
 
 @router.put("/api/v1/alarms/{alarm_pk}/label", response_model=AlarmOut)
 async def label_alarm(alarm_pk: int, body: AlarmLabelRequest, db: Session = Depends(get_db),
-                      user: User = Depends(require_role(LABEL_MIN_ROLE))) -> Alarm:
+                      user: User = Depends(require_role(LABEL_MIN_ROLE))) -> AlarmOut:
     """Danh gia sau su viec: TRUE_ALARM / FALSE_ALARM / UNCLEAR (chi SUPERVISOR tro len).
     Nhan KHONG anh huong vong doi canh bao (khong ACK, khong tat, khong chan leo thang)."""
     try:
         alarm, _ = service.label_alarm(db, alarm_pk, body.label, user.username)
     except service.AlarmNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return alarm
+    return service.annotate_alarms(db, [alarm])[0]
 
 
 @ws_router.websocket("/ws/alarms")

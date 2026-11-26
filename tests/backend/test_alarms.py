@@ -8,7 +8,7 @@ from sqlalchemy import select
 from alarms import service
 from alarms.realtime import hub
 from app.models import Alarm, AuditLog
-from app.models.enums import AlarmState
+from app.models.enums import AlarmLevel, AlarmState
 from ingest.service import Outcome, handle_message
 
 T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -116,14 +116,49 @@ def test_escalate_overdue_only_unacked(db):
     assert audits(db, "ALARM_ESCALATED")[0].actor == "system"
 
 
-def test_mute_blocked_when_critical(db):
-    event(db, "CAUTION", 1)
-    service.ensure_mute_allowed(db, DEV)  # CAUTION -> cho phep
-    event(db, "CRITICAL", 2)
-    with pytest.raises(service.MuteNotAllowed):
+def test_mute_follows_firmware_rule_warning_and_not_acked(db):
+    """Dong bo svmg_alarm_mute: chi WARNING va chua ACK; CRITICAL luon bi chan; CAUTION/NORMAL thiet bi tu choi."""
+    from conftest import firmware_mute_state
+    firmware_mute_state(db, level="CAUTION")
+    with pytest.raises(service.MuteNotAllowed, match="WARNING"):
+        service.ensure_mute_allowed(db, DEV)                          # firmware tra FORBIDDEN_STATE -> chan truoc
+    a = firmware_mute_state(db, level="WARNING", alarm_id="A-2")
+    service.ensure_mute_allowed(db, DEV)                              # WARNING chua ACK -> cho phep
+    service.ack_alarm(db, a.id, "alice")
+    with pytest.raises(service.MuteNotAllowed):                       # da ACK -> thiet bi khong cho mute
         service.ensure_mute_allowed(db, DEV)
-    event(db, "NORMAL", 3)
-    service.ensure_mute_allowed(db, DEV)  # da giai toa -> cho phep lai
+    firmware_mute_state(db, level="CRITICAL", alarm_id="A-3")
+    with pytest.raises(service.MuteNotAllowed, match="CRITICAL"):
+        service.ensure_mute_allowed(db, DEV)
+
+
+def test_previous_boot_alarm_is_history_and_does_not_block_mute(db, client):
+    """A-0002 cua boot cu (CRITICAL, ACKED, khong bao gio duoc dong) khong duoc chan mute cua boot moi; lich su giu nguyen."""
+    from conftest import firmware_mute_state
+    from app.models import Device
+    db.add(Device(device_id=DEV, boot_id="newboot"))
+    db.commit()
+    old = firmware_mute_state(db, boot="oldboot", level="CRITICAL", alarm_state="ACKED", alarm_id="A-0002")
+    with pytest.raises(service.MuteNotAllowed):                       # boot moi chua co WARNING -> van khong mute duoc
+        service.ensure_mute_allowed(db, DEV)
+    firmware_mute_state(db, boot="newboot", level="WARNING", alarm_id="A-0001")
+    service.ensure_mute_allowed(db, DEV)                              # canh bao boot cu khong con chan
+    db.refresh(old)
+    assert old.state == AlarmState.ACKED and old.level == AlarmLevel.CRITICAL   # khong xoa, khong tu dong giai toa
+    rows = {a["alarm_id"]: a for a in client.get("/api/v1/alarms").json()}
+    assert rows["A-0002"]["boot_current"] is False and rows["A-0001"]["boot_current"] is True
+    s = client.get("/api/v1/alarms/stats").json()
+    assert s["open_previous_boot"] == 1 and s["active"] == 1
+
+
+def test_critical_on_current_boot_still_blocks_even_with_old_boot_history(db):
+    from conftest import firmware_mute_state
+    from app.models import Device
+    db.add(Device(device_id=DEV, boot_id="newboot"))
+    db.commit()
+    firmware_mute_state(db, boot="newboot", level="CRITICAL")
+    with pytest.raises(service.MuteNotAllowed, match="CRITICAL"):
+        service.ensure_mute_allowed(db, DEV)
 
 
 def test_stats_empty_and_filters(db, client):

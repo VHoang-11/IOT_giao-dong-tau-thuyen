@@ -2,6 +2,8 @@
 
 - Moi chuoi dong deu duoc escape: Paragraph hieu cu phap giong XML nen '<' hoac '&' se lam hong ca tai lieu.
 - Khong ve duong nguong nao len bieu do: nguong chi la tham so demo, khong de nguoi doc hieu thanh nguong an toan.
+- Bo cuc: moi muc (tieu de + bang) giu tren cung mot trang (KeepTogether); muc 'Ghi chu' khong bao gio bi tach
+  giua cau; bang ngan dat canh nhau de bao cao thuong gon trong 2 trang A4 ma KHONG giam co chu.
 """
 from datetime import datetime
 from io import BytesIO
@@ -17,7 +19,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.schemas.voyage import Distribution, ReportSummary
 
@@ -44,6 +46,12 @@ def _fmt(v: Optional[float], digits: int = 2, unit: str = "") -> str:
     return "—" if v is None else f"{v:.{digits}f}{unit}"
 
 
+_RECEIVE_STATUS = {"VERIFIED": "Đã xác minh: mọi khoảng trống seq là bản tin khác loại",
+                   "NO_LOSS_EVIDENCE": "Không có bằng chứng mất telemetry (khoảng trống khớp health theo thời gian)",
+                   "INSUFFICIENT_EVIDENCE": "Chưa đủ bằng chứng (còn khoảng trống seq chưa phân loại)",
+                   "NO_DATA": "Chưa có telemetry"}
+
+
 def _pct(v: Optional[float]) -> str:
     return "—" if v is None else f"{v * 100:.1f}%"
 
@@ -63,7 +71,7 @@ def _styles() -> dict[str, ParagraphStyle]:
     base = ParagraphStyle("base", fontName=FONT, fontSize=9.5, leading=13)
     return {
         "title": ParagraphStyle("title", parent=base, fontName=FONT_BOLD, fontSize=18, leading=22, spaceAfter=4),
-        "h2": ParagraphStyle("h2", parent=base, fontName=FONT_BOLD, fontSize=12, leading=16, spaceBefore=10, spaceAfter=4),
+        "h2": ParagraphStyle("h2", parent=base, fontName=FONT_BOLD, fontSize=12, leading=16, spaceBefore=8, spaceAfter=3),
         "body": base,
         "small": ParagraphStyle("small", parent=base, fontSize=8, leading=10.5, textColor=colors.HexColor("#444444")),
         "banner": ParagraphStyle("banner", parent=base, fontName=FONT_BOLD, fontSize=11, leading=15,
@@ -77,12 +85,21 @@ def _table(rows: list[list[str]], st: dict[str, ParagraphStyle], widths: list[fl
     t = Table(data, colWidths=widths, hAlign="LEFT")
     style = [("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#BBBBBB")),
              ("VALIGN", (0, 0), (-1, -1), "TOP"),
-             ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]
+             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]
     if header:
         style.append(("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEEEEE")))
     else:
         style.append(("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F6F6F6")))
     t.setStyle(TableStyle(style))
+    return t
+
+
+def _side_by_side(left: list, right: list, full: float) -> Table:
+    """Hai khoi (tieu de + bang) dat canh nhau; moi cot rong mot nua trang."""
+    t = Table([[left, right]], colWidths=[full / 2, full / 2], hAlign="LEFT")
+    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                           ("RIGHTPADDING", (0, 0), (0, -1), 6), ("RIGHTPADDING", (1, 0), (1, -1), 0),
+                           ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
     return t
 
 
@@ -95,10 +112,10 @@ def _dist_rows(d: Distribution) -> list[list[str]]:
 def _chart(series: list[tuple[float, float]]) -> Optional[Drawing]:
     if len(series) < 2:
         return None
-    w, h = 170 * mm, 62 * mm
+    w, h = 170 * mm, 54 * mm
     d = Drawing(w, h)
     lp = LinePlot()
-    lp.x, lp.y, lp.width, lp.height = 38, 28, w - 55, h - 42
+    lp.x, lp.y, lp.width, lp.height = 52, 28, w - 69, h - 42   # chua cho nhan 'roll (°)' khong de len vach truc y
     lp.data = [[(x / 60.0, y) for x, y in series]]  # truc x tinh bang phut
     lp.lines[0].strokeColor = colors.HexColor("#1F5FBF")
     lp.lines[0].strokeWidth = 0.8
@@ -136,49 +153,55 @@ def build_pdf(s: ReportSummary, series: list[tuple[float, float]]) -> bytes:
                             ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
     story += [bt, Spacer(1, 4), Paragraph(_e(s.disclaimer), st["small"])]
 
-    w2 = [full * 0.42, full * 0.58]
+    w2 = [full * 0.42, full * 0.58]          # muc 1: gia tri dai (ngay gio)
+    wl = [full * 0.62, full * 0.38]          # muc 2, 3, 5: nhan dai, gia tri ngan -> it dong xuong hang
     v = s.voyage
-    story += [Paragraph("1. Thông tin chuyến đi", st["h2"]), _table([
+    story += [KeepTogether([Paragraph("1. Thông tin chuyến đi", st["h2"]), _table([
         ["Trạng thái", "ĐANG CHẠY (tạm thời)" if s.provisional else "ĐÃ KẾT THÚC"],
         ["Bắt đầu", f"{_dt(v.started_at)} bởi {v.started_by}"],
         ["Kết thúc", f"{_dt(v.ended_at)}" + (f" bởi {v.ended_by}" if v.ended_by else "")],
         ["Mẫu đầu / mẫu cuối (giờ server)", f"{_dt(s.first_sample_at)}  →  {_dt(s.last_sample_at)}"],
         ["Thời lượng có dữ liệu", _dur(s.duration_s)],
         ["Nguồn dữ liệu", ", ".join(s.source_modes) or "—"],
-    ], st, w2)]
+    ], st, w2)])]
 
     q = s.data_quality
-    story += [Paragraph("2. Chất lượng dữ liệu", st["h2"]), _table([
+    story += [KeepTogether([Paragraph("2. Chất lượng dữ liệu", st["h2"]), _table([
         ["Số bản tin nhận được", str(q.samples)],
-        ["Số bản tin kỳ vọng (dải seq từng lần khởi động, đã trừ seq do sự kiện chiếm)", str(q.expected_samples)],
-        ["Số seq do sự kiện cảnh báo chiếm (seq dùng chung với telemetry)", str(q.seq_used_by_events)],
-        ["Thiếu", str(q.missing_samples)],
-        ["Tỉ lệ nhận", _pct(q.received_rate)],
+        ["Trạng thái đánh giá nhận", _RECEIVE_STATUS.get(q.receive_status, q.receive_status)],
+        ["Dải seq theo từng lần khởi động / khoảng trống", f"{q.seq_span} / {q.seq_gaps}"],
+        ["Khoảng trống đã xác minh: sự kiện cảnh báo / telemetry ngoài chuyến", f"{q.seq_used_by_events} / {q.seq_telemetry_outside_voyage}"],
+        ["Khoảng trống phù hợp bản tin health (theo thời gian; health không gửi seq)", str(q.seq_gaps_health_timing)],
+        ["Khoảng trống chưa phân loại", str(q.seq_gaps_unclassified)],
+        ["Tỉ lệ nhận telemetry", _pct(q.received_rate) if q.received_rate is not None else "Chưa đủ bằng chứng"],
+        ["Cận dưới tỉ lệ nhận (trường hợp xấu nhất)", _pct(q.received_rate_lower_bound)],
         ["Số lần khởi động thiết bị (boot_id)", str(q.boots)],
         ["Mẫu lỗi cảm biến (sensor_ok = false, đã loại khỏi mục 3)", str(q.sensor_fault_samples)],
-    ], st, w2)]
+    ], st, wl)])]
 
     m = s.motion
-    story += [Paragraph("3. Chuyển động (chỉ mẫu sensor_ok = true)", st["h2"]), _table([
+    story += [KeepTogether([Paragraph("3. Chuyển động (chỉ mẫu sensor_ok = true)", st["h2"]), _table([
         ["Số mẫu dùng để thống kê", str(m.samples_used)],
         ["|roll| lớn nhất", _fmt(m.max_abs_roll_deg, 2, "°")],
         ["|roll| phân vị 95 (nearest-rank)", _fmt(m.p95_abs_roll_deg, 2, "°")],
         ["RMS roll trung bình (do thiết bị tính)", _fmt(m.mean_rms_roll_deg, 2, "°")],
         ["|pitch| lớn nhất", _fmt(m.max_abs_pitch_deg, 2, "°")],
         ["|độ nghiêng lệch| lớn nhất", _fmt(m.max_abs_heel_offset_deg, 2, "°")],
-    ], st, w2)]
+    ], st, wl)])]
     chart = _chart(series)
-    story += [Spacer(1, 6), chart] if chart else [Spacer(1, 4), Paragraph("Không đủ dữ liệu để vẽ biểu đồ.", st["small"])]
+    story += [Spacer(1, 4), chart] if chart else [Spacer(1, 4), Paragraph("Không đủ dữ liệu để vẽ biểu đồ.", st["small"])]
 
-    story += [Paragraph("4. Phân loại chuyển động (theo số mẫu)", st["h2"]), Paragraph("Random Forest trên thiết bị", st["body"]),
-              _table(_dist_rows(s.class_rf), st, [full * 0.5, full * 0.25, full * 0.25], header=True),
-              Spacer(1, 4), Paragraph("Baseline B", st["body"]),
-              _table(_dist_rows(s.class_baseline_b), st, [full * 0.5, full * 0.25, full * 0.25], header=True),
-              Spacer(1, 3), Paragraph(f"Tỉ lệ RF trùng Baseline B: <b>{_pct(s.rf_baseline_agreement_rate)}</b> "
-                                      "(chỉ tính các mẫu có cả hai nhãn).", st["body"])]
+    half = full / 2 - 6
+    wd = [half * 0.5, half * 0.25, half * 0.25]
+    story += [KeepTogether([
+        Paragraph("4. Phân loại chuyển động (theo số mẫu)", st["h2"]),
+        _side_by_side([Paragraph("Random Forest trên thiết bị", st["body"]), _table(_dist_rows(s.class_rf), st, wd, header=True)],
+                      [Paragraph("Baseline B", st["body"]), _table(_dist_rows(s.class_baseline_b), st, wd, header=True)], full),
+        Spacer(1, 3), Paragraph(f"Tỉ lệ RF trùng Baseline B: <b>{_pct(s.rf_baseline_agreement_rate)}</b> "
+                                "(chỉ tính mẫu mà cả hai mô hình có lớp phân loại hợp lệ; UNKNOWN/FAULT bị loại; — = chưa đủ dữ liệu để đánh giá).", st["body"])])]
 
     a = s.alarms
-    story += [Paragraph("5. Cảnh báo", st["h2"]), _table([
+    story += [KeepTogether([Paragraph("5. Cảnh báo", st["h2"]), _table([
         ["Tổng số cảnh báo", str(a.total)],
         ["Theo mức cao nhất", ", ".join(f"{k}: {n}" for k, n in sorted(a.by_max_level.items())) or "—"],
         ["Số cảnh báo bị leo thang", f"{a.escalated} ({_pct(a.escalation_rate)})"],
@@ -187,21 +210,24 @@ def build_pdf(s: ReportSummary, series: list[tuple[float, float]]) -> bytes:
         ["Chi tiết nhãn", ", ".join(f"{k}: {n}" for k, n in sorted(a.by_label.items())) or "—"],
         ["Tỉ lệ cảnh báo sai (SAI / (ĐÚNG + SAI))", _pct(a.false_alarm_rate)],
         ["Cảnh báo sai mỗi giờ", _fmt(s.false_alarms_per_hour, 2)],
-    ], st, w2),
+    ], st, wl),
         Paragraph("Cảnh báo ‘chưa rõ’ và cảnh báo chưa đánh giá không tính vào tỉ lệ cảnh báo sai. "
-                  "Dấu ‘—’ nghĩa là chưa đủ dữ liệu đánh giá để kết luận, không phải bằng 0.", st["small"])]
+                  "Dấu ‘—’ nghĩa là chưa đủ dữ liệu đánh giá để kết luận, không phải bằng 0.", st["small"])])]
 
-    story += [Paragraph("6. Mức cảnh báo ghi nhận trong telemetry (theo số mẫu)", st["h2"]),
-              _table(_dist_rows(s.alarm_levels), st, [full * 0.5, full * 0.25, full * 0.25], header=True),
-              Paragraph("7. Lệnh điều khiển trong khoảng thời gian có dữ liệu", st["h2"]),
-              _table([["Tổng số lệnh", str(s.commands.total)],
-                      ["Theo trạng thái", ", ".join(f"{k}: {n}" for k, n in sorted(s.commands.by_state.items())) or "—"]],
-                     st, w2)]
+    h2s = ParagraphStyle("h2s", parent=st["h2"], fontSize=11, leading=14)   # tieu de trong cot hep
+    story += [Spacer(1, 8), _side_by_side(
+        [Paragraph("6. Mức cảnh báo ghi nhận trong telemetry (theo số mẫu)", h2s), _table(_dist_rows(s.alarm_levels), st, wd, header=True)],
+        [Paragraph("7. Lệnh điều khiển trong khoảng thời gian có dữ liệu", h2s),
+         _table([["Tổng số lệnh", str(s.commands.total)],
+                 ["Theo trạng thái", ", ".join(f"{k}: {n}" for k, n in sorted(s.commands.by_state.items())) or "—"]],
+                st, [half * 0.5, half * 0.5])], full)]
 
-    story += [Paragraph("8. Ghi chú về số liệu", st["h2"])]
-    story += [Paragraph("• " + _e(n), st["body"]) for n in s.notes] or [Paragraph("Không có ghi chú.", st["body"])]
-    story += [Spacer(1, 6), Paragraph(f"Báo cáo tạo lúc {_dt(s.generated_at)}. Dấu vân tay dữ liệu (SHA-256 của telemetry.csv, "
-                                      f"{s.telemetry_rows} dòng):<br/>{_e(s.telemetry_csv_sha256)}", st["small"])]
+    # Muc ghi chu + dau van tay: mot khoi, khong bao gio tach giua cau/giua trang (neu khong vua -> sang trang moi tron ven)
+    story += [KeepTogether([Paragraph("8. Ghi chú về số liệu", st["h2"])]
+                           + ([Paragraph("• " + _e(n), st["body"]) for n in s.notes] or [Paragraph("Không có ghi chú.", st["body"])])
+                           + [Spacer(1, 6), Paragraph(f"Báo cáo tạo lúc {_dt(s.generated_at)}. Dấu vân tay dữ liệu (SHA-256 của "
+                                                      f"telemetry.csv, {s.telemetry_rows} dòng):<br/>{_e(s.telemetry_csv_sha256)}",
+                                                      st["small"])])]
 
     def footer(canvas, doc_):
         canvas.saveState()
