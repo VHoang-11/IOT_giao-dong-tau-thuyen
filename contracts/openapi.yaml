@@ -1467,6 +1467,11 @@ components:
           - type: string
           - type: 'null'
           title: Device Ack Detail
+        device_ack_cmd_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Ack Cmd Id
       type: object
       required:
       - alarm
@@ -1669,6 +1674,15 @@ components:
             format: date-time
           - type: 'null'
           title: Labeled At
+        boot_current:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Boot Current
+        device_ack:
+          anyOf:
+          - $ref: '#/components/schemas/DeviceAck'
+          - type: 'null'
         time_to_ack_s:
           anyOf:
           - type: number
@@ -1748,6 +1762,10 @@ components:
           - type: number
           - type: 'null'
           title: False Alarm Rate
+        open_previous_boot:
+          type: integer
+          title: Open Previous Boot
+          default: 0
       type: object
       required:
       - total
@@ -2183,6 +2201,45 @@ components:
 
         seq khong dong nghia mat goi; ty le nhan chi co khi moi khoang trong da duoc
         xac minh.'
+    DeviceAck:
+      properties:
+        state:
+          type: string
+          enum:
+          - NOT_REQUESTED
+          - PENDING
+          - CONFIRMED
+          - APPLIED_UNCONFIRMED
+          - REJECTED
+          - TIMEOUT
+          title: State
+        cmd_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cmd Id
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        confirmed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Confirmed At
+      type: object
+      required:
+      - state
+      title: DeviceAck
+      description: 'ACK tren THIET BI (khac ACK cua nguoi truc tren backend: acked_by/acked_at).
+
+        CONFIRMED chi khi thiet bi phat ALARM_STATE kem acked_by sau lenh ack_alarm
+        (hoac ACK bang nut tren thiet bi);
+
+        APPLIED cua lenh ack_alarm KHONG du: thiet bi tra APPLIED ca khi id cu / muc
+        < WARNING (khong tac dung, M1 A2).'
     DeviceCreate:
       properties:
         device_id:
