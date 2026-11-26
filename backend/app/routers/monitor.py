@@ -7,6 +7,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.db import get_db
 from app.core.security import get_current_user
+from app.models.enums import SourceMode
 from app.schemas.monitor import AgreementStats, DriftStatus
 from monitor.service import DeviceNotFound, get_agreement, get_drift
 
@@ -20,14 +21,17 @@ async def monitor_agreement(
     device_id: str = _DEVICE,
     voyage_id: Optional[str] = Query(None, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$",
                                      description="Giới hạn theo một chuyến; bỏ trống = toàn bộ thiết bị"),
-    limit: int = Query(1000, ge=1, le=10000, description="Lấy tối đa N mẫu gần nhất có đủ RF và Baseline"),
+    limit: int = Query(1000, ge=1, le=10000, description="Lấy tối đa N cặp hợp lệ gần nhất (cả RF và Baseline có lớp phân loại)"),
+    source_mode: Optional[SourceMode] = Query(None, description="Chỉ tính một nguồn (SENSOR/SIMULATION); bỏ trống = tách theo nguồn"),
     db: Session = Depends(get_db),
 ) -> AgreementStats:
     """Tỉ lệ Random Forest trùng Baseline B. Đây là độ **nhất quán** giữa hai mô hình, không phải độ chính xác
-    (không có nhãn thật) và không phải dự báo nguy hiểm. Mẫu `sensor_ok=false` bị loại và được đếm riêng.
-    `agreement_rate = null` khi chưa có mẫu nào đủ điều kiện (không phải 0%)."""
+    (không có nhãn thật) và không phải dự báo nguy hiểm. Chỉ tính cặp mà **cả hai** mô hình có lớp phân loại hợp lệ;
+    UNKNOWN/FAULT bị loại và đếm riêng (UNKNOWN == UNKNOWN không phải đồng thuận). Mẫu `sensor_ok=false` bị loại.
+    `agreement_rate = null` khi không có cặp hợp lệ (`status=INSUFFICIENT_DATA`) hoặc trộn SENSOR/SIMULATION
+    (`status=MIXED_SOURCES`, xem `by_source_mode`) — không phải 0%."""
     try:
-        return await run_in_threadpool(get_agreement, db, device_id, voyage_id, limit)
+        return await run_in_threadpool(get_agreement, db, device_id, voyage_id, limit, source_mode)
     except DeviceNotFound as e:
         raise HTTPException(404, str(e))
 

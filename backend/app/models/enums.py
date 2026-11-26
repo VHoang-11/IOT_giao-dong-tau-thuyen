@@ -15,6 +15,17 @@ class MotionClass(str, enum.Enum):
     FAULT = "FAULT"
 
 
+# Lop phan loai THAT SU (svmg_class_t 0..3). UNKNOWN/FAULT la "khong ket luan", khong phai mot lop: hai mo hinh cung
+# UNKNOWN KHONG duoc tinh la dong thuan (vd. firmware chua nap RF luon tra UNKNOWN).
+CLASSIFIED_MOTION_CLASSES = frozenset({MotionClass.NORMAL, MotionClass.HIGH_ROLL, MotionClass.PERSISTENT_OFFSET,
+                                       MotionClass.AMPLITUDE_GROWTH})
+
+
+def is_classified_pair(rf, baseline) -> bool:
+    """True khi CA HAI nhan la lop phan loai hop le -> cap duoc dua vao ty le dong thuan."""
+    return rf in CLASSIFIED_MOTION_CLASSES and baseline in CLASSIFIED_MOTION_CLASSES
+
+
 class AlarmLevel(str, enum.Enum):
     NORMAL = "NORMAL"
     CAUTION = "CAUTION"

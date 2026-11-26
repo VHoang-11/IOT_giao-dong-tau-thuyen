@@ -16,6 +16,14 @@ class ClassAgreement(BaseModel):
     rate: Optional[float] = Field(None, ge=0.0, le=1.0)
 
 
+class ModeAgreement(BaseModel):
+    """Dong thuan cua MOT nguon du lieu (SENSOR hoac SIMULATION); khong tron nguon."""
+    samples_considered: int
+    matched: int
+    agreement_rate: Optional[float] = Field(None, ge=0.0, le=1.0)
+    by_rf_class: dict[str, ClassAgreement]
+
+
 class AgreementStats(BaseModel):
     """Ty le Random Forest trung Baseline B. Day la do NHAT QUAN giua hai mo hinh, KHONG phai do chinh xac
     (khong co nhan that) va khong phai du bao nguy hiem."""
@@ -23,11 +31,17 @@ class AgreementStats(BaseModel):
     voyage_id: Optional[str] = None
     source_label: str                # SIMULATION | SENSOR | MIXED | UNKNOWN (chua co mau)
     source_modes: list[str]
-    samples_considered: int          # mau co du RF va Baseline, sensor_ok = true, toi da `limit` mau gan nhat
+    # OK | INSUFFICIENT_DATA (khong co cap hop le) | MIXED_SOURCES (co ca SENSOR va SIMULATION: xem by_source_mode)
+    status: Literal["OK", "INSUFFICIENT_DATA", "MIXED_SOURCES"] = "OK"
+    samples_considered: int          # CAP HOP LE: sensor_ok=true va ca hai nhan la lop phan loai, toi da `limit` cap gan nhat
     excluded_sensor_fault: int       # mau co du RF+Baseline nhung sensor_ok = false: BI LOAI (toan pham vi)
+    excluded_unclassified: int = 0   # mau sensor_ok=true nhung RF hoac Baseline la UNKNOWN/FAULT: BI LOAI (toan pham vi)
+    unclassified_labels: dict[str, int] = {}   # vd. {"class_rf=UNKNOWN": 831}; mot mau co the dem o ca hai truong
     matched: int
-    agreement_rate: Optional[float] = Field(None, ge=0.0, le=1.0, description="None neu samples_considered = 0")
-    by_rf_class: dict[str, ClassAgreement]   # theo lop RF (NORMAL, HIGH_ROLL, ...), khong dat lai ten thanh muc canh bao
+    agreement_rate: Optional[float] = Field(None, ge=0.0, le=1.0,
+                                            description="Chi co khi status = OK; None neu khong co cap hop le hoac tron nguon")
+    by_rf_class: dict[str, ClassAgreement]   # theo lop RF hop le; rong khi tron nguon (xem by_source_mode)
+    by_source_mode: dict[str, ModeAgreement] = {}
     limit: int
     first_sample_at: Optional[datetime] = None
     last_sample_at: Optional[datetime] = None
