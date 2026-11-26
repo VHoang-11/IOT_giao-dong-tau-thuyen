@@ -187,7 +187,7 @@ Công thức (để tính lại độc lập, xem thêm đầu file `reports/met
 | `p95_abs_roll_deg` | Nearest-rank: `sorted(|roll|)[ceil(0.95·n) − 1]` |
 | `mean_rms_roll_deg` | Trung bình `rms_roll_deg` do thiết bị gửi (backend không tự tính lại từ roll) |
 | Phân bố lớp / mức cảnh báo | Đếm theo **số mẫu**, không phải theo thời gian |
-| `rf_baseline_agreement_rate` | `#(class_rf == class_baseline_b) / #(mẫu có cả hai)` |
+| `rf_baseline_agreement_rate` | `#(class_rf == class_baseline_b) / #(mẫu mà cả hai là lớp phân loại hợp lệ)`; UNKNOWN/FAULT bị loại (UNKNOWN == UNKNOWN không phải đồng thuận); `null` nếu không có cặp hợp lệ |
 | `duration_s` | `last_sample_at − first_sample_at` theo `server_rx_time` |
 | `false_alarms_per_hour` | `#FALSE_ALARM / (duration_s/3600)`; là `null` nếu chưa có cảnh báo nào được đánh giá |
 

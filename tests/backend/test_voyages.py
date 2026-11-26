@@ -212,6 +212,26 @@ def test_received_rate_is_computed_per_boot_and_counts_gaps(client, db, voyage):
     assert "Thiếu 2" in notes and "khởi động lại 1 lần" in notes
 
 
+def test_agreement_excludes_unknown_pairs(client, db, voyage):
+    U = MotionClass.UNKNOWN
+    db.add_all([tele(0, cls=U, base=U), tele(1, cls=U, base=MotionClass.NORMAL), tele(2, cls=MotionClass.FAULT, base=U)])
+    db.commit()
+    s = summary(client)
+    assert s["rf_baseline_agreement_rate"] is None                           # UNKNOWN == UNKNOWN khong phai dong thuan
+    assert "chưa đủ dữ liệu để đánh giá đồng thuận" in " ".join(s["notes"])
+    db.add_all([tele(3, cls=MotionClass.NORMAL, base=MotionClass.NORMAL), tele(4, cls=MotionClass.NORMAL, base=MotionClass.HIGH_ROLL)])
+    db.commit()
+    assert summary(client)["rf_baseline_agreement_rate"] == 0.5             # chi 2 cap hop le
+
+
+def test_agreement_not_pooled_across_sources(client, db, voyage):
+    db.add_all([tele(0, mode=SourceMode.SENSOR, cls=MotionClass.NORMAL, base=MotionClass.NORMAL),
+                tele(1, mode=SourceMode.SIMULATION, cls=MotionClass.NORMAL, base=MotionClass.HIGH_ROLL)])
+    db.commit()
+    s = summary(client)
+    assert s["source_label"] == "MIXED" and s["rf_baseline_agreement_rate"] is None
+
+
 @pytest.mark.parametrize("modes,label", [
     ([SourceMode.SIMULATION], "SIMULATION"), ([SourceMode.SENSOR], "SENSOR"),
     ([SourceMode.SIMULATION, SourceMode.SENSOR], "MIXED"), ([], "UNKNOWN")])
