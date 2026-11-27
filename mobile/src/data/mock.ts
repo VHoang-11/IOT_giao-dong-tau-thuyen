@@ -12,10 +12,16 @@ import {
   Voyage,
   Vessel,
 } from '../types/domain';
+import {
+  FEATURE_NAME_LIST,
+  mapToFeatureItems,
+  TOTAL_FEATURES,
+} from '../featureRegistry';
 
 export const DEMO_VESSEL: Vessel = {
   id: 'vessel-demo-01',
-  name: 'VESSEL DEMO 01',
+  name: 'Tàu MV SVMG-01',
+  imo: 'IMO-9876543',
   sourceMode: 'SIMULATION',
 };
 
@@ -33,9 +39,9 @@ export function hashPassword(password: string): string {
 }
 
 export const DEMO_USERS: Record<string, { passwordHash: string; role: Role; displayName: string }> = {
-  operator: { passwordHash: hashPassword('demo123'), role: 'Operator', displayName: 'Bridge Operator' },
-  supervisor: { passwordHash: hashPassword('demo123'), role: 'Supervisor', displayName: 'Shore Supervisor' },
-  admin: { passwordHash: hashPassword('demo123'), role: 'Admin', displayName: 'Demo Administrator' },
+  operator: { passwordHash: hashPassword('demo123'), role: 'Operator', displayName: 'Sĩ quan trực ca' },
+  supervisor: { passwordHash: hashPassword('demo123'), role: 'Supervisor', displayName: 'Giám sát viên' },
+  admin: { passwordHash: hashPassword('demo123'), role: 'Admin', displayName: 'Quản trị viên' },
 };
 
 export function mockLogin(username: string, password: string): Session | null {
@@ -60,12 +66,12 @@ export function mockRegister(
   }
   DEMO_USERS[u] = {
     passwordHash: hashPassword(password),
-    role: 'Operator', // Quyền cố định theo Bảng 3.1 Đề cương
+    role: 'Operator', // Quyền cố định theo Bảng 3.1
     displayName: displayName.trim() || u,
   };
   return {
     success: true,
-    message: `[AUTH_SERVICE_PENDING] Đăng ký tài khoản nội bộ "${u}" thành công ở chế độ Mock. Quyền hạn: Sĩ quan trực ca (Operator / Bảng 3.1). Lưu ý: Dịch vụ xác thực và gửi email kích hoạt qua Backend TV3/SMTP đang chờ cấu hình, tài khoản có thể đăng nhập ngay trong phiên demo này.`,
+    message: `[AUTH_SERVICE_PENDING] Đăng ký tài khoản nội bộ "${u}" thành công ở chế độ mô phỏng. Quyền hạn: Sĩ quan trực ca (Bảng 3.1). Dịch vụ xác thực qua máy chủ Backend đang chờ cấu hình, tài khoản có thể đăng nhập ngay trong phiên thử nghiệm này.`,
   };
 }
 
@@ -76,7 +82,7 @@ export function mockForgotPassword(identifier: string): { success: boolean; mess
   }
   return {
     success: true,
-    message: `[AUTH_SERVICE_PENDING] Đã tiếp nhận yêu cầu đặt lại mật khẩu cho "${id}". Do Backend Auth Service / SMTP TV3 chưa được cấu hình ở môi trường Mock, email liên kết đặt lại mật khẩu thực tế chưa được gửi. Vui lòng liên hệ Quản trị viên để cấp phát lại mã thẻ phần cứng RSA.`,
+    message: `[AUTH_SERVICE_PENDING] Đã tiếp nhận yêu cầu đặt lại mật khẩu cho "${id}". Do dịch vụ xác thực Backend / SMTP chưa được cấu hình ở môi trường mô phỏng, email liên kết đặt lại mật khẩu thực tế chưa được gửi. Vui lòng liên hệ Quản trị viên để được hỗ trợ.`,
   };
 }
 
@@ -93,19 +99,16 @@ const CLASS_BY_SCENARIO: Record<Scenario, RFClass> = {
 };
 
 export const SCENARIOS: { id: Scenario; label: string; desc: string }[] = [
-  { id: 'S0', label: 'S0 - Biển êm (Normal)', desc: 'Roll < 3.5°, dao động điều hòa ổn định' },
-  { id: 'S0b', label: 'S0b - Nghiêng rồi hồi phục', desc: 'Gió giật nghiêng tạm thời và tự cân bằng' },
-  { id: 'S1', label: 'S1 - Lắc ngang lớn (High Roll)', desc: 'Biên độ roll > 12° do sóng ngang' },
-  { id: 'S2', label: 'S2 - Nghiêng lệch kéo dài (Offset)', desc: 'Lệch tâm 8.2° do xô lệch hàng / dằn' },
-  { id: 'S3', label: 'S3 - Biên độ tăng dần (Growth)', desc: 'Cộng hưởng tham số, biên độ mở rộng' },
-  { id: 'H1', label: 'H1 - Tình huống kết hợp (Hazard)', desc: 'Roll lớn kết hợp nghiêng góc tĩnh' },
-  { id: 'OFFLINE', label: 'OFFLINE - Mất kết nối', desc: 'Mất tín hiệu telemetry từ thiết bị' },
-  { id: 'SENSOR_FAULT', label: 'SENSOR_FAULT - Lỗi cảm biến', desc: 'Lỗi truyền thông I2C MPU6050' },
+  { id: 'S0', label: 'Biển êm', desc: 'Roll < 3.5°, dao động điều hòa ổn định' },
+  { id: 'S0b', label: 'Nghiêng rồi hồi phục', desc: 'Gió giật nghiêng tạm thời và tự cân bằng' },
+  { id: 'S1', label: 'Lắc ngang lớn', desc: 'Biên độ roll > 12° do sóng ngang' },
+  { id: 'S2', label: 'Nghiêng lệch kéo dài', desc: 'Lệch tâm 8.2° do xô lệch hàng hoặc dằn' },
+  { id: 'S3', label: 'Biên độ tăng dần', desc: 'Cộng hưởng tham số, biên độ mở rộng' },
+  { id: 'H1', label: 'Kết hợp nguy hiểm', desc: 'Lắc lớn kết hợp nghiêng góc tĩnh' },
+  { id: 'OFFLINE', label: 'Mất kết nối', desc: 'Mất tín hiệu viễn trắc từ thiết bị' },
+  { id: 'SENSOR_FAULT', label: 'Lỗi cảm biến', desc: 'Lỗi truyền thông I2C MPU6050' },
 ];
 
-/**
- * Harmonic kinematic waveform generator (aligned with core C / Python simulator).
- */
 export function waveform(s: Scenario, t: number) {
   const base = Math.sin(t * 0.32);
   const growth = Math.min(15, 2 + (t % 90) * 0.16);
@@ -178,7 +181,7 @@ export function createTelemetry(scenario: Scenario, tick: number): Telemetry {
     mai: invalid ? null : maiBase[scenario],
     alarm_level: level,
     sensor_ok: !invalid,
-    model_version: 'RF-Classifier-v2.4',
+    model_version: 'RF-DEMO-v1',
     config_version: 7,
     connection:
       scenario === 'OFFLINE'
@@ -195,62 +198,62 @@ export function createTelemetry(scenario: Scenario, tick: number): Telemetry {
 export const INITIAL_ALARMS: Alarm[] = [
   {
     id: 'ALM-8492',
-    title: 'AMPLITUDE GROWTH DETECTED',
+    title: 'Biên độ dao động tăng dần',
     level: 'CRITICAL',
     status: 'RAISED',
     at: '14:28:12 UTC',
-    detail: 'Port roll cycle amplitude expanding by >2.1° per cycle. Synchronous resonance threshold exceeded.',
-    peakVector: '24.2° PORT',
+    detail: 'Biên độ lắc ngang tăng liên tục > 2.1° mỗi chu kỳ, vượt ngưỡng cộng hưởng an toàn.',
+    peakVector: '24.2° Mạn trái',
     anomalyIndex: 0.88,
     utcTime: '14:28:12 UTC',
-    relativeTime: '3 MIN AGO',
-    notes: 'Altered course 15° to port',
+    relativeTime: '3 phút trước',
+    notes: 'Đã đổi hướng 15° sang mạn trái',
   },
   {
     id: 'ALM-8488',
-    title: 'PERSISTENT OFFSET (STATIC LIST)',
+    title: 'Nghiêng lệch kéo dài',
     level: 'WARNING',
     status: 'ACKED',
     at: '14:15:03 UTC',
-    detail: 'Continuous heel angle bias >6.5° Port sustained for >180s. Possible cargo shift or asymmetric ballast.',
-    peakVector: '+6.8° PORT SUSTAINED',
+    detail: 'Góc nghiêng tĩnh lệch > 6.5° mạn trái duy trì trên 180 giây. Kiểm tra xô lệch hàng hoặc dằn tàu.',
+    peakVector: '+6.8° Mạn trái',
     anomalyIndex: 0.65,
     utcTime: '14:15:03 UTC',
-    relativeTime: '16 MIN AGO',
-    notes: 'Ballast transfer pump #2 active',
+    relativeTime: '16 phút trước',
+    notes: 'Đang kích hoạt bơm dằn số 2',
   },
   {
-    id: 'ALM-8461',
-    title: 'HIGH ROLL ACCELERATION',
+    id: 'ALM-8450',
+    title: 'Lắc ngang mạnh',
+    level: 'WARNING',
+    status: 'RAISED',
+    at: '14:02:30 UTC',
+    detail: 'Gia tốc ngang tăng đột biến khi gặp sóng ngang mạn phải.',
+    peakVector: '15.8° Mạn phải',
+    anomalyIndex: 0.72,
+    utcTime: '14:02:30 UTC',
+    relativeTime: '28 phút trước',
+  },
+  {
+    id: 'ALM-8441',
+    title: 'Dao động bất thường mức cảnh giác',
     level: 'CAUTION',
     status: 'CLEARED',
     at: '13:42:50 UTC',
-    detail: 'Lateral g-force spike 0.34g during beam wave impact. Resolved under dynamic dampening.',
-    peakVector: '12.4° STBD',
+    detail: 'Biên độ dao động tăng nhẹ tạm thời và đã tự ổn định về ngưỡng bình thường.',
+    peakVector: '11.4° Mạn phải',
     anomalyIndex: 0.38,
     utcTime: '13:42:50 UTC',
-    relativeTime: '48 MIN AGO',
-    notes: 'Beam sea encounter resolved',
-  },
-  {
-    id: 'ALM-8440',
-    title: 'CALM SEA MONITORING',
-    level: 'NORMAL',
-    status: 'CLEARED',
-    at: '12:10:00 UTC',
-    detail: 'Transverse kinematics within calibrated Baseline B safety envelope.',
-    peakVector: '2.6° PORT',
-    anomalyIndex: 0.14,
-    utcTime: '12:10:00 UTC',
-    relativeTime: '2 HRS AGO',
+    relativeTime: '48 phút trước',
+    notes: 'Đã qua vùng sóng ngang',
   },
 ];
 
 export const MOCK_VOYAGES: Voyage[] = [
   {
     id: 'V-2026-001',
-    name: 'Voyage Demo 01 (Chuyến kiểm thử T11/T15)',
-    route: '10-minute monitoring window (S0 → S1 → S2 → S3 → S0)',
+    name: 'Hải trình mẫu 01 (Chuyến kiểm thử T11/T15)',
+    route: 'Cửa sổ giám sát 10 phút (S0 → S1 → S2 → S3 → S0)',
     durationMinutes: 10,
     durationHours: 10 / 60,
     startTime: '2026-11-12T08:00:00Z',
@@ -280,8 +283,8 @@ export const MOCK_VOYAGES: Voyage[] = [
   },
   {
     id: 'V-2026-002',
-    name: 'Voyage Demo 02 (Biển êm S0)',
-    route: 'Hai Phong to Da Nang (Bình thường)',
+    name: 'Hải trình mẫu 02 (Biển êm)',
+    route: 'Hải Phòng → Đà Nẵng (Trạng thái bình thường)',
     durationMinutes: 10,
     durationHours: 10 / 60,
     startTime: '2026-11-12T06:00:00Z',
@@ -311,8 +314,8 @@ export const MOCK_VOYAGES: Voyage[] = [
   },
   {
     id: 'V-2026-003',
-    name: 'Voyage Demo 03 (Sóng lớn kết hợp H1)',
-    route: 'Vung Tau to Singapore (Thời tiết xấu)',
+    name: 'Hải trình mẫu 03 (Sóng lớn kết hợp)',
+    route: 'Vũng Tàu → Singapore (Thời tiết xấu)',
     durationMinutes: 10,
     durationHours: 10 / 60,
     startTime: '2026-11-11T22:00:00Z',
@@ -413,7 +416,7 @@ export const DEMO_HEALTH: DeviceHealth = {
   bufferCapacity: 1000,
   bufferStatus: 'EMPTY',
   queueLatencyMs: 14,
-  lastPacketUtc: '14:28:12 UTC',
+  lastPacketUtc: 'Vừa nhận (< 2s)',
   packetGapS: 1.2,
   healthScore: 100,
   healthStatus: 'HEALTHY',
@@ -424,26 +427,30 @@ export function computeHealth(scenario: Scenario, tick: number): DeviceHealth {
   const isSensorFault = scenario === 'SENSOR_FAULT';
   const isUnknown = scenario === 'UNKNOWN';
 
-  const sensor: DeviceHealth['sensor'] = isSensorFault ? 'FAULT' : (isOffline || isUnknown) ? 'UNKNOWN' : 'OK';
+  const sensor: DeviceHealth['sensor'] = isSensorFault ? 'FAULT' : isOffline || isUnknown ? 'UNKNOWN' : 'OK';
   const sensorOk = sensor === 'OK';
   const i2cErrors = isSensorFault ? 3 : 0;
-  const lastI2cError = isSensorFault ? 'I2C NACK at 0x68 (MPU6050 ACK timeout)' : undefined;
+  const lastI2cError = isSensorFault ? 'I2C NACK tại 0x68 (MPU6050 timeout)' : undefined;
   const rssiDbm = isOffline ? null : isSensorFault ? -65 : -62;
   const uptimeS = 16500 + tick * 5;
   const uptimeMinutes = Math.round(uptimeS / 60);
   const freeHeapKb = isOffline ? 146 : isSensorFault ? 150 : 151;
   const minFreeHeapKb = 114;
   const heapFragmentationPct = isOffline ? 8.4 : 6.2;
-  const inferenceMs = (isOffline || isSensorFault) ? 0 : 12.4;
+  const inferenceMs = isOffline || isSensorFault ? 0 : 12.4;
   const mqttReconnects = isOffline ? 2 : 0;
   const bufferUsed = isOffline ? Math.min(1000, 24 + (tick % 50)) : 0;
   const bufferCapacity = 1000;
   const bufferStatus: DeviceHealth['bufferStatus'] = isOffline ? 'BUFFERING' : 'EMPTY';
   const queueLatencyMs = isOffline ? 450 : 14;
-  const lastPacketUtc = isOffline ? 'MẤT TÍN HIỆU (>30s)' : 'VỪA NHẬN (<2s)';
+  const lastPacketUtc = isOffline ? 'Mất tín hiệu (> 30s)' : 'Vừa nhận (< 2s)';
   const packetGapS = isOffline ? 38 : 1.2;
   const healthScore = isOffline ? 15 : isSensorFault ? 45 : 100;
-  const healthStatus: DeviceHealth['healthStatus'] = isOffline ? 'CRITICAL' : isSensorFault ? 'DEGRADED' : 'HEALTHY';
+  const healthStatus: DeviceHealth['healthStatus'] = isOffline
+    ? 'CRITICAL'
+    : isSensorFault
+    ? 'DEGRADED'
+    : 'HEALTHY';
 
   return {
     sensor,
@@ -469,21 +476,25 @@ export function computeHealth(scenario: Scenario, tick: number): DeviceHealth {
   };
 }
 
+const initialMapped = mapToFeatureItems();
+
 export const DEMO_MODEL: ModelInfo = {
-  active: 'Random Forest (Edge IMU)',
+  active: 'Random Forest (Mô hình chính)',
   activeModelId: 'RF',
-  baseline: 'Baseline B (Shadow Engine)',
+  baseline: 'Baseline B (Mô hình đối chiếu)',
   baselineModelId: 'BASELINE_B',
-  version: 'RF-Classifier-v2.4',
-  algorithm: 'Ensemble 10 Decision Trees (C-transpiled TinyML)',
-  featuresCount: 5,
-  features: ['roll_rms_window_30s', 'roll_peak_abs', 'heel_offset_deg', 'trend_rms_deg_min', 'pitch_rms'],
+  version: 'RF-DEMO-v1',
+  algorithm: 'Tập hợp 10 cây quyết định (TinyML mã C)',
+  featuresCount: TOTAL_FEATURES,
+  features: FEATURE_NAME_LIST,
+  featureItems: initialMapped.items,
+  featureSummary: initialMapped.summary,
   inferenceMs: 12.4,
   flashKb: 42.6,
   ramKb: 8.2,
   agreementPercent: 96.2,
   psi: 0.038,
-  psiStatus: 'STABLE (< 0.10 - Không có sự dịch chuyển phân phối đáng kể)',
+  psiStatus: 'Ổn định (< 0.10 - Không lệch phân phối)',
   concordanceBreakdown: {
     normal: 100.0,
     highRoll: 92.4,
@@ -492,25 +503,37 @@ export const DEMO_MODEL: ModelInfo = {
   },
 };
 
-export function computeModelInfo(activeModelId: 'RF' | 'BASELINE_B'): ModelInfo {
+export function computeModelInfo(
+  activeModelId: 'RF' | 'BASELINE_B',
+  scenario?: Scenario,
+  sensorOk?: boolean
+): ModelInfo {
   const isRf = activeModelId === 'RF';
+  const isOffline = scenario === 'OFFLINE' || scenario === 'UNKNOWN';
+  const isFault = scenario === 'SENSOR_FAULT' || sensorOk === false;
+  const mapped = mapToFeatureItems(null, {
+    isOffline,
+    isSensorOk: !isFault,
+    source: 'SAMPLE',
+  });
+
   return {
-    active: isRf ? 'Random Forest (Edge IMU)' : 'Baseline B (Heuristic Rule-based)',
+    active: isRf ? 'Random Forest (Mô hình chính)' : 'Baseline B (Quy tắc ngưỡng)',
     activeModelId,
-    baseline: isRf ? 'Baseline B (Shadow Engine)' : 'Random Forest (Shadow Engine)',
+    baseline: isRf ? 'Baseline B (Mô hình đối chiếu)' : 'Random Forest (Mô hình đối chiếu)',
     baselineModelId: isRf ? 'BASELINE_B' : 'RF',
-    version: isRf ? 'RF-Classifier-v2.4' : 'Baseline-B-v1.1',
-    algorithm: isRf
-      ? 'Ensemble 10 Decision Trees (C-transpiled TinyML)'
-      : 'IMO Dynamic Kinematic Threshold Rules',
-    featuresCount: 5,
-    features: ['roll_rms_window_30s', 'roll_peak_abs', 'heel_offset_deg', 'trend_rms_deg_min', 'pitch_rms'],
+    version: isRf ? 'RF-DEMO-v1' : 'Baseline-B-v1.1',
+    algorithm: isRf ? 'Tập hợp 10 cây quyết định (TinyML mã C)' : 'Quy chuẩn động học IMO (Ngưỡng tức thời)',
+    featuresCount: TOTAL_FEATURES,
+    features: FEATURE_NAME_LIST,
+    featureItems: mapped.items,
+    featureSummary: mapped.summary,
     inferenceMs: isRf ? 12.4 : 1.8,
     flashKb: isRf ? 42.6 : 8.4,
     ramKb: isRf ? 8.2 : 1.5,
     agreementPercent: 96.2,
-    psi: 0.038,
-    psiStatus: 'STABLE (< 0.10 - Không có sự dịch chuyển phân phối đáng kể)',
+    psi: isOffline || isFault ? null : 0.038,
+    psiStatus: isOffline || isFault ? 'Không khả dụng khi mất dữ liệu' : 'Ổn định (< 0.10 - Không lệch phân phối)',
     concordanceBreakdown: {
       normal: 100.0,
       highRoll: 92.4,

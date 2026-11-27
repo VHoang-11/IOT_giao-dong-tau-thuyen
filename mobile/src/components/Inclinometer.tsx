@@ -1,8 +1,31 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
-import Svg, { Path, Line, Circle, Rect, Text as SvgText, G } from 'react-native-svg';
-import { C, SHADOWS } from '../theme';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  Ellipse,
+  G,
+  Line,
+  LinearGradient,
+  Path,
+  Polygon,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
+import { FONT, SHADOWS, useTheme } from '../theme';
 import { AlarmLevel, Scenario } from '../types/domain';
+import { getAlarmLevelNameVi, getRFClassNameVi } from '../i18n/vi';
+
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 export interface InclinometerProps {
   rollDeg: number | null;
@@ -14,6 +37,9 @@ export interface InclinometerProps {
   sourceMode?: 'SIMULATION' | 'SENSOR';
   sensorOk?: boolean;
   compact?: boolean;
+  warningDeg?: number;
+  tripDeg?: number;
+  touchedSample?: { roll: number; pitch: number; idx: number } | null;
 }
 
 export function Inclinometer({
@@ -23,566 +49,663 @@ export function Inclinometer({
   alarmLevel = 'NORMAL',
   scenario = 'S0',
   classRf = 'NORMAL',
-  sourceMode = 'SIMULATION',
   sensorOk = true,
   compact = false,
+  warningDeg = 15.0,
+  tripDeg = 22.0,
+  touchedSample = null,
 }: InclinometerProps) {
-  const [activeTab, setActiveTab] = useState<'front' | 'side'>('front');
+  const { colors, reducedMotion } = useTheme();
+  const [activeTab, setActiveTab] = useState<'iso' | 'front' | 'side'>('iso');
   const { width: windowWidth } = useWindowDimensions();
-  const width = Math.min(windowWidth - 40, 380);
-  const height = compact ? 140 : 190;
 
-  const isOffline = scenario === 'OFFLINE';
+  const stageW = 460;
+  const stageH = compact ? 210 : 250;
+  const displayWidth = Math.max(260, Math.min(windowWidth - 64, 460));
+  const displayHeight = Math.round((displayWidth / stageW) * stageH);
+
+  // Subtle horizontal ocean wave drift (fixed relative to horizon, stops when reducedMotion or offline)
+  const waveShift = useRef(new Animated.Value(0)).current;
+
+  const isOffline = scenario === 'OFFLINE' || scenario === 'UNKNOWN';
   const isSensorFault = scenario === 'SENSOR_FAULT' || sensorOk === false;
   const isAvailable = !isOffline && !isSensorFault && rollDeg !== null;
 
-  const validRoll = isAvailable ? rollDeg : 0;
-  const validPitch = isAvailable && pitchDeg !== null ? pitchDeg : 0;
+  useEffect(() => {
+    if (reducedMotion || !isAvailable) {
+      waveShift.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(waveShift, {
+          toValue: 14,
+          duration: 3600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+        Animated.timing(waveShift, {
+          toValue: -14,
+          duration: 3600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: false,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reducedMotion, isAvailable, waveShift]);
+
+  const validRoll = isAvailable ? (touchedSample ? touchedSample.roll : rollDeg ?? 0) : 0;
+  const validPitch = isAvailable ? (touchedSample ? touchedSample.pitch : pitchDeg ?? 0) : 0;
   const validMai = isAvailable ? (mai ?? 0) : 0;
 
   const clampedRoll = Math.max(-30, Math.min(30, validRoll));
   const clampedPitch = Math.max(-15, Math.min(15, validPitch));
+  const needleAngle = activeTab === 'side' ? clampedPitch : clampedRoll;
 
-  // Severity colors matching Maritime White & Navy
-  const severityColor =
-    !isAvailable
-      ? C.muted
-      : alarmLevel === 'CRITICAL'
-      ? C.red
-      : alarmLevel === 'WARNING'
-      ? C.amber
-      : alarmLevel === 'CAUTION'
-      ? C.cyan
-      : C.green;
+  const severityColor = !isAvailable
+    ? colors.muted
+    : alarmLevel === 'CRITICAL'
+    ? colors.red
+    : alarmLevel === 'WARNING' || alarmLevel === 'CAUTION'
+    ? colors.amber
+    : colors.green;
 
   const portStbd =
-    validRoll < -0.1 ? 'PORT (TRÁI)' : validRoll > 0.1 ? 'STBD (PHẢI)' : 'EVEN KEEL';
+    validRoll < -0.1 ? 'Mạn trái' : validRoll > 0.1 ? 'Mạn phải' : 'Cân bằng';
   const bowStern =
-    validPitch > 0.1 ? 'BOW UP (NGÓC)' : validPitch < -0.1 ? 'BOW DOWN (CHÚI)' : 'LEVEL';
+    validPitch > 0.1 ? 'Ngóc mũi' : validPitch < -0.1 ? 'Chúi mũi' : 'Mức chuẩn';
 
   const maiPct = Math.min(100, Math.max(0, validMai));
-  const maiColor = maiPct >= 70 ? C.red : maiPct >= 35 ? C.amber : C.green;
+  const maiColor = maiPct >= 70 ? colors.red : maiPct >= 35 ? colors.amber : colors.green;
 
-  // Pivot points
-  const cx = 170;
-  const cy = 135;
+  const cx = stageW / 2; // 230
+  const horizonY = compact ? 105 : 122;
 
   return (
-    <View style={[styles.container, compact && styles.containerCompact]}>
-      {/* Top Header Bar */}
-      <View style={styles.header}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.card,
+        compact && styles.containerCompact,
+      ]}
+    >
+      {/* Header & View Switcher */}
+      <View style={[styles.header, { borderBottomColor: colors.borderSubtle }]}>
         <View style={styles.titleRow}>
-          <Text style={styles.headerTitle}>2D VESSEL DYNAMICS</Text>
-          <View style={styles.demoBadge}>
-            <Text style={styles.demoBadgeText}>DEMO / SIM</Text>
+          <Text style={[styles.headerTitle, { color: colors.title }]}>
+            Mô hình chuyển động tàu
+          </Text>
+          <View style={[styles.simPill, { backgroundColor: colors.cyanContainerBg }]}>
+            <Text style={[styles.simPillText, { color: colors.tech }]}>
+              {isAvailable ? getRFClassNameVi(classRf) : getAlarmLevelNameVi(alarmLevel)}
+            </Text>
           </View>
-        </View>
-
-        {/* View Switcher Tabs */}
-        <View style={styles.tabGroup}>
-          <Pressable
-            onPress={() => setActiveTab('front')}
-            style={[styles.tabBtn, activeTab === 'front' && styles.tabBtnActive]}
-            accessibilityRole="button"
-          >
-            <Text
-              style={[styles.tabBtnText, activeTab === 'front' && styles.tabBtnTextActive]}
-            >
-              FRONT (ROLL)
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setActiveTab('side')}
-            style={[styles.tabBtn, activeTab === 'side' && styles.tabBtnActive]}
-            accessibilityRole="button"
-          >
-            <Text
-              style={[styles.tabBtnText, activeTab === 'side' && styles.tabBtnTextActive]}
-            >
-              SIDE (PITCH)
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Floating Telemetry HUD */}
-      <View style={styles.hudRow}>
-        <View style={styles.hudItem}>
-          <Text style={styles.hudLabel}>ROLL:</Text>
-          <Text
-            style={[
-              styles.hudVal,
-              { color: Math.abs(validRoll) >= 15 ? C.red : Math.abs(validRoll) >= 10 ? C.amber : C.cyan },
-            ]}
-          >
-            {isAvailable ? `${validRoll > 0 ? '+' : ''}${validRoll.toFixed(1)}°` : '—'}
-          </Text>
-          <Text style={styles.hudSub}>{isAvailable ? portStbd : 'DISCONNECTED'}</Text>
-        </View>
-
-        <View style={styles.hudItem}>
-          <Text style={styles.hudLabel}>PITCH:</Text>
-          <Text
-            style={[
-              styles.hudVal,
-              { color: Math.abs(validPitch) >= 5 ? C.amber : C.text },
-            ]}
-          >
-            {isAvailable ? `${validPitch > 0 ? '+' : ''}${validPitch.toFixed(1)}°` : '—'}
-          </Text>
-          <Text style={styles.hudSub}>{isAvailable ? bowStern : 'DISCONNECTED'}</Text>
         </View>
 
         <View
           style={[
-            styles.severityPill,
-            { borderColor: severityColor },
-            isAvailable && alarmLevel === 'CRITICAL'
-              ? SHADOWS.criticalGlow
-              : isAvailable && alarmLevel === 'WARNING'
-              ? SHADOWS.warningGlow
-              : isAvailable && alarmLevel === 'CAUTION'
-              ? SHADOWS.cautionGlow
-              : undefined,
+            styles.tabGroup,
+            { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
           ]}
         >
-          <Text style={[styles.severityText, { color: severityColor }]}>
-            {isAvailable ? alarmLevel : 'OFFLINE'}
-          </Text>
+          {(
+            [
+              { id: 'iso', label: 'Phối cảnh' },
+              { id: 'front', label: 'Cắt ngang' },
+              { id: 'side', label: 'Cắt dọc' },
+            ] as const
+          ).map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <Pressable
+                key={tab.id}
+                onPress={() => setActiveTab(tab.id)}
+                style={[
+                  styles.tabBtn,
+                  active && { backgroundColor: colors.primaryContainer },
+                ]}
+                accessibilityRole="button"
+              >
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    { color: active ? '#FFFFFF' : colors.textSecondary },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
-      {/* SVG Canvas Area */}
-      <View style={styles.svgWrapper}>
-        <Svg width={width} height={height} viewBox="0 0 340 180">
-          {/* Background Stage */}
-          <Rect x={0} y={0} width={340} height={180} fill="#FFFFFF" rx={4} />
+      {/* Main SVG Visualization Canvas */}
+      <View
+        style={[
+          styles.svgWrapper,
+          { borderColor: colors.borderSubtle, backgroundColor: colors.oceanSkyTop },
+        ]}
+      >
+        <Svg
+          width={displayWidth}
+          height={displayHeight}
+          viewBox={`0 0 ${stageW} ${stageH}`}
+        >
+          <Defs>
+            <LinearGradient id="mobSkyGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={colors.oceanSkyTop} />
+              <Stop offset="1" stopColor={colors.oceanSkyBottom} />
+            </LinearGradient>
+            <LinearGradient id="mobSeaGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={colors.oceanSeaTop} stopOpacity="0.82" />
+              <Stop offset="0.35" stopColor={colors.oceanSeaMid} stopOpacity="0.9" />
+              <Stop offset="1" stopColor={colors.oceanSeaDeep} stopOpacity="0.98" />
+            </LinearGradient>
+            <LinearGradient id="mobHullGrad" x1="0" y1="0" x2="1" y2="0.8">
+              <Stop offset="0" stopColor="#1E293B" />
+              <Stop offset="0.55" stopColor="#0F172A" />
+              <Stop offset="1" stopColor="#090D16" />
+            </LinearGradient>
+            <LinearGradient id="mobBootTopGrad" x1="0" y1="0" x2="1" y2="0.5">
+              <Stop offset="0" stopColor="#DC2626" />
+              <Stop offset="1" stopColor="#7F1D1D" />
+            </LinearGradient>
+            <LinearGradient id="mobDeckGrad" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0" stopColor="#475569" />
+              <Stop offset="1" stopColor="#334155" />
+            </LinearGradient>
+          </Defs>
 
-          {/* Guide Arc Grid (Roll Front View) */}
-          {activeTab === 'front' && (
-            <>
-              {/* Base Arc */}
-              <Path
-                d="M 57.38 85 A 130 130 0 0 1 282.62 85"
-                fill="none"
-                stroke={C.borderSubtle}
-                strokeDasharray="3 4"
-                strokeWidth={2}
-              />
-              {/* Green Safe Zone ±10° */}
-              <Path
-                d="M 147.42 22 A 130 130 0 0 1 192.58 22"
-                fill="none"
-                stroke={C.green}
-                strokeWidth={4}
-              />
-              {/* Port Amber Zone */}
-              <Path
-                d="M 129.83 26.65 A 130 130 0 0 1 147.42 22"
-                fill="none"
-                stroke={C.amber}
-                strokeWidth={4}
-              />
-              {/* Stbd Amber Zone */}
-              <Path
-                d="M 192.58 22 A 130 130 0 0 1 210.17 26.65"
-                fill="none"
-                stroke={C.amber}
-                strokeWidth={4}
-              />
-              {/* Port Red Zone */}
-              <Path
-                d="M 115.04 33.74 A 130 130 0 0 1 129.83 26.65"
-                fill="none"
-                stroke={C.red}
-                strokeWidth={4}
-              />
-              {/* Stbd Red Zone */}
-              <Path
-                d="M 210.17 26.65 A 130 130 0 0 1 224.96 33.74"
-                fill="none"
-                stroke={C.red}
-                strokeWidth={4}
-              />
+          {/* Sky & Sea Fixed Backdrop (Never rotates with ship) */}
+          <Rect x={0} y={0} width={stageW} height={horizonY} fill="url(#mobSkyGrad)" />
+          <Rect x={0} y={horizonY} width={stageW} height={stageH - horizonY} fill="url(#mobSeaGrad)" />
 
-              {/* Ticks */}
-              <Line x1={170} y1={14} x2={170} y2={28} stroke={C.border} strokeWidth={2} />
-              <SvgText x={170} y={10} fill={C.border} fontSize="8" fontWeight="800" textAnchor="middle">
-                0°
-              </SvgText>
-              <Line x1={147.4} y1={22} x2={149.5} y2={32} stroke={C.green} strokeWidth={1.5} />
-              <SvgText x={143} y={16} fill={C.green} fontSize="7" fontWeight="bold" textAnchor="middle">
-                -10°
-              </SvgText>
-              <Line x1={192.6} y1={22} x2={190.5} y2={32} stroke={C.green} strokeWidth={1.5} />
-              <SvgText x={197} y={16} fill={C.green} fontSize="7" fontWeight="bold" textAnchor="middle">
-                +10°
-              </SvgText>
-              <Line x1={125.5} y1={28.5} x2={129.5} y2={38} stroke={C.amber} strokeWidth={1.5} />
-              <SvgText x={117} y={24} fill={C.amber} fontSize="7" fontWeight="bold" textAnchor="middle">
-                -20°
-              </SvgText>
-              <Line x1={214.5} y1={28.5} x2={210.5} y2={38} stroke={C.amber} strokeWidth={1.5} />
-              <SvgText x={223} y={24} fill={C.amber} fontSize="7" fontWeight="bold" textAnchor="middle">
-                +20°
-              </SvgText>
-            </>
-          )}
-
-          {/* Waterline Datum Line */}
+          {/* Fixed Horizon Reference Datum Line */}
           <Line
-            x1={15}
-            y1={135}
-            x2={325}
-            y2={135}
-            stroke="#0284C7"
-            strokeDasharray="4 4"
-            strokeWidth={1.5}
+            x1={0}
+            y1={horizonY}
+            x2={stageW}
+            y2={horizonY}
+            stroke={colors.oceanHorizonLine}
+            strokeWidth={1.2}
+            strokeDasharray="6 3"
+            opacity={0.78}
           />
-          <SvgText x={315} y={131} fill="#0284C7" fontSize="8" fontWeight="bold">
-            WL
+          <SvgText
+            x={10}
+            y={horizonY - 5}
+            fill={colors.oceanHorizonLine}
+            fontSize={8.5}
+            fontWeight="600"
+          >
+            Đường chân trời • Mực nước chuẩn 0°
           </SvgText>
 
-          {/* FRONT VIEW: Cargo Vessel Cross-section rotating by clampedRoll */}
-          {activeTab === 'front' && (
-            <G transform={isAvailable ? `rotate(${clampedRoll} ${cx} ${cy})` : undefined}>
-              {/* Vessel Main Hull */}
+          {/* Distant Ambient Ocean Waves (Moving gently on horizontal datum) */}
+          <AnimatedG translateX={waveShift}>
+            <Path
+              d={`M -30 ${horizonY + 12} Q 35 ${horizonY + 9} 100 ${horizonY + 13} T 230 ${horizonY + 12} T 360 ${horizonY + 13} T ${stageW + 40} ${horizonY + 12}`}
+              fill="none"
+              stroke={colors.oceanWaveSubtle}
+              strokeWidth={1.1}
+              opacity={0.65}
+            />
+            <Path
+              d={`M -30 ${horizonY + 28} Q 45 ${horizonY + 24} 120 ${horizonY + 29} T 260 ${horizonY + 28} T 400 ${horizonY + 29} T ${stageW + 40} ${horizonY + 28}`}
+              fill="none"
+              stroke={colors.oceanWaveLight}
+              strokeWidth={1.2}
+              opacity={0.55}
+            />
+          </AnimatedG>
+
+          {/* Overhead Inclinometer Gauge Arc */}
+          <G transform={`translate(${cx - 230}, 0)`}>
+            <Path
+              d="M 150 58 A 105 105 0 0 1 310 58"
+              fill="none"
+              stroke={colors.borderSubtle}
+              strokeWidth={2.5}
+            />
+            {/* Safe Zone */}
+            <Path
+              d="M 185 40 A 105 105 0 0 1 275 40"
+              fill="none"
+              stroke={colors.green}
+              strokeWidth={3}
+              opacity={0.85}
+            />
+            {/* Caution Sectors */}
+            <Path
+              d="M 166 49 A 105 105 0 0 1 185 40"
+              fill="none"
+              stroke={colors.amber}
+              strokeWidth={3}
+            />
+            <Path
+              d="M 275 40 A 105 105 0 0 1 294 49"
+              fill="none"
+              stroke={colors.amber}
+              strokeWidth={3}
+            />
+            {/* Critical Sectors */}
+            <Path
+              d="M 150 58 A 105 105 0 0 1 166 49"
+              fill="none"
+              stroke={colors.red}
+              strokeWidth={3}
+            />
+            <Path
+              d="M 294 49 A 105 105 0 0 1 310 58"
+              fill="none"
+              stroke={colors.red}
+              strokeWidth={3}
+            />
+
+            <Line x1={230} y1={27} x2={230} y2={35} stroke={colors.title} strokeWidth={1.6} />
+            <SvgText x={230} y={22} fill={colors.title} fontSize={9} fontWeight="700" textAnchor="middle">
+              0°
+            </SvgText>
+            <SvgText x={178} y={33} fill={colors.textSecondary} fontSize={8} textAnchor="middle">
+              -{activeTab === 'side' ? 8 : Math.round(warningDeg)}°
+            </SvgText>
+            <SvgText x={282} y={33} fill={colors.textSecondary} fontSize={8} textAnchor="middle">
+              +{activeTab === 'side' ? 8 : Math.round(warningDeg)}°
+            </SvgText>
+
+            {/* Needle */}
+            <G transform={`rotate(${needleAngle}, 230, 130)`}>
+              <Line x1={230} y1={32} x2={230} y2={54} stroke={severityColor} strokeWidth={2.2} />
+              <Polygon points="230,29 226.5,36 233.5,36" fill={severityColor} />
+            </G>
+          </G>
+
+          {/* VIEW 1: ISOMETRIC CONTAINER VESSEL */}
+          {activeTab === 'iso' && (
+            <G transform={`translate(${cx - 270}, ${horizonY - 160})`}>
+              {/* Underwater Reflection */}
+              <G
+                transform={`rotate(${-clampedRoll * 0.6}, 270, 180)`}
+                opacity={colors.oceanReflectionOpacity}
+              >
+                <Path
+                  d="M 125 162 L 380 190 C 415 194 432 188 438 182 C 425 208 385 224 345 218 L 135 186 Z"
+                  fill="#0369A1"
+                />
+              </G>
+
+              {/* Stern Wake Lines */}
+              <AnimatedG translateX={waveShift} opacity={0.75}>
+                <Ellipse cx={88} cy={173} rx={22} ry={5.5} fill={colors.oceanWaveSubtle} />
+                <Path
+                  d="M 105 169 C 75 166 45 167 16 168"
+                  fill="none"
+                  stroke={colors.oceanWaveLight}
+                  strokeWidth={1.4}
+                />
+                <Path
+                  d="M 112 177 C 82 183 52 191 22 198"
+                  fill="none"
+                  stroke={colors.oceanWaveLight}
+                  strokeWidth={1.6}
+                />
+              </AnimatedG>
+
+              {/* Dynamic Vessel Model (Rotates by Roll, shifts gently by Pitch) */}
+              <G
+                transform={`rotate(${clampedRoll}, 270, 160) translate(${(clampedPitch * 0.7).toFixed(1)}, ${(clampedPitch * 0.4).toFixed(1)})`}
+                opacity={isAvailable ? 1 : 0.35}
+              >
+                <G transform="translate(270, 160) scale(1.12) translate(-270, -160)">
+                  {/* Lower Hull Boot-Top */}
+                  <Path
+                    d="M 125 158 L 380 188 C 415 192 432 186 438 180 C 428 196 405 204 375 202 L 135 174 L 125 158 Z"
+                    fill="url(#mobBootTopGrad)"
+                    stroke="#7F1D1D"
+                    strokeWidth={1}
+                  />
+                  <Ellipse cx={434} cy={184} rx={7} ry={4} fill="#B91C1C" stroke="#7F1D1D" strokeWidth={1} />
+
+                  {/* Hull Topsides */}
+                  <Path
+                    d="M 120 142 L 375 172 C 408 176 430 178 440 174 L 438 180 C 415 192 380 188 125 158 L 115 146 Z"
+                    fill="url(#mobHullGrad)"
+                    stroke="#0F172A"
+                    strokeWidth={1.2}
+                  />
+
+                  {/* Waterline Glow Stripe */}
+                  <Path
+                    d="M 125 158 L 380 188 C 412 192 430 186 438 180"
+                    fill="none"
+                    stroke="#38BDF8"
+                    strokeWidth={1.5}
+                    opacity={0.9}
+                  />
+
+                  {/* Main Deck Plane */}
+                  <Path
+                    d="M 120 142 L 155 128 L 410 158 C 428 163 438 170 440 174 C 430 178 408 176 375 172 Z"
+                    fill="url(#mobDeckGrad)"
+                    stroke="#1E293B"
+                    strokeWidth={1}
+                  />
+
+                  {/* Container Stacks (3-faceted Isometric blocks) */}
+                  {/* Bay 4 */}
+                  <Polygon points="170,147 195,150 195,136 170,133" fill="#1E3A8A" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="195,150 215,143 215,129 195,136" fill="#2563A6" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="170,133 195,136 215,129 190,126" fill="#60A5FA" stroke="#0F172A" strokeWidth={0.7} />
+
+                  <Polygon points="170,133 195,136 195,122 170,119" fill="#991B1B" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="195,136 215,129 215,115 195,122" fill="#DC2626" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="170,119 195,122 215,115 190,112" fill="#F87171" stroke="#0F172A" strokeWidth={0.7} />
+
+                  {/* Bay 3 */}
+                  <Polygon points="220,153 248,156 248,142 220,139" fill="#B45309" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="248,156 268,149 268,135 248,142" fill="#D97706" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="220,139 248,142 268,135 240,132" fill="#FBBF24" stroke="#0F172A" strokeWidth={0.7} />
+
+                  <Polygon points="220,139 248,142 248,128 220,125" fill="#0369A1" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="248,142 268,135 268,121 248,128" fill="#2563A6" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="220,125 248,128 268,121 240,118" fill="#38BDF8" stroke="#0F172A" strokeWidth={0.7} />
+
+                  <Polygon points="220,125 248,128 248,114 220,111" fill="#047857" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="248,128 268,121 268,107 248,114" fill="#00966A" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="220,111 248,114 268,107 240,104" fill="#34D399" stroke="#0F172A" strokeWidth={0.7} />
+
+                  {/* Bay 2 */}
+                  <Polygon points="274,159 304,162 304,148 274,145" fill="#047857" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="304,162 324,155 324,141 304,148" fill="#00966A" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="274,145 304,148 324,141 294,138" fill="#6EE7B7" stroke="#0F172A" strokeWidth={0.7} />
+
+                  <Polygon points="274,145 304,148 304,134 274,131" fill="#991B1B" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="304,148 324,141 324,127 304,134" fill="#DC2626" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="274,131 304,134 324,127 294,124" fill="#FCA5A5" stroke="#0F172A" strokeWidth={0.7} />
+
+                  {/* Bay 1 */}
+                  <Polygon points="330,165 358,168 358,154 330,151" fill="#0369A1" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="358,168 376,162 376,148 358,154" fill="#2563A6" stroke="#0F172A" strokeWidth={0.7} />
+                  <Polygon points="330,151 358,154 376,148 348,145" fill="#7DD3FC" stroke="#0F172A" strokeWidth={0.7} />
+
+                  {/* Aft Superstructure Bridge */}
+                  <Polygon points="126,143 154,146 154,116 126,113" fill="#E2E8F0" stroke="#0F172A" strokeWidth={0.9} />
+                  <Polygon points="154,146 166,141 166,111 154,116" fill="#CBD5E1" stroke="#0F172A" strokeWidth={0.9} />
+                  <Polygon points="126,113 154,116 166,111 138,108" fill="#F8FAFC" stroke="#0F172A" strokeWidth={0.9} />
+                  <Polygon points="130,113 152,115 152,98 130,96" fill="#F1F5F9" stroke="#0F172A" strokeWidth={0.9} />
+                  <Polygon points="152,115 163,111 163,94 152,98" fill="#E2E8F0" stroke="#0F172A" strokeWidth={0.9} />
+                  <Polygon points="130,96 152,98 163,94 141,92" fill="#FFFFFF" stroke="#0F172A" strokeWidth={0.9} />
+                  <Polygon points="132,106 150,108 150,101 132,99" fill="#38BDF8" />
+                  <Polygon points="150,108 160,104 160,97 150,101" fill="#0284C7" />
+                  <Line x1={145} y1={92} x2={145} y2={68} stroke="#1E293B" strokeWidth={1.8} />
+                  <Line x1={138} y1={76} x2={152} y2={76} stroke="#1E293B" strokeWidth={1.4} />
+                  <Circle cx={145} cy={67} r={2.5} fill={severityColor} />
+                  <Polygon points="125,112 133,113 133,90 125,89" fill="#DC2626" stroke="#0F172A" strokeWidth={0.7} />
+
+                  {/* M and G Markers */}
+                  <Circle cx={270} cy={100} r={3} fill="#38BDF8" stroke="#FFFFFF" strokeWidth={1} />
+                  <SvgText x={276} y={103} fill="#38BDF8" fontSize={8} fontWeight="700">M</SvgText>
+                  <Circle cx={270} cy={130} r={3} fill="#D97706" stroke="#FFFFFF" strokeWidth={1} />
+                  <SvgText x={276} y={133} fill="#FBBF24" fontSize={8} fontWeight="700">G</SvgText>
+                </G>
+              </G>
+
+              {/* Waterline Contact Ripple */}
               <Path
-                d="M 100 100 L 240 100 L 226 150 C 220 166 186 172 170 172 C 154 172 120 166 114 150 Z"
-                fill="#102B49"
-                stroke="#183E65"
-                strokeWidth={2}
+                d="M 105 174 C 185 188 310 197 420 196 C 455 196 475 190 484 184"
+                fill="none"
+                stroke={colors.oceanWaveLight}
+                strokeWidth={1.7}
+                opacity={0.9}
               />
-              {/* Center Keel Line */}
-              <Line
-                x1={170}
-                y1={75}
-                x2={170}
-                y2={172}
-                stroke="#183E65"
-                strokeDasharray="2 3"
-                strokeWidth={1}
-              />
-
-              {/* Deck House & Bridge Accommodation */}
-              <Rect x={138} y={75} width={64} height={25} fill="#FFFFFF" stroke="#183E65" strokeWidth={1.5} rx={1} />
-              {/* Bridge Windows */}
-              <Rect x={144} y={78} width={12} height={6} fill="#0284C7" />
-              <Rect x={160} y={78} width={20} height={6} fill="#0284C7" />
-              <Rect x={184} y={78} width={12} height={6} fill="#0284C7" />
-              {/* Radar Mast */}
-              <Line x1={170} y1={75} x2={170} y2={64} stroke="#183E65" strokeWidth={1.8} />
-              <Line x1={164} y1={66} x2={176} y2={66} stroke="#183E65" strokeWidth={1.5} />
-
-              {/* Stacked Cargo Containers */}
-              {/* Bottom Tier: 3 containers */}
-              <Rect x={108} y={88} width={26} height={12} fill="#DC2626" stroke="#183E65" strokeWidth={0.8} />
-              <Rect x={206} y={88} width={26} height={12} fill="#0284C7" stroke="#183E65" strokeWidth={0.8} />
-              {/* Top Tier: 2 containers */}
-              <Rect x={110} y={76} width={24} height={12} fill="#D97706" stroke="#183E65" strokeWidth={0.8} />
-              <Rect x={208} y={76} width={24} height={12} fill="#10B981" stroke="#183E65" strokeWidth={0.8} />
-
-              {/* Metacenter Point (M) */}
-              <Circle cx={170} cy={95} r={3} fill="#0284C7" stroke="#FFFFFF" strokeWidth={1} />
-              <SvgText x={176} y={98} fill="#0284C7" fontSize="8" fontWeight="bold">
-                M
-              </SvgText>
-              {/* Center of Gravity (G) */}
-              <Circle cx={170} cy={122} r={3} fill="#D97706" stroke="#FFFFFF" strokeWidth={1} />
-              <SvgText x={176} y={125} fill="#D97706" fontSize="8" fontWeight="bold">
-                G
-              </SvgText>
             </G>
           )}
 
-          {/* SIDE VIEW: Cargo Vessel Profile rotating by clampedPitch */}
+          {/* VIEW 2: FRONT CROSS SECTION (ROLL) */}
+          {activeTab === 'front' && (
+            <G transform={`translate(${cx - 270}, ${horizonY - 160})`}>
+              <G transform={`rotate(${clampedRoll}, 270, 160)`} opacity={isAvailable ? 1 : 0.35}>
+                <Line x1={270} y1={55} x2={270} y2={206} stroke="#38BDF8" strokeDasharray="3 3" strokeWidth={1} opacity={0.6} />
+                <Path
+                  d="M 185 122 L 355 122 L 340 182 C 330 202 295 208 270 208 C 245 208 210 202 200 182 Z"
+                  fill="url(#mobHullGrad)"
+                  stroke="#0F172A"
+                  strokeWidth={2}
+                />
+                <Path
+                  d="M 206 182 L 334 182 C 325 202 295 208 270 208 C 245 208 215 202 206 182 Z"
+                  fill="url(#mobBootTopGrad)"
+                />
+                <Line x1={185} y1={122} x2={355} y2={122} stroke="#38BDF8" strokeWidth={1.5} />
+                <Rect x={235} y={84} width={70} height={38} fill="#F8FAFC" stroke="#0F172A" strokeWidth={1.4} rx={3} />
+                <Rect x={242} y={91} width={56} height={9} fill="#38BDF8" rx={2} />
+                <Line x1={270} y1={84} x2={270} y2={58} stroke="#1E293B" strokeWidth={2.2} />
+                <Circle cx={270} cy={56} r={3.5} fill={severityColor} />
+                <Rect x={198} y={104} width={32} height={18} fill="#DC2626" stroke="#0F172A" strokeWidth={0.9} rx={1} />
+                <Rect x={310} y={104} width={32} height={18} fill="#2563A6" stroke="#0F172A" strokeWidth={0.9} rx={1} />
+                <Rect x={200} y={86} width={28} height={18} fill="#00966A" stroke="#0F172A" strokeWidth={0.9} rx={1} />
+                <Rect x={312} y={86} width={28} height={18} fill="#D97706" stroke="#0F172A" strokeWidth={0.9} rx={1} />
+                <Circle cx={270} cy={112} r={3.2} fill="#38BDF8" stroke="#FFFFFF" strokeWidth={1.2} />
+                <SvgText x={277} y={115} fill="#38BDF8" fontSize={8} fontWeight="700">M</SvgText>
+                <Circle cx={270} cy={148} r={3.2} fill="#D97706" stroke="#FFFFFF" strokeWidth={1.2} />
+                <SvgText x={277} y={151} fill="#FBBF24" fontSize={8} fontWeight="700">G</SvgText>
+              </G>
+            </G>
+          )}
+
+          {/* VIEW 3: SIDE PROFILE (PITCH) */}
           {activeTab === 'side' && (
-            <G transform={isAvailable ? `rotate(${clampedPitch} ${cx} ${cy})` : undefined}>
-              {/* Waterline Wave Ripple */}
-              <Path
-                d="M 20 137 Q 35 133 50 137 T 80 137 T 110 137 T 140 137 T 170 137 T 200 137 T 230 137 T 260 137 T 290 137 T 320 137"
-                fill="none"
-                stroke="#0284C7"
-                strokeWidth={1}
-                opacity={0.5}
-              />
-
-              {/* Side Hull Profile: Stern (left) to Bulbous Bow (right) */}
-              <Path
-                d="M 45 106 L 275 106 C 285 106 295 116 298 126 C 302 138 290 148 275 152 L 70 152 C 55 152 45 142 42 128 Z"
-                fill="#102B49"
-                stroke="#183E65"
-                strokeWidth={2}
-              />
-              {/* Bulbous Bow Silhouette Feature */}
-              <Path
-                d="M 292 135 C 304 135 304 145 292 147 Z"
-                fill="#DC2626"
-                stroke="#183E65"
-                strokeWidth={1}
-              />
-
-              {/* Superstructure Bridge at Stern */}
-              <Rect x={55} y={74} width={40} height={32} fill="#FFFFFF" stroke="#183E65" strokeWidth={1.5} rx={1} />
-              <Rect x={60} y={78} width={30} height={6} fill="#0284C7" />
-              {/* Funnel Exhaust Mast */}
-              <Rect x={48} y={64} width={12} height={22} fill="#D97706" stroke="#183E65" strokeWidth={1} />
-              <Rect x={48} y={64} width={12} height={6} fill="#183E65" />
-              {/* Radar Antenna */}
-              <Line x1={75} y1={74} x2={75} y2={62} stroke="#183E65" strokeWidth={1.5} />
-              <Line x1={69} y1={65} x2={81} y2={65} stroke="#183E65" strokeWidth={1.5} />
-
-              {/* Cargo Bay 1 Containers (Aft) */}
-              <Rect x={105} y={92} width={45} height={14} fill="#0284C7" stroke="#183E65" strokeWidth={0.8} />
-              <Rect x={108} y={78} width={40} height={14} fill="#DC2626" stroke="#183E65" strokeWidth={0.8} />
-
-              {/* Cargo Bay 2 Containers (Midships) */}
-              <Rect x={158} y={92} width={48} height={14} fill="#10B981" stroke="#183E65" strokeWidth={0.8} />
-              <Rect x={160} y={78} width={44} height={14} fill="#D97706" stroke="#183E65" strokeWidth={0.8} />
-
-              {/* Cargo Bay 3 Containers (Forward) */}
-              <Rect x={214} y={92} width={45} height={14} fill="#153D64" stroke="#183E65" strokeWidth={0.8} />
-              <Rect x={216} y={78} width={40} height={14} fill="#0284C7" stroke="#183E65" strokeWidth={0.8} />
-
-              {/* Bow / Stern Directional Badges */}
-              <SvgText x={50} y={166} fill={C.muted} fontSize="8" fontWeight="bold">
-                STERN (ĐUÔI)
-              </SvgText>
-              <SvgText x={250} y={166} fill={C.muted} fontSize="8" fontWeight="bold">
-                BOW (MŨI)
-              </SvgText>
+            <G transform={`translate(${cx - 270}, ${horizonY - 160})`}>
+              <G transform={`rotate(${clampedPitch}, 270, 160)`} opacity={isAvailable ? 1 : 0.35}>
+                <Path
+                  d="M 110 138 L 395 138 C 418 142 435 152 448 160 C 435 178 415 186 385 186 L 128 186 L 110 166 Z"
+                  fill="url(#mobHullGrad)"
+                  stroke="#0F172A"
+                  strokeWidth={2}
+                />
+                <Circle cx={444} cy={162} r={5.5} fill="#B91C1C" stroke="#7F1D1D" strokeWidth={1} />
+                <Rect x={225} y={108} width={44} height={30} fill="#DC2626" stroke="#0F172A" strokeWidth={0.9} />
+                <Rect x={225} y={78} width={44} height={30} fill="#2563A6" stroke="#0F172A" strokeWidth={0.9} />
+                <Rect x={274} y={108} width={44} height={30} fill="#00966A" stroke="#0F172A" strokeWidth={0.9} />
+                <Rect x={274} y={78} width={44} height={30} fill="#D97706" stroke="#0F172A" strokeWidth={0.9} />
+                <Rect x={324} y={114} width={44} height={24} fill="#38BDF8" stroke="#0F172A" strokeWidth={0.9} />
+                <Rect x={132} y={78} width={56} height={60} fill="#F8FAFC" stroke="#0F172A" strokeWidth={1.4} rx={3} />
+                <Rect x={140} y={86} width={40} height={8} fill="#38BDF8" rx={2} />
+                <Path d="M 146 78 L 152 60 L 164 60 L 164 78 Z" fill="#DC2626" stroke="#0F172A" strokeWidth={0.9} />
+                <Line x1={405} y1={138} x2={405} y2={110} stroke="#1E293B" strokeWidth={2.2} />
+                <Circle cx={405} cy={107} r={3.2} fill="#38BDF8" />
+                <SvgText x={115} y={198} fill="#E2E8F0" fontSize={8.5} fontWeight="700">Lái (Đuôi)</SvgText>
+                <SvgText x={410} y={198} fill="#E2E8F0" fontSize={8.5} fontWeight="700">Mũi tàu</SvgText>
+              </G>
             </G>
           )}
 
           {/* Offline / Sensor Fault Overlay */}
           {!isAvailable && (
             <G>
-              <Rect x={40} y={65} width={260} height={46} fill="rgba(254, 242, 242, 0.94)" stroke={C.red} strokeWidth={1.5} rx={5} />
-              <SvgText x={170} y={84} fill={C.red} fontSize="11" fontWeight="800" textAnchor="middle">
-                {isOffline ? 'OFFLINE — MẤT KẾT NỐI TELEMETRY' : 'SENSOR FAULT — LỖI CẢM BIẾN I2C'}
+              <Rect
+                x={55}
+                y={horizonY - 38}
+                width={stageW - 110}
+                height={72}
+                rx={10}
+                fill={colors.panel}
+                stroke={severityColor}
+                strokeWidth={1.5}
+              />
+              <SvgText
+                x={stageW / 2}
+                y={horizonY - 8}
+                fill={severityColor}
+                fontSize={12.5}
+                fontWeight="700"
+                textAnchor="middle"
+              >
+                {isOffline ? 'Mất kết nối thiết bị' : 'Lỗi cảm biến I2C MPU6050'}
               </SvgText>
-              <SvgText x={170} y={99} fill={C.textSecondary} fontSize="8" fontWeight="bold" textAnchor="middle">
-                Dữ liệu góc nghiêng không khả dụng • Không suy diễn NORMAL
+              <SvgText
+                x={stageW / 2}
+                y={horizonY + 14}
+                fill={colors.textSecondary}
+                fontSize={9.5}
+                textAnchor="middle"
+              >
+                Không suy diễn góc nghiêng khi thiếu tín hiệu đo
               </SvgText>
             </G>
           )}
         </Svg>
       </View>
 
-      {/* Bottom Telemetry & Risk Meter */}
-      <View style={styles.footerRow}>
-        <View style={styles.maiTrackCol}>
-          <View style={styles.maiHeader}>
-            <Text style={styles.maiLabel}>MAI DYNAMICS:</Text>
-            <Text style={[styles.maiScoreText, { color: maiColor }]}>
-              {isAvailable ? `${maiPct.toFixed(0)}% (${(validMai / 100).toFixed(2)})` : '—'}
-            </Text>
-          </View>
-          <View style={styles.maiTrack}>
-            <View style={[styles.maiFill, { width: `${maiPct}%`, backgroundColor: maiColor }]} />
-          </View>
+      {/* Bottom Clean Telemetry Strip (Matching Web Split Bar / Semantic Colors) */}
+      <View style={[styles.footerRow, { borderTopColor: colors.borderSubtle }]}>
+        <View style={styles.footerItem}>
+          <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Góc lắc ngang</Text>
+          <Text
+            style={[
+              styles.footerValue,
+              {
+                color: !isAvailable
+                  ? colors.muted
+                  : Math.abs(validRoll) >= tripDeg
+                  ? colors.red
+                  : Math.abs(validRoll) >= warningDeg
+                  ? colors.amber
+                  : colors.tech,
+              },
+            ]}
+          >
+            {isAvailable ? `${validRoll > 0 ? '+' : ''}${validRoll.toFixed(1)}° (${portStbd})` : '—'}
+          </Text>
         </View>
 
-        <View style={styles.badgeCol}>
-          <View style={styles.subPill}>
-            <Text style={styles.subPillText}>{classRf}</Text>
-          </View>
-          <Text style={styles.scenarioTag}>SCN: {scenario}</Text>
+        <View style={styles.footerItem}>
+          <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>Góc chúi dọc</Text>
+          <Text
+            style={[
+              styles.footerValue,
+              { color: !isAvailable ? colors.muted : colors.amber },
+            ]}
+          >
+            {isAvailable ? `${validPitch > 0 ? '+' : ''}${validPitch.toFixed(1)}° (${bowStern})` : '—'}
+          </Text>
+        </View>
+
+        <View style={styles.footerItem}>
+          <Text style={[styles.footerLabel, { color: colors.textSecondary }]}>MAI</Text>
+          <Text style={[styles.footerValue, { color: isAvailable ? maiColor : colors.muted }]}>
+            {isAvailable ? `${maiPct} / 100` : '—'}
+          </Text>
         </View>
       </View>
+
+      <Text style={[styles.disclaimerCaption, { color: colors.textSecondary }]}>
+        {touchedSample
+          ? `Đang xem mẫu lịch sử #${touchedSample.idx + 1} • Hình minh họa động học 2D/Isometric`
+          : `Kịch bản ${scenario} • Hình minh họa động học 2D/Isometric đồng bộ dữ liệu`}
+      </Text>
     </View>
   );
 }
 
-// Backward-compatible alias
 export const ShipMotionVisualizer = Inclinometer;
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: C.bg,
-    borderColor: C.borderSubtle,
     borderWidth: 1,
-    borderLeftWidth: 3.5,
-    borderLeftColor: C.borderNavy,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 12,
+    padding: 14,
     width: '100%',
     gap: 10,
-    ...SHADOWS.card,
   },
   containerCompact: {
-    padding: 8,
-    gap: 6,
+    padding: 12,
+    gap: 8,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
-    paddingBottom: 6,
+    paddingBottom: 8,
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   headerTitle: {
-    color: C.text,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontSize: 17,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
-  demoBadge: {
-    backgroundColor: C.primaryContainer,
+  simPill: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 20,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
-  demoBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+  simPillText: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   tabGroup: {
     flexDirection: 'row',
     gap: 4,
-    backgroundColor: C.panel2,
     borderRadius: 10,
     padding: 3,
     borderWidth: 1,
-    borderColor: C.borderSubtle,
   },
   tabBtn: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  tabBtnActive: {
-    backgroundColor: C.primaryContainer,
+    paddingVertical: 6,
+    borderRadius: 7,
+    minHeight: 34,
+    justifyContent: 'center',
   },
   tabBtnText: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  tabBtnTextActive: {
-    color: '#FFFFFF',
-  },
-  hudRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: C.panel2,
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  hudItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  hudLabel: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  hudVal: {
     fontSize: 12,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  hudSub: {
-    color: C.textSecondary,
-    fontSize: 8,
+    fontFamily: FONT.semibold,
     fontWeight: '600',
-  },
-  severityPill: {
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: '#FFFFFF',
-  },
-  severityText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.4,
   },
   svgWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: C.borderSubtle,
     borderRadius: 10,
     overflow: 'hidden',
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    paddingTop: 4,
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: C.borderSubtle,
   },
-  maiTrackCol: {
-    flex: 1,
-    gap: 3,
-  },
-  maiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  maiLabel: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  maiScoreText: {
-    fontSize: 9,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  maiTrack: {
-    height: 6,
-    backgroundColor: C.panel2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
-    overflow: 'hidden',
-  },
-  maiFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  badgeCol: {
-    alignItems: 'flex-end',
+  footerItem: {
+    minWidth: 90,
     gap: 2,
   },
-  subPill: {
-    backgroundColor: C.panelHigh,
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  footerLabel: {
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
-  subPillText: {
-    color: C.text,
-    fontSize: 9,
-    fontWeight: '700',
-  },
-  scenarioTag: {
-    color: C.muted,
-    fontSize: 8,
+  footerValue: {
+    fontSize: 14,
+    fontFamily: FONT.semibold,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  disclaimerCaption: {
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 });

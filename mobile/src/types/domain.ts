@@ -3,7 +3,7 @@ export type Route =
   | 'VoyageReports' | 'ReportDetails' | 'More' | 'ControlCenter'
   | 'ReplayReview' | 'DeviceHealth' | 'ModelMonitor';
 
-export type MainTab = 'Overview' | 'LiveMotion' | 'Alarms' | 'VoyageReports' | 'More';
+export type MainTab = 'Overview' | 'LiveMotion' | 'Alarms' | 'More';
 export type Role = 'Operator' | 'Supervisor' | 'Admin';
 export type Scenario = 'S0' | 'S0b' | 'S1' | 'S2' | 'S3' | 'H1' | 'OFFLINE' | 'UNKNOWN' | 'SENSOR_FAULT';
 export type RFClass = 'NORMAL' | 'HIGH_ROLL' | 'PERSISTENT_OFFSET' | 'AMPLITUDE_GROWTH' | 'UNKNOWN' | 'FAULT';
@@ -183,6 +183,31 @@ export interface DeviceHealth {
   healthStatus: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
 }
 
+export interface FeatureItem {
+  index: number;
+  name: string;
+  displayName?: string;
+  group: string;
+  window_s: number;
+  unit: string;
+  description: string;
+  value: number | null;
+  status: 'VALID' | 'WARNING' | 'INVALID' | 'MISSING' | 'NOT_APPLICABLE';
+  reason?: string;
+  source?: string;
+}
+
+export interface FeatureSummary {
+  total: number;
+  validCount: number;
+  warningCount: number;
+  invalidCount: number;
+  missingCount: number;
+  contractId: string;
+  version: string;
+  sourceExport: string;
+}
+
 export interface ModelInfo {
   active: string;
   activeModelId: 'RF' | 'BASELINE_B';
@@ -192,6 +217,8 @@ export interface ModelInfo {
   algorithm: string;
   featuresCount: number;
   features: string[];
+  featureItems?: FeatureItem[];
+  featureSummary?: FeatureSummary;
   inferenceMs: number;
   flashKb: number;
   ramKb: number;
@@ -255,12 +282,11 @@ export interface ScreenProps {
   actions: AppActions;
 }
 
-export const MAIN_TABS: MainTab[] = ['Overview', 'LiveMotion', 'Alarms', 'VoyageReports', 'More'];
+export const MAIN_TABS: MainTab[] = ['Overview', 'LiveMotion', 'Alarms', 'More'];
 
 export const TAB_LABELS: Record<MainTab, string> = {
-  Overview: 'Home',
-  LiveMotion: 'Motion',
-  Alarms: 'Alarms',
-  VoyageReports: 'Reports',
-  More: 'More',
+  Overview: 'Tổng quan',
+  LiveMotion: 'Chuyển động',
+  Alarms: 'Cảnh báo',
+  More: 'Thêm',
 };

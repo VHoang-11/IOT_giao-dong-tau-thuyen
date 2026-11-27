@@ -1,20 +1,30 @@
 import React from 'react';
 import {
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { C, SEVERITY_COLORS, SEVERITY_BG, SHADOWS } from '../theme';
+import {
+  FONT,
+  getSeverityBg,
+  getSeverityColors,
+  SHADOWS,
+  TYPOGRAPHY,
+  useTheme,
+} from '../theme';
 import { AlarmLevel } from '../types/domain';
+import { getAlarmLevelNameVi, getAlarmStatusNameVi } from '../i18n/vi';
 
 export function Page({
   title,
   subtitle,
   children,
   onBack,
-  vesselName = 'VESSEL DEMO 01',
+  vesselName = 'Tàu MV SVMG-01',
   utcTime,
   isHornMuted,
   onToggleHorn,
@@ -30,89 +40,120 @@ export function Page({
   onToggleHorn?: () => void;
   unackCount?: number;
 }) {
+  const { colors, mode, toggleTheme } = useTheme();
+
   return (
     <ScrollView
-      style={styles.page}
+      style={[styles.page, { backgroundColor: colors.canvas }]}
       contentContainerStyle={styles.pageContent}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Top Bridge App Bar */}
-      <View style={styles.topAppBar}>
+      {/* Top Bridge Header */}
+      <View
+        style={[
+          styles.topAppBar,
+          { backgroundColor: colors.panel, borderColor: colors.border },
+          SHADOWS.sm,
+        ]}
+      >
         <View style={styles.topAppBarLeft}>
           {onBack ? (
             <Pressable
               onPress={onBack}
-              style={styles.backBtn}
+              style={({ pressed }) => [
+                styles.backBtn,
+                { borderColor: colors.borderSubtle, backgroundColor: colors.panel2 },
+                pressed && { opacity: 0.7 },
+              ]}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel="Quay lại"
             >
-              <Text style={styles.backChevron}>‹</Text>
-              <Text style={styles.backBtnText}>BACK</Text>
+              <Text style={[styles.backChevron, { color: colors.tech }]}>‹</Text>
+              <Text style={[styles.backBtnText, { color: colors.tech }]}>Quay lại</Text>
             </Pressable>
           ) : (
             <View style={styles.vesselBrand}>
-              <Text style={styles.boatIcon}>≋</Text>
-              <View>
-                <Text style={styles.vesselName}>{vesselName}</Text>
-                <Text style={styles.vesselSub}>
-                  BRIDGE TELEMETRY {unackCount > 0 ? `• ${unackCount} UNACK` : '• NORMAL'}
+              <View style={[styles.brandIconPill, { backgroundColor: colors.cyanContainerBg }]}>
+                <Text style={[styles.boatIcon, { color: colors.tech }]}>≋</Text>
+              </View>
+              <View style={{ flexShrink: 1 }}>
+                <Text style={[styles.vesselName, { color: colors.title }]} numberOfLines={1}>
+                  {vesselName}
+                </Text>
+                <Text style={[styles.vesselSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {unackCount > 0 ? `${unackCount} cảnh báo chờ xử lý` : 'Hệ thống ổn định'}
                 </Text>
               </View>
             </View>
           )}
         </View>
 
-        {/* Right Horn/Buzzer toggle & Sensor status */}
         <View style={styles.topAppBarRight}>
+          {/* Theme toggle shortcut */}
+          <Pressable
+            onPress={toggleTheme}
+            style={({ pressed }) => [
+              styles.themeToggleBtn,
+              { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+              pressed && { opacity: 0.75 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={mode === 'light' ? 'Chuyển sang giao diện tối' : 'Chuyển sang giao diện sáng'}
+          >
+            <Text style={[styles.themeToggleText, { color: colors.title }]}>
+              {mode === 'light' ? '☀ Sáng' : '🌙 Tối'}
+            </Text>
+          </Pressable>
+
+          {/* Buzzer status toggle */}
           {onToggleHorn && (
             <Pressable
               onPress={onToggleHorn}
-              style={[
+              style={({ pressed }) => [
                 styles.hornPill,
-                isHornMuted ? styles.hornMuted : styles.hornActive,
+                isHornMuted
+                  ? { backgroundColor: colors.panel2, borderColor: colors.borderSubtle }
+                  : { backgroundColor: colors.errorContainerBg, borderColor: colors.red },
+                pressed && { opacity: 0.75 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel={isHornMuted ? 'Buzzer muted' : 'Buzzer active'}
+              accessibilityLabel={isHornMuted ? 'Còi báo động đang tắt' : 'Còi báo động đang bật'}
             >
-              <Text style={[styles.hornIcon, { color: isHornMuted ? C.muted : C.red }]}>
-                {isHornMuted ? '🕨' : '🔔'}
+              <Text style={[styles.hornStatus, { color: isHornMuted ? colors.muted : colors.red }]}>
+                {isHornMuted ? '🔇 Tắt còi' : '🔔 Còi bật'}
               </Text>
-              <View>
-                <Text style={styles.hornTitle}>HORN</Text>
-                <Text
-                  style={[
-                    styles.hornStatus,
-                    { color: isHornMuted ? C.muted : C.red },
-                  ]}
-                >
-                  {isHornMuted ? 'MUTED' : 'ACTIVE'}
-                </Text>
-              </View>
             </Pressable>
           )}
         </View>
       </View>
 
-      {/* Sub-Header Telemetry Ribbon */}
-      <View style={styles.telemetryRibbon}>
+      {/* Simulation Source Ribbon */}
+      <View
+        style={[
+          styles.telemetryRibbon,
+          { backgroundColor: colors.panel, borderColor: colors.border },
+        ]}
+      >
         <View style={styles.ribbonRow}>
-          <View style={styles.simBadge}>
-            <View style={styles.simDot} />
-            <Text style={styles.simText}>SIMULATION MODE (DEMO)</Text>
+          <View style={[styles.simBadge, { backgroundColor: colors.warningContainerBg }]}>
+            <View style={[styles.simDot, { backgroundColor: colors.amber }]} />
+            <Text style={[styles.simText, { color: colors.amber }]}>Dữ liệu mô phỏng</Text>
           </View>
-          <Text style={styles.utcTime}>{utcTime ?? '14:28:12 UTC'}</Text>
-        </View>
-        <View style={styles.ribbonSubRow}>
-          <Text style={styles.streamText}>● 40Hz BLE/LTE Telemetry Link</Text>
-          <Text style={styles.latencyText}>Latency: 24ms</Text>
+          <Text style={[styles.utcTime, { color: colors.textSecondary }]}>
+            {utcTime ?? '—'}
+          </Text>
         </View>
       </View>
 
-      {/* Optional Screen Title & Subtitle */}
+      {/* Screen Title & Subtitle */}
       {title && (
         <View style={styles.titleArea}>
-          <Text style={styles.screenTitle}>{title}</Text>
-          {subtitle && <Text style={styles.screenSubtitle}>{subtitle}</Text>}
+          <Text style={[styles.screenTitle, { color: colors.title }]}>{title}</Text>
+          {subtitle && (
+            <Text style={[styles.screenSubtitle, { color: colors.textSecondary }]}>
+              {subtitle}
+            </Text>
+          )}
         </View>
       )}
 
@@ -125,65 +166,68 @@ export function StatusBanner({
   level,
   title,
   desc,
-  elapsed = 'T+04:12',
+  elapsed = 'T+0s',
 }: {
   level: AlarmLevel;
   title: string;
   desc: string;
   elapsed?: string;
 }) {
-  const color = SEVERITY_COLORS[level];
-  const bg = SEVERITY_BG[level];
-  const glow =
-    level === 'CRITICAL'
-      ? SHADOWS.criticalGlow
-      : level === 'WARNING'
-      ? SHADOWS.warningGlow
-      : level === 'CAUTION'
-      ? SHADOWS.cautionGlow
-      : undefined;
+  const { colors } = useTheme();
+  const sevColors = getSeverityColors(colors);
+  const sevBg = getSeverityBg(colors);
+  const color = sevColors[level] ?? colors.muted;
+  const bg = sevBg[level] ?? colors.neutralContainerBg;
 
   return (
-    <View style={[styles.banner, { borderLeftColor: color, backgroundColor: bg }, glow]}>
+    <View
+      style={[
+        styles.banner,
+        { borderColor: colors.border, borderLeftColor: color, backgroundColor: bg },
+      ]}
+    >
       <View style={styles.bannerHeader}>
         <View style={styles.bannerBadgeRow}>
           <View style={[styles.pulseDot, { backgroundColor: color }]} />
-          <View style={[styles.bannerPill, { borderColor: color }]}>
-            <Text style={[styles.bannerPillText, { color }]}>{level}</Text>
+          <View style={[styles.bannerPill, { borderColor: color, backgroundColor: colors.panel }]}>
+            <Text style={[styles.bannerPillText, { color }]}>{getAlarmLevelNameVi(level)}</Text>
           </View>
-          <Text style={styles.bannerTitle}>{title}</Text>
+          <Text style={[styles.bannerTitle, { color: colors.title }]} numberOfLines={2}>
+            {title}
+          </Text>
         </View>
-        <Text style={styles.bannerElapsed}>{elapsed}</Text>
+        <Text style={[styles.bannerElapsed, { color: colors.textSecondary, backgroundColor: colors.panel }]}>
+          {elapsed}
+        </Text>
       </View>
-      <Text style={styles.bannerDesc}>{desc}</Text>
+      <Text style={[styles.bannerDesc, { color: colors.title }]}>{desc}</Text>
     </View>
   );
 }
 
 export function RiskBar({ score }: { score: number }) {
-  // score is 0.0 - 1.0 (or 0 - 100)
+  const { colors } = useTheme();
   const normScore = score > 1 ? score / 100 : score;
+  const displayPct = Math.round(normScore * 100);
+  const statusColor =
+    normScore >= 0.7 ? colors.red : normScore >= 0.35 ? colors.amber : colors.green;
+
   return (
     <View style={styles.riskBarContainer}>
       <View style={styles.riskLabels}>
-        <Text style={styles.riskLabelLeft}>Normal &lt;0.35</Text>
-        <Text
-          style={[
-            styles.riskLabelMid,
-            { color: normScore >= 0.7 ? C.red : normScore >= 0.35 ? C.amber : C.green },
-          ]}
-        >
-          ▲ Current: {normScore.toFixed(2)}
+        <Text style={[styles.riskLabelEdge, { color: colors.textSecondary }]}>An toàn (&lt;35)</Text>
+        <Text style={[styles.riskLabelMid, { color: statusColor }]}>
+          Hiện tại: {displayPct} / 100
         </Text>
-        <Text style={styles.riskLabelRight}>Alert ≥0.70</Text>
+        <Text style={[styles.riskLabelEdge, { color: colors.red }]}>Nguy cấp (≥70)</Text>
       </View>
-      <View style={styles.barTrack}>
-        <View style={[styles.barSegment, { width: '35%', backgroundColor: C.green }]} />
-        <View style={[styles.barSegment, { width: '35%', backgroundColor: C.amber }]} />
-        <View style={[styles.barSegment, { width: '30%', backgroundColor: C.red }]} />
+      <View style={[styles.barTrack, { backgroundColor: colors.panel2, borderColor: colors.borderSubtle }]}>
+        <View style={[styles.barSegment, { width: '35%', backgroundColor: colors.green }]} />
+        <View style={[styles.barSegment, { width: '35%', backgroundColor: colors.amber }]} />
+        <View style={[styles.barSegment, { width: '30%', backgroundColor: colors.red }]} />
       </View>
-      <Text style={styles.riskFooter}>
-        Calibrated demo thresholds • Random Forest Classifier
+      <Text style={[styles.riskFooter, { color: colors.textSecondary }]}>
+        Ngưỡng đánh giá mô phỏng • Phân loại TinyML
       </Text>
     </View>
   );
@@ -200,13 +244,25 @@ export function Panel({
   children: React.ReactNode;
   extra?: string;
 }) {
+  const { colors } = useTheme();
+
   return (
-    <View style={styles.panel}>
+    <View
+      style={[
+        styles.panel,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.card,
+      ]}
+    >
       {(title || tag || extra) && (
-        <View style={styles.panelHeader}>
-          {title && <Text style={styles.panelTitle}>{title}</Text>}
-          {tag && <Text style={styles.panelTag}>{tag}</Text>}
-          {extra && <Text style={styles.panelExtra}>{extra}</Text>}
+        <View style={[styles.panelHeader, { borderBottomColor: colors.borderSubtle }]}>
+          {title && <Text style={[styles.panelTitle, { color: colors.title }]}>{title}</Text>}
+          {tag && (
+            <View style={[styles.panelTagWrap, { backgroundColor: colors.panel2 }]}>
+              <Text style={[styles.panelTag, { color: colors.tech }]}>{tag}</Text>
+            </View>
+          )}
+          {extra && <Text style={[styles.panelExtra, { color: colors.tech }]}>{extra}</Text>}
         </View>
       )}
       {children}
@@ -219,7 +275,7 @@ export function MetricCard({
   value,
   unit,
   subtext,
-  color = C.text,
+  color,
   flex = 1,
 }: {
   label: string;
@@ -229,14 +285,23 @@ export function MetricCard({
   color?: string;
   flex?: number;
 }) {
+  const { colors } = useTheme();
+  const valueColor = color ?? colors.title;
+
   return (
-    <View style={[styles.metricCard, { flex }]}>
-      <Text style={styles.metricLabel}>{label}</Text>
+    <View
+      style={[
+        styles.metricCard,
+        { backgroundColor: colors.panel, borderColor: colors.border, flex },
+        SHADOWS.sm,
+      ]}
+    >
+      <Text style={[styles.metricLabel, { color: colors.title }]}>{label}</Text>
       <View style={styles.metricValRow}>
-        <Text style={[styles.metricVal, { color }]}>{value}</Text>
-        {unit && <Text style={styles.metricUnit}>{unit}</Text>}
+        <Text style={[styles.metricVal, { color: valueColor }]}>{value}</Text>
+        {unit ? <Text style={[styles.metricUnit, { color: colors.textSecondary }]}>{unit}</Text> : null}
       </View>
-      {subtext && <Text style={styles.metricSub}>{subtext}</Text>}
+      {subtext ? <Text style={[styles.metricSub, { color: colors.textSecondary }]}>{subtext}</Text> : null}
     </View>
   );
 }
@@ -254,37 +319,56 @@ export function ActionBtn({
   tone?: 'primary' | 'secondary' | 'danger' | 'neutral' | 'ghost';
   icon?: string;
 }) {
+  const { colors, reducedMotion } = useTheme();
+  const scaleAnim = React.useRef(new Animated.Value(1)).current;
+
+  const animateTo = (toValue: number) => {
+    if (reducedMotion) return;
+    Animated.spring(scaleAnim, {
+      toValue,
+      useNativeDriver: true,
+      speed: 45,
+      bounciness: 0,
+    }).start();
+  };
+
+  const bgStyle =
+    tone === 'primary'
+      ? { backgroundColor: colors.primaryContainer, borderColor: colors.primaryContainer }
+      : tone === 'danger'
+      ? { backgroundColor: colors.red, borderColor: colors.red }
+      : tone === 'secondary'
+      ? { backgroundColor: colors.panelHigh, borderColor: colors.borderSubtle }
+      : tone === 'ghost'
+      ? { backgroundColor: 'transparent', borderColor: colors.borderSubtle }
+      : { backgroundColor: colors.panel2, borderColor: colors.borderSubtle };
+
+  const txtColor =
+    tone === 'primary' || tone === 'danger'
+      ? '#FFFFFF'
+      : disabled
+      ? colors.muted
+      : colors.title;
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.actionBtn,
-        tone === 'primary'
-          ? styles.btnPrimary
-          : tone === 'secondary'
-          ? styles.btnSecondary
-          : tone === 'danger'
-          ? styles.btnDanger
-          : tone === 'ghost'
-          ? styles.btnGhost
-          : styles.btnNeutral,
-        disabled && styles.btnDisabled,
-        pressed && !disabled && styles.btnPressed,
-      ]}
-    >
-      {icon && <Text style={styles.btnIcon}>{icon}</Text>}
-      <Text
-        style={[
-          styles.actionBtnText,
-          tone === 'primary' ? styles.textPrimary : styles.textNeutral,
-          disabled && styles.textDisabled,
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => !disabled && animateTo(0.98)}
+        onPressOut={() => animateTo(1)}
+        disabled={disabled}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.actionBtn,
+          bgStyle,
+          disabled && styles.btnDisabled,
+          pressed && !disabled && { opacity: 0.88 },
         ]}
       >
-        {label}
-      </Text>
-    </Pressable>
+        {icon && <Text style={[styles.btnIcon, { color: txtColor }]}>{icon}</Text>}
+        <Text style={[styles.actionBtnText, { color: txtColor }]}>{label}</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -297,50 +381,65 @@ export function Pill({
   level?: AlarmLevel;
   status?: string;
 }) {
+  const { colors } = useTheme();
+  const sevColors = getSeverityColors(colors);
+  const sevBg = getSeverityBg(colors);
+
   const color = level
-    ? SEVERITY_COLORS[level]
-    : status === 'APPLIED' || status === 'ACKED' || status === 'RESOLVED'
-    ? C.green
-    : status === 'REJECTED'
-    ? C.red
-    : C.cyan;
+    ? sevColors[level] ?? colors.muted
+    : status === 'APPLIED' || status === 'ACKED' || status === 'CLEARED' || status === 'VALID'
+    ? colors.green
+    : status === 'REJECTED' || status === 'TIMEOUT' || status === 'INVALID'
+    ? colors.red
+    : status === 'SENT' || status === 'DELIVERED' || status === 'WARNING'
+    ? colors.amber
+    : colors.tech;
 
   const bg = level
-    ? SEVERITY_BG[level]
-    : 'rgba(2, 132, 199, 0.08)';
-
-  const glow =
-    level === 'CRITICAL'
-      ? SHADOWS.criticalGlow
-      : level === 'WARNING'
-      ? SHADOWS.warningGlow
-      : undefined;
+    ? sevBg[level] ?? colors.neutralContainerBg
+    : status === 'APPLIED' || status === 'ACKED' || status === 'CLEARED' || status === 'VALID'
+    ? colors.greenContainerBg
+    : status === 'REJECTED' || status === 'TIMEOUT' || status === 'INVALID'
+    ? colors.errorContainerBg
+    : status === 'SENT' || status === 'DELIVERED' || status === 'WARNING'
+    ? colors.warningContainerBg
+    : colors.cyanContainerBg;
 
   return (
-    <View style={[styles.pill, { borderColor: color, backgroundColor: bg }, glow]}>
+    <View style={[styles.pill, { borderColor: color, backgroundColor: bg }]}>
       <Text style={[styles.pillText, { color }]}>{label}</Text>
     </View>
   );
 }
 
 export function TwoCol({ children }: { children: React.ReactNode }) {
-  return <View style={styles.twoCol}>{children}</View>;
+  const { width } = useWindowDimensions();
+  const isVeryNarrow = width < 340;
+  return (
+    <View style={[styles.twoCol, isVeryNarrow && { flexDirection: 'column' }]}>
+      {children}
+    </View>
+  );
 }
 
 export function Label({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.metricLabel}>{children}</Text>;
+  const { colors } = useTheme();
+  return <Text style={[styles.metricLabel, { color: colors.title }]}>{children}</Text>;
 }
 
 export function Value({ children, color }: { children: React.ReactNode; color?: string }) {
-  return <Text style={[styles.metricVal, color ? { color } : null]}>{children}</Text>;
+  const { colors } = useTheme();
+  return <Text style={[styles.metricVal, { color: color ?? colors.title }]}>{children}</Text>;
 }
 
 export function Body({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.bannerDesc}>{children}</Text>;
+  const { colors } = useTheme();
+  return <Text style={[styles.bannerDesc, { color: colors.title }]}>{children}</Text>;
 }
 
 export function Small({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.riskFooter}>{children}</Text>;
+  const { colors } = useTheme();
+  return <Text style={[styles.riskFooter, { color: colors.textSecondary, textAlign: 'left' }]}>{children}</Text>;
 }
 
 export function Metric({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -364,489 +463,430 @@ export function Action({
 export function LinkRow({
   title,
   subtitle,
+  badge,
   onPress,
   disabled = false,
 }: {
   title: string;
   subtitle?: string;
+  badge?: string;
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={[styles.linkRow, disabled && { opacity: 0.4 }]}
+      style={({ pressed }) => [
+        styles.linkRow,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.sm,
+        disabled && { opacity: 0.5 },
+        pressed && !disabled && { backgroundColor: colors.panel2 },
+      ]}
     >
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={styles.linkTitle}>{title}</Text>
-        {subtitle && <Text style={styles.linkSubtitle}>{subtitle}</Text>}
+      <View style={{ flex: 1, gap: 3 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Text style={[styles.linkTitle, { color: colors.title }]}>{title}</Text>
+          {badge && (
+            <View style={[styles.linkBadge, { backgroundColor: colors.warningContainerBg }]}>
+              <Text style={[styles.linkBadgeText, { color: colors.amber }]}>{badge}</Text>
+            </View>
+          )}
+        </View>
+        {subtitle && (
+          <Text style={[styles.linkSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
+        )}
       </View>
-      <Text style={styles.linkChevron}>›</Text>
+      <Text style={[styles.linkChevron, { color: colors.tech }]}>›</Text>
     </Pressable>
   );
 }
 
 export function Severity({ level }: { level: AlarmLevel }) {
-  return <Pill label={level} level={level} />;
+  return <Pill label={getAlarmLevelNameVi(level)} level={level} />;
+}
+
+export function StatusPill({ status }: { status: string }) {
+  return <Pill label={getAlarmStatusNameVi(status)} status={status} />;
 }
 
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: C.canvas,
   },
   pageContent: {
-    paddingHorizontal: 14,
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingTop: 10,
     paddingBottom: 28,
-    gap: 12,
+    gap: 14,
   },
   topAppBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 12,
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
-    backgroundColor: C.bg,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
   },
   topAppBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    flex: 1,
+    minWidth: 0,
   },
   topAppBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   vesselBrand: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  brandIconPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   boatIcon: {
-    color: C.cyan,
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 20,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
   vesselName: {
-    color: C.text,
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontSize: 15,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
   vesselSub: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '600',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontFamily: FONT.regular,
     marginTop: 1,
   },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: C.bg,
+    minHeight: 44,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 8,
+    borderRadius: 10,
     gap: 4,
   },
   backChevron: {
-    color: C.cyanBright,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 18,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
     marginTop: -2,
   },
   backBtnText: {
-    color: C.cyanBright,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+  },
+  themeToggleBtn: {
+    minHeight: 36,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  themeToggleText: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   hornPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
+    minHeight: 36,
     paddingHorizontal: 10,
-    borderRadius: 20,
+    borderRadius: 8,
     borderWidth: 1,
-    gap: 6,
-  },
-  hornActive: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: C.red,
-  },
-  hornMuted: {
-    backgroundColor: C.panel2,
-    borderColor: C.border,
-  },
-  hornIcon: {
-    fontSize: 13,
-  },
-  hornTitle: {
-    color: C.text,
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    lineHeight: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   hornStatus: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    lineHeight: 9,
-    marginTop: 1,
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   telemetryRibbon: {
-    backgroundColor: C.panel2,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: C.borderSubtle,
-    paddingVertical: 7,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    gap: 5,
   },
   ribbonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   simBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   simDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: C.amber,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   simText: {
-    color: C.amber,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   utcTime: {
-    color: C.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontFamily: FONT.medium,
     fontVariant: ['tabular-nums'],
-  },
-  ribbonSubRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: C.borderSubtle,
-    paddingTop: 4,
-  },
-  streamText: {
-    color: C.cyan,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  latencyText: {
-    color: C.muted,
-    fontSize: 10,
   },
   titleArea: {
     marginTop: 2,
     marginBottom: 2,
+    gap: 4,
   },
   screenTitle: {
-    color: C.text,
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    ...TYPOGRAPHY.pageTitle,
   },
   screenSubtitle: {
-    color: C.muted,
-    fontSize: 11,
-    marginTop: 2,
+    ...TYPOGRAPHY.secondary,
   },
   banner: {
-    borderLeftWidth: 3.5,
+    borderWidth: 1,
+    borderLeftWidth: 4,
     borderRadius: 12,
-    borderTopWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: C.borderSubtle,
-    padding: 12,
+    padding: 14,
     gap: 6,
   },
   bannerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: 8,
   },
   bannerBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 8,
+    flex: 1,
   },
   pulseDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   bannerPill: {
     borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 7,
-    paddingVertical: 1.5,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   bannerPillText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   bannerTitle: {
-    color: C.text,
-    fontSize: 11,
+    fontSize: 15,
+    fontFamily: FONT.bold,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    flexShrink: 1,
   },
   bannerElapsed: {
-    color: C.muted,
-    fontSize: 10,
-    fontWeight: '600',
-    backgroundColor: C.panel2,
-    paddingHorizontal: 7,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 20,
+    borderRadius: 999,
+    fontVariant: ['tabular-nums'],
   },
   bannerDesc: {
-    color: C.text,
-    fontSize: 12,
-    lineHeight: 17,
+    ...TYPOGRAPHY.body,
   },
   panel: {
-    backgroundColor: C.panel,
     borderWidth: 1,
-    borderLeftWidth: 3.5,
-    borderColor: C.borderSubtle,
-    borderLeftColor: C.borderNavy,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-    ...SHADOWS.card,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
   },
   panelHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
     borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
-    paddingBottom: 6,
+    paddingBottom: 10,
   },
   panelTitle: {
-    color: C.cyan,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    ...TYPOGRAPHY.cardTitle,
+    flexShrink: 1,
+  },
+  panelTagWrap: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   panelTag: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   panelExtra: {
-    color: C.borderFocus,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   metricCard: {
-    backgroundColor: C.bg,
     borderWidth: 1,
-    borderLeftWidth: 3.5,
-    borderColor: C.borderSubtle,
-    borderLeftColor: C.borderNavy,
     borderRadius: 12,
-    padding: 12,
-    gap: 4,
-    minWidth: 120,
-    ...SHADOWS.sm,
+    padding: 16,
+    minWidth: 140,
+    alignItems: 'flex-start',
   },
   metricLabel: {
-    color: C.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    ...TYPOGRAPHY.cardTitle,
+    marginBottom: 8,
   },
   metricValRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 3,
+    gap: 5,
+    marginBottom: 6,
+    flexWrap: 'wrap',
   },
   metricVal: {
-    fontSize: 22,
-    fontWeight: '800',
+    ...TYPOGRAPHY.metricValue,
     fontVariant: ['tabular-nums'],
-    letterSpacing: -0.5,
   },
   metricUnit: {
-    color: C.muted,
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 13,
+    fontFamily: FONT.regular,
   },
   metricSub: {
-    color: C.textSecondary,
-    fontSize: 10,
+    ...TYPOGRAPHY.secondary,
   },
   riskBarContainer: {
-    gap: 4,
+    gap: 6,
     marginTop: 4,
   },
   riskLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
   },
-  riskLabelLeft: {
-    color: C.muted,
-    fontSize: 9,
+  riskLabelEdge: {
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
   riskLabelMid: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  riskLabelRight: {
-    color: C.red,
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 13,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   barTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: C.canvas,
+    height: 8,
+    borderRadius: 4,
     flexDirection: 'row',
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: C.borderSubtle,
   },
   barSegment: {
     height: '100%',
   },
   riskFooter: {
-    color: C.muted,
-    fontSize: 9,
+    fontSize: 12,
+    fontFamily: FONT.regular,
     textAlign: 'center',
-    marginTop: 2,
   },
   actionBtn: {
     minHeight: 44,
-    borderRadius: 8,
+    borderRadius: 10,
+    borderWidth: 1,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-  },
-  btnPrimary: {
-    backgroundColor: C.primaryContainer,
-    borderWidth: 1,
-    borderColor: C.borderNavy,
-  },
-  btnSecondary: {
-    backgroundColor: C.panelHigh,
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
-  },
-  btnDanger: {
-    backgroundColor: C.red,
-  },
-  btnNeutral: {
-    backgroundColor: C.panel2,
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
-  },
-  btnGhost: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
+    gap: 8,
   },
   btnDisabled: {
-    opacity: 0.35,
-  },
-  btnPressed: {
-    opacity: 0.8,
+    opacity: 0.45,
   },
   btnIcon: {
-    fontSize: 14,
-    color: '#FFFFFF',
+    fontSize: 15,
   },
   actionBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    ...TYPOGRAPHY.button,
     textAlign: 'center',
   },
-  textPrimary: {
-    color: '#FFFFFF',
-  },
-  textNeutral: {
-    color: C.text,
-  },
-  textDisabled: {
-    color: C.muted,
-  },
   pill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
     borderWidth: 1,
+    alignSelf: 'flex-start',
   },
   pillText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   twoCol: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   linkRow: {
-    minHeight: 52,
+    minHeight: 54,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: C.bg,
-    borderColor: C.borderSubtle,
     borderWidth: 1,
-    borderLeftWidth: 3.5,
-    borderLeftColor: C.borderNavy,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    ...SHADOWS.sm,
   },
   linkTitle: {
-    color: C.text,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   linkSubtitle: {
-    color: C.muted,
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 18,
+  },
+  linkBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  linkBadgeText: {
     fontSize: 11,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   linkChevron: {
     fontSize: 22,
-    color: C.cyan,
-    fontWeight: '800',
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
 });

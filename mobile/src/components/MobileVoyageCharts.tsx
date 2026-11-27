@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { C } from '../theme';
+import { StyleSheet, Text, View } from 'react-native';
+import { FONT, SHADOWS, useTheme } from '../theme';
 import { Voyage } from '../types/domain';
 
 interface MobileVoyageChartsProps {
@@ -8,19 +8,64 @@ interface MobileVoyageChartsProps {
 }
 
 export function MobileVoyageDistributionChart({ voyage }: MobileVoyageChartsProps) {
+  const { colors } = useTheme();
+
   const bars = [
-    { label: 'Max Roll', val: voyage.maxAbsRollDeg, max: 25, unit: '°', color: voyage.maxAbsRollDeg > 15 ? C.red : C.cyan, threshold: 15.0 },
-    { label: 'RMS Roll (T11)', val: voyage.rmsRollDeg, max: 25, unit: '°', color: C.cyan },
-    { label: 'P95 Roll', val: voyage.p95AbsRollDeg, max: 25, unit: '°', color: '#0369A1' },
-    { label: 'Max Pitch', val: voyage.maxAbsPitchDeg, max: 10, unit: '°', color: C.amber },
-    { label: 'RMS Pitch', val: voyage.rmsPitchDeg, max: 10, unit: '°', color: '#B45309' },
+    {
+      label: 'Góc lắc ngang cực đại',
+      val: voyage.maxAbsRollDeg,
+      max: 25,
+      unit: '°',
+      color: voyage.maxAbsRollDeg >= 15 ? colors.red : colors.tech,
+      threshold: 15.0,
+    },
+    {
+      label: 'Góc lắc ngang hiệu dụng (RMS)',
+      val: voyage.rmsRollDeg,
+      max: 25,
+      unit: '°',
+      color: colors.tech,
+    },
+    {
+      label: 'Phân vị 95 góc lắc (P95)',
+      val: voyage.p95AbsRollDeg,
+      max: 25,
+      unit: '°',
+      color: colors.tech,
+    },
+    {
+      label: 'Góc chúi dọc cực đại',
+      val: voyage.maxAbsPitchDeg,
+      max: 10,
+      unit: '°',
+      color: colors.amber,
+    },
+    {
+      label: 'Góc chúi dọc hiệu dụng (RMS)',
+      val: voyage.rmsPitchDeg,
+      max: 10,
+      unit: '°',
+      color: colors.amber,
+    },
   ];
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>PHÂN PHỐI THỐNG KÊ ĐỘNG HỌC (T11)</Text>
-        <Text style={styles.cardBadge}>{voyage.sampleCount} MẪU</Text>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.card,
+      ]}
+    >
+      <View style={[styles.cardHeader, { borderBottomColor: colors.borderSubtle }]}>
+        <Text style={[styles.cardTitle, { color: colors.title }]}>
+          Phân phối thống kê động học
+        </Text>
+        <View style={[styles.badgeWrap, { backgroundColor: colors.cyanContainerBg }]}>
+          <Text style={[styles.cardBadge, { color: colors.tech }]}>
+            {voyage.sampleCount} mẫu
+          </Text>
+        </View>
       </View>
 
       <View style={styles.barsContainer}>
@@ -29,18 +74,24 @@ export function MobileVoyageDistributionChart({ voyage }: MobileVoyageChartsProp
           return (
             <View key={b.label} style={styles.barRow}>
               <View style={styles.barLabelRow}>
-                <Text style={styles.barLabel}>{b.label}</Text>
+                <Text style={[styles.barLabel, { color: colors.title }]}>{b.label}</Text>
                 <Text style={[styles.barVal, { color: b.color }]}>
-                  {b.val.toFixed(2)}{b.unit}
+                  {b.val.toFixed(2)}
+                  {b.unit}
                 </Text>
               </View>
-              <View style={styles.barTrack}>
+              <View
+                style={[
+                  styles.barTrack,
+                  { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+                ]}
+              >
                 <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: b.color }]} />
                 {b.threshold && (
                   <View
                     style={[
                       styles.thresholdLine,
-                      { left: `${(b.threshold / b.max) * 100}%` },
+                      { left: `${(b.threshold / b.max) * 100}%`, backgroundColor: colors.red },
                     ]}
                   />
                 )}
@@ -50,48 +101,67 @@ export function MobileVoyageDistributionChart({ voyage }: MobileVoyageChartsProp
         })}
       </View>
 
-      <Text style={styles.footerNote}>Vạch đỏ: Ngưỡng cảnh báo lắc ngang 15.0° (Mô phỏng)</Text>
+      <Text style={[styles.footerNote, { color: colors.textSecondary }]}>
+        Vạch đỏ: Ngưỡng cảnh báo lắc ngang 15.0° (Cấu hình mô phỏng)
+      </Text>
     </View>
   );
 }
 
 export function MobileRfBreakdownChart({ voyage }: MobileVoyageChartsProps) {
+  const { colors } = useTheme();
   const dist = voyage.rfDistribution;
   const segments = [
-    { label: 'Normal', pct: dist.normalPct, color: C.green },
-    { label: 'High Roll', pct: dist.highRollPct, color: C.amber },
-    { label: 'Offset', pct: dist.persistentOffsetPct, color: '#38BDF8' },
-    { label: 'Growth', pct: dist.amplitudeGrowthPct, color: C.red },
+    { label: 'Bình thường', pct: dist.normalPct, color: colors.green },
+    { label: 'Lắc ngang mạnh', pct: dist.highRollPct, color: colors.amber },
+    { label: 'Nghiêng lệch kéo dài', pct: dist.persistentOffsetPct, color: colors.tech },
+    { label: 'Biên độ tăng', pct: dist.amplitudeGrowthPct, color: colors.red },
   ];
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>PHÂN BỐ TRẠNG THÁI RANDOM FOREST</Text>
-        <Text style={[styles.cardBadge, { color: C.green, backgroundColor: '#D1FAE5', borderColor: '#A7F3D0' }]}>
-          ✓ {voyage.agreementPercent}% Đồng thuận
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.card,
+      ]}
+    >
+      <View style={[styles.cardHeader, { borderBottomColor: colors.borderSubtle }]}>
+        <Text style={[styles.cardTitle, { color: colors.title }]}>
+          Phân bố trạng thái Random Forest
         </Text>
+        <View style={[styles.badgeWrap, { backgroundColor: colors.greenContainerBg }]}>
+          <Text style={[styles.cardBadge, { color: colors.green }]}>
+            ✓ {voyage.agreementPercent}% đồng thuận
+          </Text>
+        </View>
       </View>
 
-      {/* Multi-segment bar */}
-      <View style={styles.segmentBar}>
+      <View
+        style={[
+          styles.segmentBar,
+          { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+        ]}
+      >
         {segments.map((s) => (
           <View
             key={s.label}
-            style={[
-              styles.segmentSlice,
-              { width: `${s.pct}%`, backgroundColor: s.color },
-            ]}
+            style={[styles.segmentSlice, { width: `${s.pct}%`, backgroundColor: s.color }]}
           />
         ))}
       </View>
 
-      {/* Breakdown Pills */}
       <View style={styles.legendGrid}>
         {segments.map((s) => (
-          <View key={s.label} style={styles.legendPill}>
+          <View
+            key={s.label}
+            style={[
+              styles.legendPill,
+              { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+            ]}
+          >
             <View style={[styles.dot, { backgroundColor: s.color }]} />
-            <Text style={styles.legendLabel}>{s.label}:</Text>
+            <Text style={[styles.legendLabel, { color: colors.title }]}>{s.label}:</Text>
             <Text style={[styles.legendVal, { color: s.color }]}>{s.pct.toFixed(1)}%</Text>
           </View>
         ))}
@@ -102,70 +172,64 @@ export function MobileRfBreakdownChart({ voyage }: MobileVoyageChartsProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-    paddingBottom: 6,
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
   },
   cardTitle: {
-    color: C.text,
-    fontSize: 11,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    letterSpacing: 0.3,
+    fontSize: 17,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
+  },
+  badgeWrap: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   cardBadge: {
-    fontSize: 9,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    color: C.cyan,
-    backgroundColor: '#E0F2FE',
-    borderWidth: 0.5,
-    borderColor: '#BAE6FD',
-    borderRadius: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   barsContainer: {
-    gap: 8,
+    gap: 10,
   },
   barRow: {
-    gap: 3,
+    gap: 4,
   },
   barLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   barLabel: {
-    color: C.text,
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 13,
+    fontFamily: FONT.medium,
+    flexShrink: 1,
   },
   barVal: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    fontWeight: '700',
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   barTrack: {
     height: 8,
-    backgroundColor: '#F1F5F9',
     borderRadius: 4,
     overflow: 'hidden',
     position: 'relative',
-    borderWidth: 0.5,
-    borderColor: C.borderSubtle,
+    borderWidth: 1,
   },
   barFill: {
     height: '100%',
@@ -176,22 +240,17 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 2,
-    backgroundColor: C.red,
   },
   footerNote: {
-    color: C.muted,
-    fontSize: 9,
-    marginTop: 8,
-    fontStyle: 'italic',
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
   segmentBar: {
     height: 14,
     flexDirection: 'row',
-    borderRadius: 4,
+    borderRadius: 6,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 10,
   },
   segmentSlice: {
     height: '100%',
@@ -199,33 +258,30 @@ const styles = StyleSheet.create({
   legendGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   legendPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    gap: 4,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 5,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   legendLabel: {
-    color: C.text,
-    fontSize: 9,
-    fontWeight: '600',
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
   legendVal: {
-    fontSize: 9.5,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
 });
-
