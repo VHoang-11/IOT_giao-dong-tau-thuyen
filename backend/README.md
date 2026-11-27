@@ -152,7 +152,25 @@ Tàu có hai ESP32: *Motion Node* (dao động, như trên) và *Cargo Node* (m�
 - `GET /api/v1/devices/{id}/cargo` (id tàu chính → gộp mọi Cargo Node gắn vào; hoặc id Cargo Node). Giá trị không đọc được là `null`, không phải 0.
 - Các cột `cargo_*` trong `telemetry` (migration 0007) được giữ lại cho dữ liệu cũ; Motion Node không còn gửi.
 - **Nâng cấp CSDL đã có** (đang ở schema 0006, chưa có bảng `alembic_version`): `alembic stamp 0006` rồi `alembic upgrade head` (áp dụng 0007 và 0008). Dev tự `create_all` chỉ tạo bảng mới, **không** thêm cột vào bảng cũ.
-- *Chưa có:* luật cảnh báo hầm hàng (chờ ngưỡng chính thức).
+
+### Cảnh báo hầm hàng (ngưỡng prototype)
+
+> **Prototype hỗ trợ giám sát, chưa phải thiết bị an toàn hàng hải được chứng nhận.** Các ngưỡng dưới đây là tham số kỹ thuật của prototype theo nguồn tham chiếu nhóm đã xác định (chưa được hệ thống kiểm chứng độc lập); **không** có nghĩa hệ thống đạt chứng nhận hay tuân thủ SOLAS/IMO. Phạm vi: tàu chở hàng rời, hàng nông sản khô.
+
+| Chỉ số | NORMAL | WARNING | CRITICAL | Tham chiếu / ghi chú |
+|---|---|---|---|---|
+| Nước xâm nhập (mm) | < 500 | ≥ 500 và < CRITICAL | ≥ min(0,15 × `cargo_hold_depth_mm`, 2000) | SOLAS XII Reg. 12; IMO MSC.188(79)/Rev.2. Cần `cargo_hold_depth_mm` và `water_sensor_full_scale_mm` |
+| Nhiệt độ (°C) | < 35 | 35 ≤ t < 40 | ≥ 40 | Wang & Zhou (2023), DOI 10.3390/app132312878. Ngưỡng prototype, **không** phải quy định IMO. DHT22 đo nhiệt độ **không khí** trong hầm, không phải nhiệt độ khối hàng |
+| Độ ẩm (%RH) | < 75 | 75 ≤ h < 90 | ≥ 90 | CTU Code (2014); Food Sci. & Nutr. (2024), DOI 10.1002/fsn3.4302. 90 % là ngưỡng rủi ro cao do nhóm đề xuất, không phải ngưỡng quốc tế bắt buộc |
+
+- **Backend là nguồn xác định trạng thái** (`cargo/evaluator.py`, hàm thuần có test biên dưới/bằng/trên từng ngưỡng); frontend chỉ hiển thị. Ngưỡng 35 %/70 % cũ của giao diện **không còn dùng**.
+- **Không mặc định NORMAL:** thiếu/cũ/mất kết nối/cảm biến lỗi/giá trị ngoài khoảng/chưa cấu hình ⇒ `UNKNOWN` kèm `reason` (`NO_DATA`, `STALE`, `SENSOR_FAULT`, `VALUE_MISSING`, `OUT_OF_RANGE`, `NOT_CONFIGURED`). Trạng thái tổng hợp chỉ NORMAL khi mọi chỉ số NORMAL. Dữ liệu "cũ" = Cargo Node im quá `CARGO_STALE_S` (mặc định 30 s).
+- **Nước:** Cargo Node gửi % chiết áp; Backend đổi sang mm bằng `water_sensor_full_scale_mm` (100 % = bao nhiêu mm) do người cấu hình khai báo. **Không có giá trị mặc định cho kích thước hầm hàng**: thiếu thì cảnh báo nước = `UNKNOWN (NOT_CONFIGURED)` và API báo `missing_fields`.
+- **Phân loại dữ liệu** (`data_class`): `SIMULATION` · `SENSOR_UNCALIBRATED` · `SENSOR_CALIBRATED` (cờ `sensor_calibrated` do người cấu hình đặt, mặc định `false`). Cảnh báo vẫn được tạo cho cả ba loại nhưng luôn gắn nhãn.
+- **Cấu hình theo hầm/tàu/hàng:** `GET|PUT /api/v1/devices/{cargo_id}/cargo/config` (PUT: SUPERVISOR trở lên) gồm `vessel_type`, `cargo_type`, `cargo_hold_depth_mm`, `water_sensor_full_scale_mm`, `sensor_calibrated`, ghi đè `thresholds` (kiểm tra WARNING < CRITICAL, CRITICAL nước > WARNING, độ sâu hợp lệ). Mỗi lần sửa tăng `version`, ghi `audit_log`; cảnh báo lưu `threshold_version` (`bulk-dry-agri-prototype@v1+cfgN`), đơn vị, ngưỡng đã dùng. Phản hồi kèm nguồn tham chiếu, đơn vị, phạm vi áp dụng.
+- **Vòng đời:** bảng riêng `cargo_alerts` (ACTIVE → ACKED → CLEARED; nặng hơn sau ACK ⇒ bật lại ACTIVE; mỗi chỉ số tối đa 1 cảnh báo mở; dữ liệu UNKNOWN không giải tỏa cũng không mở cảnh báo). `GET /devices/{id}/cargo/status`, `GET /devices/{id}/cargo/alerts`, `POST /cargo/alerts/{id}/ack` (OPERATOR trở lên).
+- **Vì sao không dùng chung bảng `alarms`:** `alarms` gắn chặt với luồng `event` của thiết bị (định danh `device_id+boot_id+alarm_id`, `last_seq`, `motion_class`), với thống kê MTTA/nhãn/tỉ lệ báo sai, replay/báo cáo chuyến và điều kiện MUTE/ACK xuống thiết bị. Trộn cảnh báo hầm hàng vào đó sẽ làm sai các số liệu và logic này. Tái sử dụng ở mức khái niệm: enum `AlarmState`/`AlarmLevel`, quy tắc ACK/bật lại, audit, vai trò.
+- **Chưa làm (ngoài phạm vi được yêu cầu):** thông báo Telegram/email cho cảnh báo hầm hàng, leo thang theo thời gian, ACK trên giao diện web, chống rung (debounce) quanh ngưỡng.
 
 ## Quy tắc an toàn đã cài đặt (đều có test)
 

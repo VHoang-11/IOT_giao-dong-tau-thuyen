@@ -215,6 +215,180 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/devices/{device_id}/cargo/status:
+    get:
+      tags:
+      - cargo
+      summary: Cargo Status
+      description: Trạng thái chính thức từng chỉ số (nước mm, nhiệt độ, độ ẩm). Thiếu/cũ/lỗi
+        dữ liệu ⇒ UNKNOWN kèm lý do, không bao giờ NORMAL.
+      operationId: cargo_status_api_v1_devices__device_id__cargo_status_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CargoStatusOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/devices/{device_id}/cargo/alerts:
+    get:
+      tags:
+      - cargo
+      summary: Cargo Alerts
+      operationId: cargo_alerts_api_v1_devices__device_id__cargo_alerts_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      - name: state
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/AlarmState'
+          - type: 'null'
+          title: State
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CargoAlertOut'
+                title: Response Cargo Alerts Api V1 Devices  Device Id  Cargo Alerts
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/cargo/alerts/{alert_id}/ack:
+    post:
+      tags:
+      - cargo
+      summary: Ack Cargo Alert
+      description: 'ACK ghi nhận người trực đã biết (OPERATOR trở lên). Không đồng
+        nghĩa với giải tỏa: chỉ CLEARED khi chỉ số trở về NORMAL.'
+      operationId: ack_cargo_alert_api_v1_cargo_alerts__alert_id__ack_post
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Alert Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CargoAlertOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/devices/{device_id}/cargo/config:
+    get:
+      tags:
+      - cargo
+      summary: Get Cargo Config
+      description: Cấu hình hầm hàng + ngưỡng hiệu lực (kèm nguồn tham chiếu, đơn
+        vị, phiên bản) và các trường còn thiếu.
+      operationId: get_cargo_config_api_v1_devices__device_id__cargo_config_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CargoConfigOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - cargo
+      summary: Put Cargo Config
+      description: Đặt chiều sâu hầm, thang đo cảm biến nước, loại tàu/hàng, trạng
+        thái hiệu chuẩn và (tuỳ chọn) ghi đè ngưỡng. SUPERVISOR trở lên.
+      operationId: put_cargo_config_api_v1_devices__device_id__cargo_config_put
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CargoConfigIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CargoConfigOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/auth/login:
     post:
       tags:
@@ -1888,6 +2062,391 @@ components:
       - username
       - password
       title: Body_login_api_v1_auth_login_post
+    CargoAlertOut:
+      properties:
+        id:
+          type: integer
+          title: Id
+        device_id:
+          type: string
+          title: Device Id
+        parent_device_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Device Id
+        metric:
+          type: string
+          title: Metric
+        state:
+          $ref: '#/components/schemas/AlarmState'
+        level:
+          $ref: '#/components/schemas/AlarmLevel'
+        max_level:
+          $ref: '#/components/schemas/AlarmLevel'
+        value:
+          type: number
+          title: Value
+        peak_value:
+          type: number
+          title: Peak Value
+        unit:
+          type: string
+          title: Unit
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+        data_class:
+          type: string
+          title: Data Class
+        threshold_warning:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Threshold Warning
+        threshold_critical:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Threshold Critical
+        threshold_version:
+          type: string
+          title: Threshold Version
+        opened_at:
+          type: string
+          format: date-time
+          title: Opened At
+        acked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acked At
+        acked_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Acked By
+        cleared_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Cleared At
+        escalated:
+          type: boolean
+          title: Escalated
+      type: object
+      required:
+      - id
+      - device_id
+      - metric
+      - state
+      - level
+      - max_level
+      - value
+      - peak_value
+      - unit
+      - source_mode
+      - data_class
+      - threshold_version
+      - opened_at
+      - escalated
+      title: CargoAlertOut
+    CargoConfigIn:
+      properties:
+        vessel_type:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Vessel Type
+        cargo_type:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Cargo Type
+        cargo_hold_depth_mm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Hold Depth Mm
+        water_sensor_full_scale_mm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Water Sensor Full Scale Mm
+        sensor_calibrated:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Sensor Calibrated
+        thresholds:
+          anyOf:
+          - additionalProperties:
+              additionalProperties:
+                type: number
+              type: object
+            type: object
+          - type: 'null'
+          title: Thresholds
+      additionalProperties: false
+      type: object
+      title: CargoConfigIn
+      description: Cập nhật từng phần (chỉ trường được gửi). `null` = xóa giá trị.
+        KHÔNG có giá trị mặc định cho kích thước hầm.
+    CargoConfigOut:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        configured:
+          type: boolean
+          title: Configured
+        version:
+          type: integer
+          title: Version
+        vessel_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Vessel Type
+        cargo_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cargo Type
+        cargo_hold_depth_mm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Hold Depth Mm
+        water_sensor_full_scale_mm:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Water Sensor Full Scale Mm
+        sensor_calibrated:
+          type: boolean
+          title: Sensor Calibrated
+        effective_thresholds:
+          additionalProperties: true
+          type: object
+          title: Effective Thresholds
+        threshold_version:
+          type: string
+          title: Threshold Version
+        uses_default_thresholds:
+          type: boolean
+          title: Uses Default Thresholds
+        missing_fields:
+          items:
+            type: string
+          type: array
+          title: Missing Fields
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+        updated_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Updated By
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+        profile:
+          type: string
+          title: Profile
+        profile_scope:
+          type: string
+          title: Profile Scope
+        disclaimer:
+          type: string
+          title: Disclaimer
+      type: object
+      required:
+      - device_id
+      - configured
+      - version
+      - sensor_calibrated
+      - effective_thresholds
+      - threshold_version
+      - uses_default_thresholds
+      - missing_fields
+      - errors
+      - profile
+      - profile_scope
+      - disclaimer
+      title: CargoConfigOut
+    CargoMetricOut:
+      properties:
+        metric:
+          type: string
+          enum:
+          - WATER
+          - TEMPERATURE
+          - HUMIDITY
+          title: Metric
+        state:
+          type: string
+          enum:
+          - NORMAL
+          - WARNING
+          - CRITICAL
+          - UNKNOWN
+          title: State
+        value:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Value
+        unit:
+          type: string
+          title: Unit
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Detail
+        warning:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Warning
+        critical:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Critical
+        basis:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Basis
+        reference:
+          items:
+            type: string
+          type: array
+          title: Reference
+          default: []
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Note
+      type: object
+      required:
+      - metric
+      - state
+      - unit
+      title: CargoMetricOut
+      description: Trạng thái chính thức của một chỉ số hầm hàng (do Backend xác định).
+        UNKNOWN luôn kèm `reason`.
+    CargoNodeStatus:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        link:
+          type: string
+          enum:
+          - NO_DATA
+          - STALE
+          - ONLINE
+          title: Link
+        last_sample_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Sample At
+        age_s:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Age S
+        stale_after_s:
+          type: integer
+          title: Stale After S
+        sensor_ok:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Sensor Ok
+        source_mode:
+          anyOf:
+          - $ref: '#/components/schemas/SourceMode'
+          - type: 'null'
+        data_class:
+          anyOf:
+          - type: string
+            enum:
+            - SIMULATION
+            - SENSOR_UNCALIBRATED
+            - SENSOR_CALIBRATED
+          - type: 'null'
+          title: Data Class
+        raw_water_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Raw Water Pct
+        state:
+          type: string
+          enum:
+          - NORMAL
+          - WARNING
+          - CRITICAL
+          - UNKNOWN
+          title: State
+        metrics:
+          items:
+            $ref: '#/components/schemas/CargoMetricOut'
+          type: array
+          title: Metrics
+        config_version:
+          type: integer
+          title: Config Version
+        threshold_version:
+          type: string
+          title: Threshold Version
+        missing_config:
+          items:
+            type: string
+          type: array
+          title: Missing Config
+        config_errors:
+          items:
+            type: string
+          type: array
+          title: Config Errors
+        open_alerts:
+          type: integer
+          title: Open Alerts
+      type: object
+      required:
+      - device_id
+      - link
+      - stale_after_s
+      - state
+      - metrics
+      - config_version
+      - threshold_version
+      - missing_config
+      - config_errors
+      - open_alerts
+      title: CargoNodeStatus
     CargoOut:
       properties:
         device_id:
@@ -1938,6 +2497,51 @@ components:
       title: CargoOut
       description: Mot ban ghi ham hang (Cargo Node). Gia tri khong doc duoc = null
         (khong phai 0).
+    CargoStatusOut:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        state:
+          type: string
+          enum:
+          - NORMAL
+          - WARNING
+          - CRITICAL
+          - UNKNOWN
+          title: State
+        link:
+          type: string
+          enum:
+          - NO_NODE
+          - NO_DATA
+          - STALE
+          - ONLINE
+          title: Link
+        nodes:
+          items:
+            $ref: '#/components/schemas/CargoNodeStatus'
+          type: array
+          title: Nodes
+        profile:
+          type: string
+          title: Profile
+        profile_scope:
+          type: string
+          title: Profile Scope
+        disclaimer:
+          type: string
+          title: Disclaimer
+      type: object
+      required:
+      - device_id
+      - state
+      - link
+      - nodes
+      - profile
+      - profile_scope
+      - disclaimer
+      title: CargoStatusOut
     ChannelStatus:
       properties:
         name:

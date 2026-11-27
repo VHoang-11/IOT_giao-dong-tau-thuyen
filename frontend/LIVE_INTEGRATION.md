@@ -38,7 +38,8 @@ và CSS dùng chung. Chọn chế độ ở màn hình đăng nhập:
 
 Mực nước, nhiệt độ, độ ẩm hầm hàng đến từ **Cargo Node** (ESP32 thứ 2), không còn đi cùng telemetry của tàu. LIVE gọi `GET /api/v1/devices/{tàu}/cargo` (5 s) và hiển thị trên **Tổng quan** và **Giám sát chuyển động** kèm trạng thái kết nối **riêng** của Node 2
 (`CHƯA GẮN CARGO NODE` · `CHƯA CÓ DỮ LIỆU HẦM HÀNG` · `CARGO NODE OFFLINE / DỮ LIỆU CŨ` · `LỖI DHT22` · `CARGO NODE TRỰC TUYẾN`). Cargo Node không bao giờ được chọn làm "tàu chính".
-Admin phải gắn Cargo Node vào tàu (`PATCH /devices/{id}` với `parent_device_id`) thì dữ liệu mới xuất hiện. Chưa có cảnh báo hầm hàng (chờ ngưỡng).
+Admin phải gắn Cargo Node vào tàu (`PATCH /devices/{id}` với `parent_device_id`) thì dữ liệu mới xuất hiện.
+**Trạng thái cảnh báo hầm hàng do Backend quyết định** (`GET /devices/{tàu}/cargo/status` và `/cargo/alerts`); frontend chỉ hiển thị, không tự đặt ngưỡng. UNKNOWN (thiếu cấu hình hầm, dữ liệu cũ, DHT22 lỗi…) luôn hiện kèm lý do, không bao giờ là "bình thường". Có nhãn nguồn dữ liệu: MÔ PHỎNG / CẢM BIẾN CHƯA HIỆU CHUẨN / CẢM BIẾN ĐÃ HIỆU CHUẨN. Nhiệt độ/độ ẩm là của không khí trong hầm, không phải nhiệt độ khối hàng. ACK cảnh báo hầm hàng hiện chỉ qua API (chưa có nút trên giao diện).
 
 Không có trong Backend nên LIVE không hiển thị (MOCK vẫn có): đăng ký/quên mật khẩu, snapshot 180 s, chọn kịch bản/timewarp/mô hình từ xa,
 thông tin tĩnh của tàu (IMO, tên tàu).

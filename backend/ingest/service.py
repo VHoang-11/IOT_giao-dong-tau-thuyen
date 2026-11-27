@@ -24,6 +24,7 @@ from commands.service import handle_ack as handle_command_ack
 from notify.service import notify_device_offline
 from app.models import AlarmEvent, CargoTelemetry, Device, DeviceHealth, Telemetry
 from app.models.enums import AlarmLevel, DeviceState, MotionClass, NodeType, SourceMode
+from cargo.service import apply_sample as cargo_apply_sample
 from ingest.stats import stats
 from ingest.validator import validate
 
@@ -218,14 +219,20 @@ def _handle_cargo(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> 
     dev.node_type = NodeType.CARGO          # thiet bi gui topic cargo la Cargo Node, khong phai tau chinh
     if "source_mode" in p:
         dev.source_mode = SourceMode(p["source_mode"])
-    db.add(CargoTelemetry(
+    row = CargoTelemetry(
         device_id=dev_id, boot_id=p["boot_id"], seq=p["seq"], uptime_ms=p["uptime_ms"],
         source_mode=SourceMode(p["source_mode"]) if "source_mode" in p else dev.source_mode,
         sensor_ok=p["sensor_ok"], cargo_water_pct=p["cargo_water_pct"], cargo_temp_c=p["cargo_temp_c"],
         cargo_humidity_pct=p["cargo_humidity_pct"], reported_parent_device_id=p.get("parent_device_id"),
-        server_rx_time=rx))
+        server_rx_time=rx)
+    db.add(row)
     ok = _commit_or_duplicate(db)
     if ok:
+        try:
+            cargo_apply_sample(db, row)   # canh bao ham hang (tach khoi FSM dao dong); loi o day KHONG lam mat ban tin da luu
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            log.exception("cargo alert evaluation failed", extra={"device_id": dev_id})
         telemetry_hub.publish({"type": "cargo", **p, "device_id": dev_id, "server_rx_time": _iso(rx)})
     return Result(Outcome.STORED if ok else Outcome.DUPLICATE, "cargo", dev_id)
 

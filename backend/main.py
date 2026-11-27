@@ -14,7 +14,7 @@ from app.core.db import Base, SessionLocal, engine
 from app.core.logging import setup_logging
 from app.core.security import validate_security_settings
 from app.routers import (
-    alarms, auth, commands, device_health, devices, health, ingest_stats,
+    alarms, auth, cargo as cargo_router, commands, device_health, devices, health, ingest_stats,
     monitor as monitor_router,
     notify as notify_router,
     replay as replay_router,
