@@ -1,3 +1,10 @@
+import type {
+  ApiCargoAlert,
+  ApiCargoConfig,
+  ApiCargoConfigIn,
+  ApiCargoStatus,
+} from '../data/liveApi';
+
 export type Route =
   | 'Login' | 'Register' | 'ForgotPassword' | 'Overview' | 'LiveMotion' | 'Alarms' | 'AlarmDetail'
   | 'VoyageReports' | 'ReportDetails' | 'More' | 'ControlCenter'
@@ -239,8 +246,18 @@ export interface LoginTarget {
   url: string;
 }
 
+export interface CargoLiveContext {
+  status: ApiCargoStatus | null;
+  statusError: string;
+  alerts: ApiCargoAlert[];
+  getConfig: (cargoId: string) => Promise<ApiCargoConfig>;
+  saveConfig: (cargoId: string, body: ApiCargoConfigIn) => Promise<ApiCargoConfig>;
+  onSaved: () => void;
+}
+
 export interface AppData {
   mode: DataMode;
+  cargoLive?: CargoLiveContext | null;
   /** Chỉ LIVE: tình trạng kết nối Backend/thiết bị. */
   link: LinkStatus | null;
   vesselName: string;

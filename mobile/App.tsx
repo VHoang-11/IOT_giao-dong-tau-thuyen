@@ -275,6 +275,17 @@ export default function App() {
 
   const data: AppData = {
     mode,
+    cargoLive:
+      live && api
+        ? {
+            status: lb.cargoStatus.data,
+            statusError: lb.cargoStatus.error,
+            alerts: lb.cargoAlerts.data ?? [],
+            getConfig: (cargoId) => api.getCargoConfig(cargoId),
+            saveConfig: (cargoId, body) => api.putCargoConfig(cargoId, body),
+            onSaved: lb.reloadAll,
+          }
+        : null,
     link: live
       ? { state: lb.link.state, label: lb.link.label, ageS: lb.link.ageS, error: lb.link.error }
       : null,

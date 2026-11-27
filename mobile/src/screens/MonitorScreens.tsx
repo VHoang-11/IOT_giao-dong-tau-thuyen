@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Inclinometer } from '../components/Inclinometer';
+import { CargoHoldSection } from '../components/CargoHoldSection';
 import { MotionChart } from '../components/MotionChart';
 import { MobileMaiChart } from '../components/MobileMaiChart';
 import {
@@ -234,6 +235,10 @@ export function OverviewScreen({ data, actions }: ScreenProps) {
         />
       </Panel>
 
+      {data.mode === 'live' && (
+        <CargoHoldSection cargo={data.cargoLive} session={data.session} />
+      )}
+
       {/* Quick Navigation Action Buttons */}
       <ActionBtn
         label="XEM LIVE MOTION & MÔ HÌNH THÂN TÀU →"
@@ -432,6 +437,9 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
         onPress={() => actions.go('Overview')}
         tone="neutral"
       />
+      {data.mode === 'live' && (
+        <CargoHoldSection cargo={data.cargoLive} session={data.session} />
+      )}
     </Page>
   );
 }

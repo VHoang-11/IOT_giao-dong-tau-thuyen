@@ -39,10 +39,57 @@ export interface LiveTelemetry {
   server_rx_time: string;
 }
 
+/** Trạng thái hầm hàng do BACKEND xác định (frontend chỉ hiển thị). UNKNOWN luôn kèm lý do, không bao giờ là NORMAL. */
+export type CargoMetricState = 'NORMAL' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
+export type CargoDataClass = 'SIMULATION' | 'SENSOR_UNCALIBRATED' | 'SENSOR_CALIBRATED';
+export interface CargoMetricOut {
+  metric: 'WATER' | 'TEMPERATURE' | 'HUMIDITY'; state: CargoMetricState; value: number | null; unit: string;
+  reason?: string | null; detail?: string | null; warning?: number | null; critical?: number | null; basis?: string | null;
+  reference: string[]; note?: string | null;
+}
+export interface CargoNodeStatus {
+  device_id: string; link: 'NO_DATA' | 'STALE' | 'ONLINE'; last_sample_at?: string | null; age_s?: number | null; stale_after_s: number;
+  sensor_ok?: boolean | null; source_mode?: SourceMode | null; data_class?: CargoDataClass | null; raw_water_pct?: number | null;
+  state: CargoMetricState; metrics: CargoMetricOut[]; config_version: number; threshold_version: string;
+  missing_config: string[]; config_errors: string[]; open_alerts: number;
+}
+export interface CargoStatusOut {
+  device_id: string; state: CargoMetricState; link: 'NO_NODE' | 'NO_DATA' | 'STALE' | 'ONLINE'; nodes: CargoNodeStatus[];
+  profile: string; profile_scope: string; disclaimer: string;
+}
+export interface CargoAlertOut {
+  id: number; device_id: string; parent_device_id?: string | null; metric: string; state: AlarmState; level: AlarmLevel; max_level: AlarmLevel;
+  value: number; peak_value: number; unit: string; source_mode: SourceMode; data_class: string; threshold_warning?: number | null;
+  threshold_critical?: number | null; threshold_version: string; opened_at: string; acked_at?: string | null; acked_by?: string | null;
+  cleared_at?: string | null; escalated: boolean;
+}
 /** Một bản ghi hầm hàng từ Cargo Node (ESP32 thứ 2). Giá trị không đọc được = null (không phải 0). */
 export interface CargoOut {
   device_id: string; boot_id: string; seq: number; uptime_ms: number; source_mode: SourceMode; sensor_ok: boolean;
   cargo_water_pct: number | null; cargo_temp_c: number | null; cargo_humidity_pct: number | null; server_rx_time: string;
+}
+export interface CargoThresholdWater {
+  unit: string; warning_mm: number; critical_mm: number | null; rule: string;
+  critical_fraction_of_depth: number; critical_cap_mm: number; reference: string[]; note: string;
+}
+export interface CargoThresholdPair {
+  unit: string; basis?: string | null; warning: number; critical: number; reference: string[]; note: string;
+}
+export interface CargoConfigOut {
+  device_id: string; configured: boolean; version: number;
+  vessel_type: string | null; cargo_type: string | null;
+  cargo_hold_depth_mm: number | null; water_sensor_full_scale_mm: number | null;
+  sensor_calibrated: boolean;
+  effective_thresholds: { water: CargoThresholdWater; temperature: CargoThresholdPair; humidity: CargoThresholdPair };
+  threshold_version: string; uses_default_thresholds: boolean;
+  missing_fields: string[]; errors: string[];
+  updated_by?: string | null; updated_at?: string | null;
+  profile: string; profile_scope: string; disclaimer: string;
+}
+export interface CargoConfigIn {
+  vessel_type?: string | null; cargo_type?: string | null;
+  cargo_hold_depth_mm?: number | null; water_sensor_full_scale_mm?: number | null;
+  sensor_calibrated?: boolean;
 }
 export interface DeviceOut {
   /** MOTION = tàu chính (ESP32 đo dao động); CARGO = mạch hầm hàng riêng, gắn vào tàu chính qua parent_device_id. */

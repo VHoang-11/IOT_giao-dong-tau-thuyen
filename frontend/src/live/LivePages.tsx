@@ -2,11 +2,12 @@
 // Mọi số liệu lấy từ API thật; phần Backend/firmware chưa hỗ trợ hiển thị "Chưa khả dụng", không giả lập.
 import {useEffect,useMemo,useState} from 'react';
 import {apiDownload,apiRequest} from '../api';
-import type {AckResult,AgreementStats,AlarmLabel,AlarmOut,CommandName,CommandOut,CommandStats,ConfigOut,DeviceHealthOut,DriftStatus,LiveTelemetry,ReplayResponse,ReportSummary,VoyageOut} from '../api';
+import type {AckResult,AgreementStats,AlarmLabel,AlarmOut,CargoMetricOut,CargoMetricState,CargoNodeStatus,CommandName,CommandOut,CommandStats,ConfigOut,DeviceHealthOut,DriftStatus,LiveTelemetry,ReplayResponse,ReportSummary,VoyageOut} from '../api';
 import type {Page,Session} from '../domain';
 import {Button,Metric,Panel,Pill} from '../ui';
 import {ShipMotionVisualizer} from '../ShipMotionVisualizer';
 import {getAlarmLevelNameVi,getRFClassNameVi,getRoleNameVi} from '../i18n/vi';
+import {CargoConfigModal} from './CargoConfigModal';
 import {isMotionNode,parseTime,useResource} from './useLive';
 import type {LiveCore} from './useLive';
 
@@ -16,16 +17,38 @@ const deg=(n:number|null|undefined)=>n==null||!Number.isFinite(n)?'—':`${n>0?'
 const clock=(iso?:string|null)=>{const t=parseTime(iso);return Number.isFinite(t)?new Date(t).toLocaleString('vi-VN'):'—'};
 const pct=(r?:number|null)=>r==null?'—':`${(r*100).toFixed(1)}%`;
 const isSupervisor=(s:Session)=>s.role!=='Operator';
-/** Thẻ trạng thái RIÊNG của Cargo Node (ESP32 thứ 2), tách khỏi kết nối của tàu chính. */
-function CargoStatus({core}:{core:LiveCore}){
- const c=core.cargoLink;
- const text=c.state==='NO_NODE'?'Chưa có Cargo Node nào được gắn vào tàu này. Admin gắn bằng PATCH /api/v1/devices/{cargo_id} với parent_device_id.'
-  :c.state==='API_ERROR'?`Không đọc được dữ liệu hầm hàng: ${core.cargo.error}`
-  :c.state==='NO_DATA'?`Cargo Node ${c.node?.device_id??''} chưa gửi bản tin hầm hàng nào.`
-  :c.state==='STALE'?`Cargo Node ${c.node?.device_id??''} không gửi dữ liệu trong ${c.ageS??'?'}s (ngưỡng ${c.staleAfterS}s). Giá trị cuối KHÔNG được hiển thị như thời gian thực.`
-  :c.state==='SENSOR_FAULT'?'DHT22 không đọc được: nhiệt độ/độ ẩm không khả dụng. Mực nước (chiết áp) vẫn đo bình thường.'
-  :`Cargo Node ${c.node?.device_id??''} • nguồn ${c.latest?.source_mode??'—'} • mẫu cuối ${c.ageS??'—'}s trước`;
- return <div className={`note ${c.state==='ONLINE'?'':c.state==='SENSOR_FAULT'?'warning':'offline'}`} style={{marginBottom:14}}><b>{c.label}:</b> {text}</div>;
+const METRIC_VI:Record<string,string>={WATER:'Nước xâm nhập',TEMPERATURE:'Nhiệt độ không khí trong hầm',HUMIDITY:'Độ ẩm không khí trong hầm'};
+const REASON_VI:Record<string,string>={NO_DATA:'chưa có dữ liệu',STALE:'dữ liệu cũ / mất kết nối',SENSOR_FAULT:'lỗi cảm biến DHT22',VALUE_MISSING:'thiếu giá trị',OUT_OF_RANGE:'giá trị ngoài khoảng hợp lệ',NOT_CONFIGURED:'chưa cấu hình hầm hàng'};
+const DATA_CLASS_VI:Record<string,string>={SIMULATION:'MÔ PHỎNG',SENSOR_UNCALIBRATED:'CẢM BIẾN CHƯA HIỆU CHUẨN',SENSOR_CALIBRATED:'CẢM BIẾN ĐÃ HIỆU CHUẨN'};
+const stateKind=(s:CargoMetricState|'CAUTION')=>s==='CRITICAL'?'critical':s==='WARNING'?'warning':s==='NORMAL'?'normal':'neutral';
+const stateTone=(s:CargoMetricState)=>s==='CRITICAL'?'red':s==='WARNING'?'amber':s==='NORMAL'?'green':'cyan';
+const metricValue=(m?:CargoMetricOut)=>m&&m.value!=null?`${m.value.toFixed(m.unit==='mm'?0:1)} ${m.unit}`:'—';
+const metricNote=(m?:CargoMetricOut)=>!m?'':m.state==='UNKNOWN'?`UNKNOWN: ${REASON_VI[m.reason??'']??m.reason??'không đánh giá được'}`
+ :`${m.state} • WARNING ≥ ${m.warning??'—'} • CRITICAL ≥ ${m.critical??'—'} ${m.unit}`;
+/** Node hầm hàng chính để hiển thị (nếu có nhiều Cargo Node: node có mẫu mới nhất). Mọi trạng thái do Backend quyết định. */
+function cargoNodeOf(core:LiveCore):CargoNodeStatus|null{
+ const ns=core.cargoStatus.data?.nodes??[];
+ return [...ns].sort((a,b)=>(parseTime(b.last_sample_at)||0)-(parseTime(a.last_sample_at)||0))[0]??null;
+}
+function cargoMetric(n:CargoNodeStatus|null,k:CargoMetricOut['metric']){return n?.metrics.find(m=>m.metric===k)}
+/** Thanh trạng thái hầm hàng (RIÊNG, tách khỏi kết nối tàu chính). Không tự suy diễn: chỉ hiển thị trạng thái nhận từ Backend. */
+function CargoStatus({core,onOpenConfig}:{core:LiveCore;onOpenConfig?:(cargoId:string)=>void}){
+ const st=core.cargoStatus.data,n=cargoNodeOf(core);
+ if(core.cargoStatus.error)return <div className="note offline" style={{marginBottom:14}}><b>KHÔNG ĐỌC ĐƯỢC TRẠNG THÁI HẦM HÀNG:</b> {core.cargoStatus.error}</div>;
+ if(!st)return <div className="note" style={{marginBottom:14}}>Đang tải trạng thái hầm hàng từ Backend…</div>;
+ if(st.link==='NO_NODE')return <div className="note offline" style={{marginBottom:14}}><b>CHƯA GẮN CARGO NODE:</b> Admin gắn bằng PATCH /api/v1/devices/{'{cargo_id}'} với parent_device_id. Hầm hàng chưa được giám sát (UNKNOWN).</div>;
+ const label=st.link==='ONLINE'?`CARGO NODE TRỰC TUYẾN • ${st.state}`:st.link==='STALE'?`CARGO NODE OFFLINE / DỮ LIỆU CŨ (${n?.age_s!=null?Math.round(n.age_s):'?'}s)`:'CHƯA CÓ DỮ LIỆU HẦM HÀNG';
+ const warn=st.link!=='ONLINE'||st.state==='UNKNOWN';
+ return <div className={`note ${st.link==='ONLINE'&&st.state!=='UNKNOWN'?'':'warning'}`} style={{marginBottom:14}}>
+  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+   <div><b>{label}</b>{n&&<> • <Pill kind="caution">{DATA_CLASS_VI[n.data_class??'']??n.data_class??'—'}</Pill></>}</div>
+   {n&&onOpenConfig&&<Button kind="ghost" onClick={()=>onOpenConfig(n.device_id)}>Cấu hình hầm hàng</Button>}
+  </div>
+  {n&&n.missing_config.length>0&&<div style={{marginTop:6}}>Thiếu cấu hình hầm hàng: <b>{n.missing_config.join(', ')}</b> — Nhấn <b>Cấu hình hầm hàng</b> (Supervisor trở lên) để bổ sung chiều sâu hầm & thang đo cảm biến. Không tự giả định kích thước hầm.</div>}
+  {n&&n.config_errors.length>0&&<div>Cấu hình không hợp lệ: {n.config_errors.join('; ')}</div>}
+  {warn&&st.link!=='ONLINE'&&<div>Giá trị cuối KHÔNG được hiển thị như thời gian thực.</div>}
+  <div style={{opacity:.8,fontSize:12,marginTop:4}}>{st.disclaimer}</div>
+ </div>;
 }
 const levelTone=(l?:string|null)=>l==='CRITICAL'?'red':l==='WARNING'?'amber':l==='CAUTION'?'amber':'green';
 const UNAVAILABLE='Chưa khả dụng';
@@ -125,17 +148,17 @@ function AlarmEntry({a,session,token,notify,reload,detail,onOpen,liveLevel}:{a:A
  </div>;
 }
 
-function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
+function Overview({core,session,token,notify,goto,setDevice,onOpenCargoConfig}:LiveProps&{onOpenCargoConfig:(id:string)=>void}){
  const f=core.link.fresh,latest=core.link.latest;
  const active=(core.alarms.data??[]).filter(a=>a.state==='ACTIVE'&&a.boot_current!==false);   // boot cũ: lịch sử, không tính là đang mở trên thiết bị
  const liveLevel=core.link.state==='ONLINE'?core.link.fresh?.alarm_level??null:null;
  const dev=core.devices.data?.find(d=>d.device_id===core.deviceId);
  const ok=core.link.state==='ONLINE';
- const cg=core.cargoLink.fresh;
+ const cn=cargoNodeOf(core);
  return <>
   <div className="page-hero"><div><span className="eyebrow">Buồng lái chỉ huy • LIVE</span><h1>Tổng quan vận hành</h1><p>Dữ liệu thật: ESP32/Wokwi → MQTT → FastAPI → SQLite, làm mới mỗi 5 giây.</p></div><LinkPills core={core}/></div>
   <StaleNote core={core}/>
-  <CargoStatus core={core}/>
+  <CargoStatus core={core} onOpenConfig={onOpenCargoConfig}/>
   <div className="metrics">
    <Metric label="Mức cảnh báo tàu" value={f?getAlarmLevelNameVi(f.alarm_level):'—'} note={f?`Theo telemetry seq ${f.seq}`:'Không có dữ liệu tức thời'} tone={levelTone(f?.alarm_level)}/>
    <Metric label="Trạng thái thiết bị" value={ok?'Đang kết nối':core.link.state==='SENSOR_FAULT'?'Lỗi cảm biến':'Mất kết nối'} note={`Tuổi dữ liệu: ${core.link.ageS??'—'}s`} tone={ok?'green':core.link.state==='SENSOR_FAULT'?'amber':'red'}/>
@@ -151,9 +174,10 @@ function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
       <dt>RMS Roll</dt><dd>{ok?deg(f?.rms_roll_deg):'—'}</dd>
       <dt>Baseline B (mô hình quyết định)</dt><dd style={{fontWeight:600}}>{f?.class_baseline_b?`${getRFClassNameVi(f.class_baseline_b)} (${f.class_baseline_b})`:'—'}</dd>
       <dt>Random Forest</dt><dd className="text-muted">{f?`${f.class_rf}${f.class_rf==='UNKNOWN'?' — RF chưa hoạt động trên firmware chính':''}`:'—'}</dd>
-      <dt>Mực nước hầm hàng <small>(Cargo Node)</small></dt><dd>{cg?.cargo_water_pct!=null?`${cg.cargo_water_pct.toFixed(1)}%`:'—'}</dd>
-      <dt>Nhiệt độ / Độ ẩm hầm hàng <small>(Cargo Node)</small></dt><dd>{cg&&(cg.cargo_temp_c!=null||cg.cargo_humidity_pct!=null)?`${cg.cargo_temp_c!=null?`${cg.cargo_temp_c.toFixed(1)}°C`:'—'} / ${cg.cargo_humidity_pct!=null?`${cg.cargo_humidity_pct.toFixed(1)}%`:'—'}`:'—'}</dd>
-      <dt>Kết nối Cargo Node</dt><dd><Pill kind={core.cargoLink.kind}>{core.cargoLink.label}</Pill></dd>
+      <dt>Nước xâm nhập <small>(Cargo Node)</small></dt><dd>{metricValue(cargoMetric(cn,'WATER'))} <Pill kind={stateKind(cargoMetric(cn,'WATER')?.state??'UNKNOWN')}>{cargoMetric(cn,'WATER')?.state??'UNKNOWN'}</Pill></dd>
+      <dt>Nhiệt độ không khí hầm</dt><dd>{metricValue(cargoMetric(cn,'TEMPERATURE'))} <Pill kind={stateKind(cargoMetric(cn,'TEMPERATURE')?.state??'UNKNOWN')}>{cargoMetric(cn,'TEMPERATURE')?.state??'UNKNOWN'}</Pill></dd>
+      <dt>Độ ẩm không khí hầm</dt><dd>{metricValue(cargoMetric(cn,'HUMIDITY'))} <Pill kind={stateKind(cargoMetric(cn,'HUMIDITY')?.state??'UNKNOWN')}>{cargoMetric(cn,'HUMIDITY')?.state??'UNKNOWN'}</Pill></dd>
+      <dt>Trạng thái hầm hàng (Backend)</dt><dd><Pill kind={stateKind(core.cargoStatus.data?.state??'UNKNOWN')}>{core.cargoStatus.data?.state??'UNKNOWN'}</Pill>{cn&&cn.open_alerts>0?` • ${cn.open_alerts} cảnh báo mở`:''}</dd>
      </dl>
     </Panel>
     <Panel title="Thông số tàu & Kết nối thiết bị" tag={core.deviceId??'Chưa có thiết bị'}>
@@ -189,8 +213,8 @@ function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
  </>;
 }
 
-function Motion({core}:LiveProps){
- const f=core.link.fresh,ok=core.link.state==='ONLINE',cg=core.cargoLink.fresh;
+function Motion({core,onOpenCargoConfig}:LiveProps&{onOpenCargoConfig:(id:string)=>void}){
+ const f=core.link.fresh,ok=core.link.state==='ONLINE',cn=cargoNodeOf(core);
  const rows=sameBoot(core.telemetry.data??[]);
  return <>
   <div className="page-hero"><div><span className="eyebrow">Viễn trắc động học • LIVE</span><h1>Giám sát chuyển động</h1><p>Roll/Pitch, MAI và lớp chuyển động từ telemetry thật của phiên khởi động hiện tại.</p></div><LinkPills core={core}/></div>
@@ -213,13 +237,14 @@ function Motion({core}:LiveProps){
   <Panel title="Xu hướng chỉ số bất thường MAI" tag="Lịch sử thật, không nội suy">
    <LiveLineChart height={170} series={[{label:'MAI',color:'#7C3AED',values:rows.map(r=>r.mai)}]} empty="Thiết bị chưa gửi MAI"/>
   </Panel>
-  <Panel title="Hầm hàng (Cargo Node riêng: GPIO 35 & DHT22)" tag={core.cargoLink.node?core.cargoLink.node.device_id:'Chưa gắn Cargo Node'}>
-   <CargoStatus core={core}/>
+  <Panel title="Hầm hàng (Cargo Node riêng: GPIO 35 & DHT22)" tag={cn?cn.device_id:'Chưa gắn Cargo Node'}>
+   <CargoStatus core={core} onOpenConfig={onOpenCargoConfig}/>
    <div className="compact-metrics-grid">
-    <Metric label="Mực nước hầm hàng" value={cg?.cargo_water_pct!=null?`${cg.cargo_water_pct.toFixed(1)}%`:'—'} note={cg?'Chiết áp GPIO 35 (ADC1)':core.cargoLink.label} tone={(cg?.cargo_water_pct??0)>=70?'red':(cg?.cargo_water_pct??0)>=35?'amber':cg?'green':'cyan'}/>
-    <Metric label="Nhiệt độ hầm hàng" value={cg?.cargo_temp_c!=null?`${cg.cargo_temp_c.toFixed(1)}°C`:'—'} note={cg?'DHT22 (GPIO 4)':core.cargoLink.label} tone={(cg?.cargo_temp_c??0)>=45?'red':'cyan'}/>
-    <Metric label="Độ ẩm hầm hàng" value={cg?.cargo_humidity_pct!=null?`${cg.cargo_humidity_pct.toFixed(1)}%`:'—'} note={cg?'DHT22 (GPIO 4)':core.cargoLink.label} tone={(cg?.cargo_humidity_pct??0)>=85?'amber':cg?'green':'cyan'}/>
+    {(['WATER','TEMPERATURE','HUMIDITY'] as const).map(k=>{const m=cargoMetric(cn,k);return <Metric key={k} label={METRIC_VI[k]} value={metricValue(m)} note={m?metricNote(m):'UNKNOWN: chưa có dữ liệu'} tone={stateTone(m?.state??'UNKNOWN')}/>})}
    </div>
+   {(core.cargoAlerts.data?.filter(a=>a.state!=='CLEARED').length??0)>0&&<ul style={{margin:'10px 0 0',paddingLeft:18}}>
+    {core.cargoAlerts.data!.filter(a=>a.state!=='CLEARED').map(a=><li key={a.id}><Pill kind={stateKind(a.level)}>{a.level}</Pill> {METRIC_VI[a.metric]??a.metric}: {a.value.toFixed(a.unit==='mm'?0:1)} {a.unit} • {a.state==='ACKED'?`đã ACK bởi ${a.acked_by??'—'}`:'chưa ACK'} • {DATA_CLASS_VI[a.data_class]??a.data_class} • {clock(a.opened_at)}</li>)}
+   </ul>}
   </Panel>
   <div className="columns">
    <Panel title="Mô hình phân loại & đối chiếu" tag="Baseline B vs Random Forest">
@@ -512,15 +537,33 @@ function Model({core,session,token,onUnauthorized}:LiveProps){
 }
 
 export function LivePage(props:LiveProps){
- switch(props.page){
-  case 'overview':return <Overview {...props}/>;
-  case 'motion':return <Motion {...props}/>;
-  case 'alarms':return <Alarms {...props}/>;
-  case 'control':return <Control {...props}/>;
-  case 'reports':case 'report-detail':return <Reports {...props}/>;
-  case 'replay':return <Replay {...props}/>;
-  case 'health':return <Health {...props}/>;
-  case 'model':return <Model {...props}/>;
-  default:return null;
- }
+ const [cargoCfgId,setCargoCfgId]=useState<string|null>(null);
+ const cn=cargoNodeOf(props.core);
+ const render=()=>{
+  switch(props.page){
+   case 'overview':return <Overview {...props} onOpenCargoConfig={setCargoCfgId}/>;
+   case 'motion':return <Motion {...props} onOpenCargoConfig={setCargoCfgId}/>;
+   case 'alarms':return <Alarms {...props}/>;
+   case 'control':return <Control {...props}/>;
+   case 'reports':case 'report-detail':return <Reports {...props}/>;
+   case 'replay':return <Replay {...props}/>;
+   case 'health':return <Health {...props}/>;
+   case 'model':return <Model {...props}/>;
+   default:return null;
+  }
+ };
+ return <>
+  {render()}
+  <CargoConfigModal
+   open={cargoCfgId!==null}
+   cargoId={cargoCfgId??cn?.device_id??''}
+   sourceMode={cn?.source_mode}
+   token={props.token}
+   session={props.session}
+   onClose={()=>setCargoCfgId(null)}
+   onSaved={()=>props.core.reloadAll()}
+   onUnauthorized={props.onUnauthorized}
+   notify={props.notify}
+  />
+ </>;
 }

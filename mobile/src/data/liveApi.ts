@@ -52,6 +52,128 @@ export interface ApiDevice {
   config_version?: number | null;
 }
 
+export type CargoMetricState = 'NORMAL' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
+export type CargoDataClass = 'SIMULATION' | 'SENSOR_UNCALIBRATED' | 'SENSOR_CALIBRATED';
+
+export interface ApiCargoMetric {
+  metric: 'WATER' | 'TEMPERATURE' | 'HUMIDITY';
+  state: CargoMetricState;
+  value: number | null;
+  unit: string;
+  reason?: string | null;
+  detail?: string | null;
+  warning?: number | null;
+  critical?: number | null;
+  basis?: string | null;
+  reference: string[];
+  note?: string | null;
+}
+
+export interface ApiCargoNodeStatus {
+  device_id: string;
+  link: 'NO_DATA' | 'STALE' | 'ONLINE';
+  last_sample_at?: string | null;
+  age_s?: number | null;
+  stale_after_s: number;
+  sensor_ok?: boolean | null;
+  source_mode?: ApiSourceMode | null;
+  data_class?: CargoDataClass | null;
+  raw_water_pct?: number | null;
+  state: CargoMetricState;
+  metrics: ApiCargoMetric[];
+  config_version: number;
+  threshold_version: string;
+  missing_config: string[];
+  config_errors: string[];
+  open_alerts: number;
+}
+
+export interface ApiCargoStatus {
+  device_id: string;
+  state: CargoMetricState;
+  link: 'NO_NODE' | 'NO_DATA' | 'STALE' | 'ONLINE';
+  nodes: ApiCargoNodeStatus[];
+  profile: string;
+  profile_scope: string;
+  disclaimer: string;
+}
+
+export interface ApiCargoAlert {
+  id: number;
+  device_id: string;
+  parent_device_id?: string | null;
+  metric: string;
+  state: ApiAlarmState;
+  level: ApiAlarmLevel;
+  max_level: ApiAlarmLevel;
+  value: number;
+  peak_value: number;
+  unit: string;
+  source_mode: ApiSourceMode;
+  data_class: string;
+  threshold_warning?: number | null;
+  threshold_critical?: number | null;
+  threshold_version: string;
+  opened_at: string;
+  acked_at?: string | null;
+  acked_by?: string | null;
+  cleared_at?: string | null;
+  escalated: boolean;
+}
+
+export interface ApiCargoThresholdWater {
+  unit: string;
+  warning_mm: number;
+  critical_mm: number | null;
+  rule: string;
+  critical_fraction_of_depth: number;
+  critical_cap_mm: number;
+  reference: string[];
+  note: string;
+}
+
+export interface ApiCargoThresholdPair {
+  unit: string;
+  basis?: string | null;
+  warning: number;
+  critical: number;
+  reference: string[];
+  note: string;
+}
+
+export interface ApiCargoConfig {
+  device_id: string;
+  configured: boolean;
+  version: number;
+  vessel_type: string | null;
+  cargo_type: string | null;
+  cargo_hold_depth_mm: number | null;
+  water_sensor_full_scale_mm: number | null;
+  sensor_calibrated: boolean;
+  effective_thresholds: {
+    water: ApiCargoThresholdWater;
+    temperature: ApiCargoThresholdPair;
+    humidity: ApiCargoThresholdPair;
+  };
+  threshold_version: string;
+  uses_default_thresholds: boolean;
+  missing_fields: string[];
+  errors: string[];
+  updated_by?: string | null;
+  updated_at?: string | null;
+  profile: string;
+  profile_scope: string;
+  disclaimer: string;
+}
+
+export interface ApiCargoConfigIn {
+  vessel_type?: string | null;
+  cargo_type?: string | null;
+  cargo_hold_depth_mm?: number | null;
+  water_sensor_full_scale_mm?: number | null;
+  sensor_calibrated?: boolean;
+}
+
 export interface ApiAlarm {
   id: number;
   alarm_id: string;
@@ -323,6 +445,13 @@ export function createApi(baseUrl: string, token: string) {
       send<ApiConfig>('POST', `/api/v1/devices/${q(deviceId)}/config/rollback`, {}),
     putConfig: (deviceId: string, body: Record<string, unknown>) =>
       send<ApiConfig>('PUT', `/api/v1/devices/${q(deviceId)}/config`, body),
+    cargoStatus: (deviceId: string) => get<ApiCargoStatus>(`/api/v1/devices/${q(deviceId)}/cargo/status`),
+    cargoAlerts: (deviceId: string, limit = 50) =>
+      get<ApiCargoAlert[]>(`/api/v1/devices/${q(deviceId)}/cargo/alerts?limit=${limit}`),
+    ackCargoAlert: (alertId: number) => send<ApiCargoAlert>('POST', `/api/v1/cargo/alerts/${alertId}/ack`),
+    getCargoConfig: (cargoId: string) => get<ApiCargoConfig>(`/api/v1/devices/${q(cargoId)}/cargo/config`),
+    putCargoConfig: (cargoId: string, body: ApiCargoConfigIn) =>
+      send<ApiCargoConfig>('PUT', `/api/v1/devices/${q(cargoId)}/cargo/config`, body),
   };
 }
 

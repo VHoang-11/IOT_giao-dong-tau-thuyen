@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiAgreement,
   ApiAlarm,
+  ApiCargoAlert,
+  ApiCargoStatus,
   ApiCommand,
   ApiConfig,
   ApiDevice,
@@ -114,6 +116,8 @@ export interface LiveBackend {
   replay: Resource<ApiReplay>;
   agreement: Resource<ApiAgreement>;
   drift: Resource<ApiDrift>;
+  cargoStatus: Resource<ApiCargoStatus>;
+  cargoAlerts: Resource<ApiCargoAlert[]>;
   device: ApiDevice | null;
   deviceId: string | null;
   link: LinkInfo;
@@ -206,6 +210,18 @@ export function useLiveBackend(
     60000,
     onUnauthorized
   );
+  const cargoStatus = useResource<ApiCargoStatus>(
+    `${dk}|cargoStatus`,
+    on && deviceId ? () => api.cargoStatus(deviceId) : null,
+    5000,
+    onUnauthorized
+  );
+  const cargoAlerts = useResource<ApiCargoAlert[]>(
+    `${dk}|cargoAlerts`,
+    on && deviceId ? () => api.cargoAlerts(deviceId, 50) : null,
+    5000,
+    onUnauthorized
+  );
 
   const now = useNow(1000, on);
   const healthStale = health.data?.find((h) => h.device_id === deviceId)?.stale ?? null;
@@ -220,6 +236,8 @@ export function useLiveBackend(
   const { reload: rCf } = configs;
   const { reload: rDe } = devices;
   const { reload: rVo } = voyages;
+  const { reload: rCs } = cargoStatus;
+  const { reload: rCa } = cargoAlerts;
   const reloadAll = useCallback(() => {
     rTel();
     rAl();
@@ -228,7 +246,9 @@ export function useLiveBackend(
     rCf();
     rDe();
     rVo();
-  }, [rTel, rAl, rHe, rCo, rCf, rDe, rVo]);
+    rCs();
+    rCa();
+  }, [rTel, rAl, rHe, rCo, rCf, rDe, rVo, rCs, rCa]);
 
   return {
     devices,
@@ -242,6 +262,8 @@ export function useLiveBackend(
     replay,
     agreement,
     drift,
+    cargoStatus,
+    cargoAlerts,
     device,
     deviceId,
     link,
