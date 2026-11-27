@@ -26,6 +26,9 @@
     "alarm_level": {"type": "string", "enum": ["NORMAL", "CAUTION", "WARNING", "CRITICAL"]},
     "model_version": {"type": "string"},
     "config_version": {"type": "integer"},
-    "sensor_ok": {"type": "boolean"}
+    "sensor_ok": {"type": "boolean"},
+    "cargo_water_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "cargo_temp_c": {"type": ["number", "null"]},
+    "cargo_humidity_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100}
   }
 }

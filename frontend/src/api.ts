@@ -27,6 +27,9 @@ export interface LiveTelemetry {
   roll_deg: number;
   pitch_deg: number;
   rms_roll_deg: number | null;
+  cargo_water_pct?: number | null;
+  cargo_temp_c?: number | null;
+  cargo_humidity_pct?: number | null;
   class_rf: MotionClass;
   class_baseline_b: MotionClass | null;
   mai: number | null;
@@ -96,6 +99,7 @@ export interface ReportSummary {
 export interface ReplayTelemetry {
   boot_id: string; seq: number; t_sim_s: number; timewarp: number; server_rx_time: string; source_mode: SourceMode; sensor_ok: boolean;
   scenario_id?: string | null; roll_deg: number; pitch_deg: number; rms_roll_deg?: number | null; heel_offset_deg?: number | null;
+  cargo_water_pct?: number | null; cargo_temp_c?: number | null; cargo_humidity_pct?: number | null;
   trend_rms_deg_per_min?: number | null; class_rf: MotionClass; class_baseline_b?: MotionClass | null; mai?: number | null; alarm_level: AlarmLevel;
   model_version: string; config_version: number;
 }

@@ -135,6 +135,8 @@ def _handle_telemetry(db: Session, dev_id: str, p: dict[str, Any], rx: datetime)
         scenario_id=p.get("scenario_id"), voyage_id=voyage_id,
         roll_deg=p["roll_deg"], pitch_deg=p["pitch_deg"], rms_roll_deg=p.get("rms_roll_deg"),
         heel_offset_deg=p.get("heel_offset_deg"), trend_rms_deg_per_min=p.get("trend_rms_deg_per_min"),
+        cargo_water_pct=p.get("cargo_water_pct"), cargo_temp_c=p.get("cargo_temp_c"),
+        cargo_humidity_pct=p.get("cargo_humidity_pct"),
         class_rf=MotionClass(p["class_rf"]), class_baseline_b=MotionClass(bb) if bb else None,
         mai=p.get("mai"), alarm_level=AlarmLevel(p["alarm_level"]),
         model_version=p["model_version"], config_version=p["config_version"],

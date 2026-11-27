@@ -83,6 +83,7 @@ void msg_fill_telemetry(MsgTelemetry *t, const svmg_engine_t *e, uint64_t uptime
   t->heel_offset_deg = d.feat.mean_roll; t->trend_rms_deg_per_min = d.feat.trend_rms_slope;
   t->cls_rf = d.cls_rf; t->cls_b = d.cls_b; t->mai = d.mai.value; t->alarm_level = e->alarm.level;
   t->config_version = e->cfg.config_version; t->sensor_ok = sensor_ok;
+  t->cargo_water_pct = NAN; t->cargo_temp_c = NAN; t->cargo_humidity_pct = NAN;
   t->acked = e->alarm.acked; t->data_status = d.status; t->sea_state = sea_state;
 }
 
@@ -111,6 +112,9 @@ size_t msg_build_telemetry(char *buf, size_t cap, const MsgIdent &id, uint32_t s
   w.raw(",\"alarm_level\":"); w.str(svmg_level_name((svmg_level_t)t.alarm_level));
   w.raw(",\"model_version\":"); w.str(id.model_version);
   w.fmt(",\"config_version\":%lu,\"sensor_ok\":%s", (unsigned long)t.config_version, t.sensor_ok ? "true" : "false");
+  if (isfinite(t.cargo_water_pct)) { w.raw(",\"cargo_water_pct\":"); w.num(t.cargo_water_pct, 1); }
+  if (isfinite(t.cargo_temp_c)) { w.raw(",\"cargo_temp_c\":"); w.num(t.cargo_temp_c, 1); }
+  if (isfinite(t.cargo_humidity_pct)) { w.raw(",\"cargo_humidity_pct\":"); w.num(t.cargo_humidity_pct, 1); }
 #if SVMG_TELEMETRY_EXTRAS
   w.fmt(",\"acked\":%s,\"data_status\":%u,\"sea_state\":%u", t.acked ? "true" : "false", (unsigned)t.data_status, (unsigned)t.sea_state);
 #endif

@@ -1,6 +1,9 @@
 #include "io.h"
 #include "pins.h"
+#include <DHT.h>
+#include <math.h>
 
+static DHT s_dht(PIN_DHT, DHT22);
 static const uint32_t DEBOUNCE_MS = 30, LONG_PRESS_MS = 3000;
 
 struct Btn { int pin; bool stable; bool raw; uint32_t t_change; uint32_t t_press; bool long_fired; };
@@ -15,6 +18,7 @@ void io_init() {
   pinMode(PIN_LED_G, OUTPUT); pinMode(PIN_LED_Y, OUTPUT); pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_BUZZER, OUTPUT);
   analogReadResolution(12);
+  s_dht.begin();
 }
 
 void io_all_leds(bool on) { digitalWrite(PIN_LED_G, on); digitalWrite(PIN_LED_Y, on); digitalWrite(PIN_LED_R, on); }
@@ -72,4 +76,28 @@ int io_read_sea_state() {
   if (s > last && raw > (last + 1) * 4096 / 6 + 40) last = s;
   else if (s < last && raw < last * 4096 / 6 - 40) last = s;
   return last;
+}
+
+float io_read_cargo_water_pct() {
+  int raw = analogRead(PIN_POT_WATER);
+  if (raw < 0) raw = 0;
+  if (raw > 4095) raw = 4095;
+  return (float)raw * 100.0f / 4095.0f;
+}
+
+void io_read_cargo_dht(float *temp_c, float *humidity_pct) {
+  static uint32_t last_ms = 0;
+  static float cached_t = NAN, cached_h = NAN;
+  uint32_t now = millis();
+  if (last_ms == 0 || (now - last_ms) >= 2000) {
+    last_ms = now;
+    float h = s_dht.readHumidity();
+    float t = s_dht.readTemperature();
+    if (!isnan(h) && !isnan(t)) {
+      cached_h = h;
+      cached_t = t;
+    }
+  }
+  *temp_c = cached_t;
+  *humidity_pct = cached_h;
 }

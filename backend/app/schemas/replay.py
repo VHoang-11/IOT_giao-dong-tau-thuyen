@@ -21,6 +21,9 @@ class ReplayTelemetry(BaseModel):
     rms_roll_deg: Optional[float] = None
     heel_offset_deg: Optional[float] = None
     trend_rms_deg_per_min: Optional[float] = None
+    cargo_water_pct: Optional[float] = None
+    cargo_temp_c: Optional[float] = None
+    cargo_humidity_pct: Optional[float] = None
     class_rf: MotionClass
     class_baseline_b: Optional[MotionClass] = None
     mai: Optional[int] = None

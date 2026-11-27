@@ -71,6 +71,9 @@ class TelemetryOut(BaseModel):
     roll_deg: float
     pitch_deg: float
     rms_roll_deg: Optional[float] = None
+    cargo_water_pct: Optional[float] = None
+    cargo_temp_c: Optional[float] = None
+    cargo_humidity_pct: Optional[float] = None
     class_rf: MotionClass
     class_baseline_b: Optional[MotionClass] = None
     mai: Optional[int] = None

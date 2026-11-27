@@ -138,6 +138,8 @@ function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
       <dt>RMS Roll</dt><dd>{ok?deg(f?.rms_roll_deg):'—'}</dd>
       <dt>Baseline B (mô hình quyết định)</dt><dd style={{fontWeight:600}}>{f?.class_baseline_b?`${getRFClassNameVi(f.class_baseline_b)} (${f.class_baseline_b})`:'—'}</dd>
       <dt>Random Forest</dt><dd className="text-muted">{f?`${f.class_rf}${f.class_rf==='UNKNOWN'?' — RF chưa hoạt động trên firmware chính':''}`:'—'}</dd>
+      <dt>Mực nước hầm hàng</dt><dd>{ok&&f?.cargo_water_pct!=null?`${f.cargo_water_pct.toFixed(1)}%`:'—'}</dd>
+      <dt>Nhiệt độ / Độ ẩm hầm hàng</dt><dd>{ok&&(f?.cargo_temp_c!=null||f?.cargo_humidity_pct!=null)?`${f?.cargo_temp_c!=null?`${f.cargo_temp_c.toFixed(1)}°C`:'—'} / ${f?.cargo_humidity_pct!=null?`${f.cargo_humidity_pct.toFixed(1)}%`:'—'}`:'—'}</dd>
      </dl>
     </Panel>
     <Panel title="Thông số tàu & Kết nối thiết bị" tag={core.deviceId??'Chưa có thiết bị'}>
@@ -196,6 +198,13 @@ function Motion({core}:LiveProps){
   </div>
   <Panel title="Xu hướng chỉ số bất thường MAI" tag="Lịch sử thật, không nội suy">
    <LiveLineChart height={170} series={[{label:'MAI',color:'#7C3AED',values:rows.map(r=>r.mai)}]} empty="Thiết bị chưa gửi MAI"/>
+  </Panel>
+  <Panel title="Cảm biến hầm hàng (GPIO 35 & DHT22)" tag="Dữ liệu thật từ ESP32">
+   <div className="compact-metrics-grid">
+    <Metric label="Mực nước hầm hàng" value={ok&&f?.cargo_water_pct!=null?`${f.cargo_water_pct.toFixed(1)}%`:'—'} note={ok?'GPIO 35 (ADC1)':core.link.label} tone={(f?.cargo_water_pct??0)>=70?'red':(f?.cargo_water_pct??0)>=35?'amber':'green'}/>
+    <Metric label="Nhiệt độ hầm hàng" value={ok&&f?.cargo_temp_c!=null?`${f.cargo_temp_c.toFixed(1)}°C`:'—'} note={ok?'DHT22 (GPIO 4)':core.link.label} tone={(f?.cargo_temp_c??0)>=45?'red':'cyan'}/>
+    <Metric label="Độ ẩm hầm hàng" value={ok&&f?.cargo_humidity_pct!=null?`${f.cargo_humidity_pct.toFixed(1)}%`:'—'} note={ok?'DHT22 (GPIO 4)':core.link.label} tone={(f?.cargo_humidity_pct??0)>=85?'amber':'green'}/>
+   </div>
   </Panel>
   <div className="columns">
    <Panel title="Mô hình phân loại & đối chiếu" tag="Baseline B vs Random Forest">

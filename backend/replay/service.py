@@ -131,6 +131,7 @@ def _tele(t: Telemetry) -> ReplayTelemetry:
         server_rx_time=utc(t.server_rx_time), source_mode=t.source_mode, sensor_ok=t.sensor_ok,
         scenario_id=t.scenario_id, roll_deg=t.roll_deg, pitch_deg=t.pitch_deg, rms_roll_deg=t.rms_roll_deg,
         heel_offset_deg=t.heel_offset_deg, trend_rms_deg_per_min=t.trend_rms_deg_per_min,
+        cargo_water_pct=t.cargo_water_pct, cargo_temp_c=t.cargo_temp_c, cargo_humidity_pct=t.cargo_humidity_pct,
         class_rf=t.class_rf, class_baseline_b=t.class_baseline_b, mai=t.mai, alarm_level=t.alarm_level,
         model_version=t.model_version, config_version=t.config_version)
 

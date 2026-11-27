@@ -38,6 +38,7 @@ struct MsgTelemetry {
   uint8_t  alarm_level;         /* svmg_level_t */
   uint32_t config_version;
   bool     sensor_ok;
+  float    cargo_water_pct, cargo_temp_c, cargo_humidity_pct;   /* NAN nếu không đọc / không gắn */
   /* trường mở rộng, chỉ phát khi SVMG_TELEMETRY_EXTRAS (mặc định tắt vì schema có thể cấm trường lạ) */
   bool     acked;
   uint8_t  data_status;         /* svmg_status_t */
