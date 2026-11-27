@@ -202,6 +202,31 @@ export interface DeviceHealth {
   lastCalibrationState?: string | null;
 }
 
+export interface FeatureItem {
+  index: number;
+  name: string;
+  group: string;
+  window_s: number;
+  unit: string;
+  description: string;
+  value: number | null;
+  status: 'VALID' | 'WARNING' | 'INVALID' | 'MISSING' | 'NOT_APPLICABLE';
+  reason?: string;
+  source?: string;
+  displayName?: string;
+}
+
+export interface FeatureSummary {
+  total: number;
+  validCount: number;
+  warningCount: number;
+  invalidCount: number;
+  missingCount: number;
+  contractId: string;
+  version: string;
+  sourceExport: string;
+}
+
 export interface ModelInfo {
   active: string;
   activeModelId: 'RF' | 'BASELINE_B' | null;
@@ -211,6 +236,8 @@ export interface ModelInfo {
   algorithm: string | null;
   featuresCount: number | null;
   features: string[];
+  featureItems?: FeatureItem[];
+  featureSummary?: FeatureSummary;
   inferenceMs: number | null;
   flashKb: number | null;
   ramKb: number | null;

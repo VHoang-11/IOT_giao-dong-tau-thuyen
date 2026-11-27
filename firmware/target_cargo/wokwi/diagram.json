@@ -13,21 +13,21 @@
     {
       "type": "wokwi-potentiometer",
       "id": "pot_water",
-      "top": 17.9,
-      "left": 499,
+      "top": 142.7,
+      "left": 508.6,
       "attrs": {}
     },
     {
       "type": "wokwi-dht22",
       "id": "dht",
-      "top": 259.5,
-      "left": 753,
+      "top": 221.1,
+      "left": 618.6,
       "attrs": {}
     },
     {
       "type": "wokwi-text",
       "id": "label_water",
-      "top": -19.2,
+      "top": 96,
       "left": 432,
       "attrs": {
         "text": "CARGO HOLD WATER LEVEL"
@@ -36,8 +36,8 @@
     {
       "type": "wokwi-text",
       "id": "label_dht",
-      "top": 432,
-      "left": 729.6,
+      "top": 182.4,
+      "left": 624,
       "attrs": {
         "text": "CARGO HOLD TEMP/HUMIDITY (DHT22)"
       }
@@ -45,8 +45,8 @@
     {
       "type": "wokwi-text",
       "id": "label_title",
-      "top": -57.6,
-      "left": 336,
+      "top": 38.4,
+      "left": 364.8,
       "attrs": {
         "text": "SVMG CARGO NODE - vessel-demo-01-cargo"
       }
