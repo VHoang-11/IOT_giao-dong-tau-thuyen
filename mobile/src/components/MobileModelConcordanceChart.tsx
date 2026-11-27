@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { useWindowDimensions, View, Text, StyleSheet } from 'react-native';
-import Svg, { Line, Circle, Rect, G, Text as SvgText } from 'react-native-svg';
-import { C } from '../theme';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
+import { FONT, SHADOWS, useTheme } from '../theme';
 import { RFClass, Scenario } from '../types/domain';
+import { getRFClassNameVi } from '../i18n/vi';
 
 interface MobileModelConcordanceChartProps {
   scenario?: Scenario;
@@ -11,16 +12,17 @@ interface MobileModelConcordanceChartProps {
 
 export function MobileModelConcordanceChart({
   scenario = 'S0',
-  height = 145,
+  height = 140,
 }: MobileModelConcordanceChartProps) {
+  const { colors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
-  const width = Math.max(260, Math.min(windowWidth - 48, 420));
-  const xPad = 32;
+  const width = Math.max(260, Math.min(windowWidth - 64, 460));
+  const xPad = 38;
   const yPad = 14;
 
   const [touchIdx, setTouchIdx] = useState<number | null>(null);
 
-  const points = React.useMemo(() => {
+  const points = useMemo(() => {
     return Array.from({ length: 25 }, (_, i) => {
       const t = i * 5;
       let rf: RFClass = 'NORMAL';
@@ -50,46 +52,65 @@ export function MobileModelConcordanceChart({
     });
   }, [scenario]);
 
-  const scaleX = (i: number) => {
-    return xPad + (i / Math.max(1, points.length - 1)) * (width - xPad - 8);
-  };
+  const scaleX = (i: number) => xPad + (i / Math.max(1, points.length - 1)) * (width - xPad - 10);
 
   const classColor = (c: RFClass) => {
     switch (c) {
-      case 'NORMAL': return C.green;
-      case 'HIGH_ROLL': return C.amber;
-      case 'PERSISTENT_OFFSET': return '#38BDF8';
-      case 'AMPLITUDE_GROWTH': return C.red;
-      default: return C.muted;
+      case 'NORMAL':
+        return colors.green;
+      case 'HIGH_ROLL':
+        return colors.amber;
+      case 'PERSISTENT_OFFSET':
+        return colors.tech;
+      case 'AMPLITUDE_GROWTH':
+        return colors.red;
+      default:
+        return colors.muted;
     }
   };
 
   const handleTouch = (locationX: number) => {
-    const chartW = width - xPad - 8;
+    const chartW = width - xPad - 10;
     const relX = Math.max(0, Math.min(chartW, locationX - xPad));
-    const ratio = relX / chartW;
+    const ratio = relX / Math.max(1, chartW);
     const idx = Math.min(points.length - 1, Math.max(0, Math.round(ratio * (points.length - 1))));
     setTouchIdx(idx);
   };
 
   const activeIdx = touchIdx !== null ? touchIdx : points.length - 1;
   const active = points[activeIdx] || points[0];
-
   const agreeCount = points.filter((p) => p.agree).length;
   const agreePct = ((agreeCount / points.length) * 100).toFixed(0);
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>ĐỐI CHIẾU DỰ ĐOÁN THEO THỜI GIAN</Text>
-        <Text
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.card,
+      ]}
+    >
+      <View style={[styles.cardHeader, { borderBottomColor: colors.borderSubtle }]}>
+        <Text style={[styles.cardTitle, { color: colors.title }]}>
+          Diễn biến đồng thuận theo thời gian
+        </Text>
+        <View
           style={[
-            styles.cardBadge,
-            { color: +agreePct >= 90 ? C.green : C.amber },
+            styles.badgeWrap,
+            {
+              backgroundColor: +agreePct >= 90 ? colors.greenContainerBg : colors.warningContainerBg,
+            },
           ]}
         >
-          {agreePct}% ĐỒNG THUẬN ({agreeCount}/{points.length})
-        </Text>
+          <Text
+            style={[
+              styles.cardBadge,
+              { color: +agreePct >= 90 ? colors.green : colors.amber },
+            ]}
+          >
+            {agreePct}% đồng thuận
+          </Text>
+        </View>
       </View>
 
       <View
@@ -102,25 +123,31 @@ export function MobileModelConcordanceChart({
         onResponderTerminate={() => setTouchIdx(null)}
       >
         <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-          <Rect x={0} y={0} width={width} height={height} fill="#FFFFFF" stroke={C.borderSubtle} strokeWidth={1} rx={6} />
+          <Rect
+            x={0}
+            y={0}
+            width={width}
+            height={height}
+            fill={colors.panel}
+            stroke={colors.borderSubtle}
+            strokeWidth={1}
+            rx={10}
+          />
 
-          {/* Row Guide lines */}
-          <Line x1={xPad} y1={yPad + 12} x2={width - 8} y2={yPad + 12} stroke={C.borderSubtle} strokeWidth={1} />
-          <Line x1={xPad} y1={yPad + 42} x2={width - 8} y2={yPad + 42} stroke={C.borderSubtle} strokeWidth={1} />
-          <Line x1={xPad} y1={yPad + 72} x2={width - 8} y2={yPad + 72} stroke={C.borderSubtle} strokeWidth={1} />
+          <Line x1={xPad} y1={yPad + 14} x2={width - 10} y2={yPad + 14} stroke={colors.border} strokeWidth={1} />
+          <Line x1={xPad} y1={yPad + 44} x2={width - 10} y2={yPad + 44} stroke={colors.border} strokeWidth={1} />
+          <Line x1={xPad} y1={yPad + 74} x2={width - 10} y2={yPad + 74} stroke={colors.border} strokeWidth={1} />
 
-          {/* Row Labels */}
-          <SvgText x={xPad - 4} y={yPad + 15} textAnchor="end" fill={C.cyan} fontSize={8} fontWeight="bold">
+          <SvgText x={xPad - 5} y={yPad + 17} textAnchor="end" fill={colors.tech} fontSize={9} fontWeight="700">
             RF
           </SvgText>
-          <SvgText x={xPad - 4} y={yPad + 45} textAnchor="end" fill={C.amber} fontSize={8} fontWeight="bold">
+          <SvgText x={xPad - 5} y={yPad + 47} textAnchor="end" fill={colors.amber} fontSize={9} fontWeight="700">
             B-B
           </SvgText>
-          <SvgText x={xPad - 4} y={yPad + 75} textAnchor="end" fill={C.text} fontSize={8} fontWeight="bold">
-            Match
+          <SvgText x={xPad - 5} y={yPad + 77} textAnchor="end" fill={colors.title} fontSize={9} fontWeight="600">
+            Khớp
           </SvgText>
 
-          {/* Stream Points */}
           {points.map((p, i) => {
             const x = scaleX(i);
             const isHover = activeIdx === i;
@@ -131,25 +158,41 @@ export function MobileModelConcordanceChart({
                     x={x - 5}
                     y={yPad}
                     width={10}
-                    height={85}
-                    fill="#E0F2FE"
-                    opacity={0.6}
+                    height={86}
+                    fill={colors.cyanContainerBg}
+                    opacity={0.75}
                     rx={2}
                   />
                 )}
-                {/* RF Point */}
-                <Circle cx={x} cy={yPad + 12} r={isHover ? 4.5 : 3} fill={classColor(p.rf)} stroke="#FFFFFF" strokeWidth={1} />
-                {/* Baseline B Point */}
-                <Circle cx={x} cy={yPad + 42} r={isHover ? 4.5 : 3} fill={classColor(p.baseline)} stroke="#FFFFFF" strokeWidth={1} />
-                {/* Concordance marker */}
-                <Circle cx={x} cy={yPad + 72} r={isHover ? 4 : 2.6} fill={p.agree ? C.green : C.amber} />
+                <Circle
+                  cx={x}
+                  cy={yPad + 14}
+                  r={isHover ? 4.5 : 3.2}
+                  fill={classColor(p.rf)}
+                  stroke={colors.panel}
+                  strokeWidth={1}
+                />
+                <Circle
+                  cx={x}
+                  cy={yPad + 44}
+                  r={isHover ? 4.5 : 3.2}
+                  fill={classColor(p.baseline)}
+                  stroke={colors.panel}
+                  strokeWidth={1}
+                />
+                <Circle
+                  cx={x}
+                  cy={yPad + 74}
+                  r={isHover ? 4 : 2.8}
+                  fill={p.agree ? colors.green : colors.amber}
+                />
                 {!p.agree && (
                   <Line
                     x1={x}
-                    y1={yPad + 12}
+                    y1={yPad + 14}
                     x2={x}
-                    y2={yPad + 72}
-                    stroke={C.amber}
+                    y2={yPad + 74}
+                    stroke={colors.amber}
                     strokeWidth={1}
                     strokeDasharray="2 2"
                   />
@@ -158,22 +201,38 @@ export function MobileModelConcordanceChart({
             );
           })}
         </Svg>
+      </View>
 
-        {/* Readout tag */}
-        <View style={styles.readoutRow}>
-          <Text style={styles.readoutLabel}>Mẫu #{active.seq} (T+{active.t_sim_s}s):</Text>
-          <Text style={[styles.readoutTag, { color: classColor(active.rf) }]}>RF: {active.rf}</Text>
-          <Text style={[styles.readoutTag, { color: classColor(active.baseline) }]}>B: {active.baseline}</Text>
-          <Text style={[styles.readoutStatus, { color: active.agree ? C.green : C.amber }]}>
-            {active.agree ? '✓ AGREE' : '⚠ DISAGREE'}
-          </Text>
-        </View>
+      {/* Readout */}
+      <View
+        style={[
+          styles.readoutRow,
+          { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+        ]}
+      >
+        <Text style={[styles.readoutLabel, { color: colors.textSecondary }]}>
+          Mẫu #{active.seq + 1} (T+{active.t_sim_s}s)
+        </Text>
+        <Text style={[styles.readoutTag, { color: colors.tech }]}>
+          RF: {getRFClassNameVi(active.rf)}
+        </Text>
+        <Text style={[styles.readoutTag, { color: colors.amber }]}>
+          Baseline B: {getRFClassNameVi(active.baseline)}
+        </Text>
+        <Text style={[styles.readoutStatus, { color: active.agree ? colors.green : colors.amber }]}>
+          {active.agree ? '✓ Đồng thuận' : '⚠ Bất đồng'}
+        </Text>
       </View>
 
       {scenario === 'S0b' && (
-        <View style={styles.callout}>
-          <Text style={styles.calloutText}>
-            Kịch bản S0b: Gió giật làm Baseline B kích hoạt nhãn HIGH_ROLL, trong khi RF nhận diện chuyển động tự hồi phục góc nghiêng nên giữ nhãn NORMAL.
+        <View
+          style={[
+            styles.callout,
+            { backgroundColor: colors.warningContainerBg, borderColor: colors.amber },
+          ]}
+        >
+          <Text style={[styles.calloutText, { color: colors.title }]}>
+            Kịch bản S0b: Gió giật làm Baseline B phát nhãn Lắc ngang mạnh, trong khi Random Forest nhận diện tàu đang tự hồi phục nên giữ nhãn Bình thường.
           </Text>
         </View>
       )}
@@ -183,79 +242,72 @@ export function MobileModelConcordanceChart({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-    paddingBottom: 6,
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
   },
   cardTitle: {
-    color: C.text,
-    fontSize: 10.5,
-    fontWeight: '800',
-    fontFamily: 'monospace',
+    fontSize: 17,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
+  },
+  badgeWrap: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   cardBadge: {
-    fontSize: 9,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    backgroundColor: '#F0FDF4',
-    borderWidth: 0.5,
-    borderColor: '#BBF7D0',
-    borderRadius: 3,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   touchArea: {
-    position: 'relative',
     width: '100%',
     alignItems: 'center',
   },
   readoutRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-    width: '100%',
     justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   readoutLabel: {
-    color: C.muted,
-    fontSize: 9,
-    fontFamily: 'monospace',
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
   readoutTag: {
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   readoutStatus: {
-    fontSize: 9,
-    fontWeight: '800',
-    fontFamily: 'monospace',
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   callout: {
-    backgroundColor: '#FFFBEB',
     borderWidth: 1,
-    borderColor: C.amber,
-    borderRadius: 4,
-    padding: 6,
-    marginTop: 8,
+    borderRadius: 10,
+    padding: 10,
   },
   calloutText: {
-    color: '#92400E',
-    fontSize: 9,
-    lineHeight: 13,
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 18,
   },
 });
-

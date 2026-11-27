@@ -1,26 +1,45 @@
-import React from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import {
+  Alert,
+  LayoutChangeEvent,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { MotionChart } from '../components/MotionChart';
 import { Inclinometer } from '../components/Inclinometer';
-import { MobileVoyageDistributionChart, MobileRfBreakdownChart } from '../components/MobileVoyageCharts';
+import {
+  MobileRfBreakdownChart,
+  MobileVoyageDistributionChart,
+} from '../components/MobileVoyageCharts';
 import {
   ActionBtn,
-  Body,
-  Label,
   LinkRow,
   MetricCard,
   Page,
   Panel,
   Pill,
-  Small,
+  Severity,
+  StatusPill,
   TwoCol,
-  Value,
 } from '../components/UI';
 import { SCENARIOS, fakeWavePoints } from '../data/mock';
-import { C } from '../theme';
+import { FONT, SHADOWS, useTheme } from '../theme';
 import { CommandStatus, ScreenProps } from '../types/domain';
+import {
+  getAlarmLevelNameVi,
+  getCommandStatusNameVi,
+  getRFClassNameVi,
+} from '../i18n/vi';
 
+/**
+ * MÀN HÌNH 4: TRUNG TÂM ĐIỀU KHIỂN (Control Center)
+ */
 export function ControlCenterScreen({ data, actions }: ScreenProps) {
+  const { colors } = useTheme();
+  const [showTestUtility, setShowTestUtility] = useState(false);
+
   const role = data.session?.role ?? 'Operator';
   const isSupervisorOrAdmin = role === 'Supervisor' || role === 'Admin';
   const isAdmin = role === 'Admin';
@@ -30,107 +49,73 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
 
   const statusColor = (st: CommandStatus) =>
     st === 'APPLIED'
-      ? C.green
+      ? colors.green
       : st === 'REJECTED' || st === 'TIMEOUT'
-      ? C.red
+      ? colors.red
       : st === 'DELIVERED'
-      ? C.cyan
-      : C.amber;
+      ? colors.tech
+      : colors.amber;
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName="Tàu MV SVMG-01"
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
       onBack={actions.back}
-      title="CONTROL CENTER"
-      subtitle="Cấu hình thiết bị giám sát • Kênh lệnh có phiên bản & Phân quyền"
+      title="Trung tâm điều khiển"
+      subtitle="Quản trị cấu hình thiết bị giám sát và kiểm soát lệnh có phiên bản"
     >
-      {/* Scope Disclaimer Banner */}
-      <View style={styles.disclaimerBanner}>
-        <Text style={styles.disclaimerIcon}>🛡️</Text>
-        <Text style={styles.disclaimerText}>
-          CHỈ ĐIỀU KHIỂN THIẾT BỊ GIÁM SÁT • TUYỆT ĐỐI KHÔNG ĐIỀU KHIỂN BÁNH LÁI, ĐỘNG CƠ HAY HÀNG HẢI TÀU.
+      {/* Safety Scope Disclaimer */}
+      <View
+        style={[
+          styles.disclaimerBanner,
+          { backgroundColor: colors.warningContainerBg, borderColor: colors.amber },
+        ]}
+      >
+        <Text style={[styles.disclaimerText, { color: colors.title }]}>
+          Chỉ điều khiển thiết bị giám sát. Hệ thống không can thiệp bánh lái, động cơ hay vận hành hàng hải tàu.
         </Text>
       </View>
 
-      {/* 1. Active Configuration Well */}
-      <Panel title="CẤU HÌNH THIẾT BỊ HIỆN HÀNH" tag={`VERSION v${cfg.config_version}`}>
-        <View style={styles.cfgRow}>
-          <View style={styles.cfgItem}>
-            <Text style={styles.cfgLabel}>PROFILE:</Text>
-            <View style={styles.activeProfileBadge}>
-              <Text style={styles.activeProfileText}>{cfg.profile}</Text>
-            </View>
-          </View>
-          <View style={styles.cfgItem}>
-            <Text style={styles.cfgLabel}>NGUỒN DỮ LIỆU:</Text>
-            <Text style={styles.cfgVal}>{cfg.source_mode}</Text>
-          </View>
-        </View>
+      {/* 2x2 Configuration Summary */}
+      <TwoCol>
+        <MetricCard
+          label="Profile hiện hành"
+          value={cfg.profile}
+          subtext={`Phiên bản v${cfg.config_version}`}
+          color={colors.tech}
+        />
+        <MetricCard
+          label="Mô hình chính"
+          value={cfg.active_model === 'RF' ? 'Random Forest' : 'Baseline B'}
+          subtext={`Tốc độ mô phỏng ×${cfg.timewarp}`}
+          color={colors.tech}
+        />
+      </TwoCol>
 
-        <View style={styles.cfgRow}>
-          <View style={styles.cfgItem}>
-            <Text style={styles.cfgLabel}>MÔ HÌNH CHÍNH:</Text>
-            <Text style={[styles.cfgVal, { color: C.cyan }]}>
-              {cfg.active_model === 'RF' ? 'Random Forest (Edge)' : 'Baseline B'}
-            </Text>
-          </View>
-          <View style={styles.cfgItem}>
-            <Text style={styles.cfgLabel}>TỐC ĐỘ VIRTUAL:</Text>
-            <Text style={[styles.cfgVal, { color: C.amber }]}>×{cfg.timewarp}</Text>
-          </View>
-        </View>
+      <TwoCol>
+        <MetricCard
+          label="Ngưỡng lắc an toàn"
+          value={`${cfg.roll_warning_deg.toFixed(1)}° / ${cfg.roll_trip_deg.toFixed(1)}°`}
+          subtext="Cảnh báo / Nguy cấp"
+          color={colors.amber}
+        />
+        <MetricCard
+          label="Ngưỡng MAI"
+          value={cfg.mai_alert_threshold.toFixed(2)}
+          subtext={cfg.zero_calibration ? 'Đã hiệu chuẩn điểm 0' : 'Điểm 0 mặc định'}
+          color={colors.red}
+        />
+      </TwoCol>
 
-        {/* Threshold Metrics Bento */}
-        <View style={styles.thresholdBento}>
-          <View style={styles.thresholdTile}>
-            <Text style={styles.thresholdTileLabel}>ROLL WARNING</Text>
-            <Text style={[styles.thresholdTileVal, { color: C.amber }]}>
-              {cfg.roll_warning_deg.toFixed(1)}°
-            </Text>
-            <Text style={styles.thresholdTileSub}>Amber Limit</Text>
-          </View>
-          <View style={styles.thresholdTile}>
-            <Text style={styles.thresholdTileLabel}>CRITICAL TRIP</Text>
-            <Text style={[styles.thresholdTileVal, { color: C.red }]}>
-              {cfg.roll_trip_deg.toFixed(1)}°
-            </Text>
-            <Text style={styles.thresholdTileSub}>Red Limit</Text>
-          </View>
-          <View style={styles.thresholdTile}>
-            <Text style={styles.thresholdTileLabel}>MAI ALERT</Text>
-            <Text style={[styles.thresholdTileVal, { color: C.cyan }]}>
-              {cfg.mai_alert_threshold.toFixed(2)}
-            </Text>
-            <Text style={styles.thresholdTileSub}>Damped α</Text>
-          </View>
-        </View>
-
-        {cfg.zero_calibration && (
-          <View style={[styles.cfgRow, { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border }]}>
-            <View style={styles.cfgItem}>
-              <Text style={styles.cfgLabel}>ĐIỂM 0 HIỆU CHUẨN:</Text>
-              <Text style={[styles.cfgVal, { color: C.green }]}>
-                Roll {cfg.zero_calibration.roll_offset_deg > 0 ? '+' : ''}{cfg.zero_calibration.roll_offset_deg}°, Pitch {cfg.zero_calibration.pitch_offset_deg}° (30s tĩnh)
-              </Text>
-            </View>
-          </View>
-        )}
-
-        <Text style={[styles.secNote, { marginTop: 8 }]}>
-          * Lưu ý: Các ngưỡng Roll và MAI là cấu hình mô phỏng nội bộ nhóm (Demo Profile, tham chiếu dải an toàn 15°–25° theo đề cương), không phải tiêu chuẩn IMO chính thức.
-        </Text>
-      </Panel>
-
-      {/* 2. Monitoring Command Profiles Segmented Selector */}
+      {/* Group 1: Profile & Rollback */}
       <Panel
-        title="THAY ĐỔI PROFILE CẤU HÌNH"
-        tag={isSupervisorOrAdmin ? 'SUPERVISOR / ADMIN' : 'CHỈ XEM (OPERATOR)'}
+        title="Cấu hình ngưỡng & Hoàn tác"
+        tag={isSupervisorOrAdmin ? 'Giám sát / Quản trị' : 'Chỉ xem'}
       >
-        <Text style={styles.secNote}>
-          Đổi cấu hình chống nhấp nháy N và ngưỡng an toàn. Giới hạn φ_hard luôn trong 15–25°:
+        <Text style={[styles.secNote, { color: colors.textSecondary }]}>
+          Chọn bộ ngưỡng giám sát theo trạng thái biển hiện tại:
         </Text>
 
         <View style={styles.profileButtonGroup}>
@@ -143,7 +128,10 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
                 onPress={() => actions.sendCommand('set_profile', false, p)}
                 style={[
                   styles.profileSelectBtn,
-                  active && styles.profileSelectBtnActive,
+                  {
+                    backgroundColor: active ? colors.primaryContainer : colors.panel2,
+                    borderColor: active ? colors.primaryContainer : colors.borderSubtle,
+                  },
                   !isSupervisorOrAdmin && styles.btnDisabledOpacity,
                 ]}
                 accessibilityRole="button"
@@ -151,8 +139,9 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
                 <Text
                   style={[
                     styles.profileSelectBtnText,
-                    active && styles.profileSelectBtnTextActive,
+                    { color: active ? '#FFFFFF' : colors.title },
                   ]}
+                  numberOfLines={1}
                 >
                   {active ? `✓ ${p}` : p}
                 </Text>
@@ -161,68 +150,68 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           })}
         </View>
 
-        {/* Rollback Configuration Button */}
-        <View style={styles.rollbackWell}>
-          <ActionBtn
-            label={
-              prev
-                ? `QUAY LUI VỀ PROFILE ${prev.profile} (ROLLBACK)`
-                : 'CHƯA CÓ BẢN LƯU ĐỂ QUAY LUI (ROLLBACK)'
-            }
-            onPress={() => actions.sendCommand('rollback', false)}
-            disabled={!isSupervisorOrAdmin || !prev}
-            tone="ghost"
-          />
-          <Text style={styles.rollbackNote}>
-            {prev
-              ? `* Bản snapshot trước: Profile ${prev.profile} (v${prev.config_version}). Hoàn tác nguyên tử an toàn.`
-              : '* Chưa có thay đổi cấu hình nào trước đó trong phiên này.'}
-          </Text>
-        </View>
+        <ActionBtn
+          label={
+            prev
+              ? `Khôi phục về ${prev.profile} (v${prev.config_version})`
+              : 'Chưa có bản lưu để khôi phục'
+          }
+          onPress={() => actions.sendCommand('rollback', false)}
+          disabled={!isSupervisorOrAdmin || !prev}
+          tone="ghost"
+        />
       </Panel>
 
-      {/* 3. Monitoring Commands (Supervisor / Admin) */}
-      <Panel
-        title="LỆNH ĐIỀU KHIỂN THIẾT BỊ GIÁM SÁT"
-        tag="SUPERVISOR / ADMIN"
-      >
-        {/* Calibrate Zero */}
-        <View style={styles.commandRowCard}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.commandRowTitle}>Hiệu chuẩn độ lệch 0 (calibrate_zero)</Text>
-            <Text style={styles.commandRowSub}>
-              Đo độ lệch tĩnh và kiểm tra độ ổn định tín hiệu trong 30s. Điều kiện: Tàu tĩnh (kịch bản S0, σ ≤ 1.0°).
+      {/* Group 2: Device Calibration & Snapshot */}
+      <Panel title="Lệnh thiết bị tại biên" tag={isSupervisorOrAdmin ? 'Giám sát / Quản trị' : 'Chỉ xem'}>
+        <View
+          style={[
+            styles.commandRowCard,
+            { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+          ]}
+        >
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.commandRowTitle, { color: colors.title }]}>
+              Hiệu chuẩn điểm 0
             </Text>
-            <View style={styles.conditionRow}>
-              <Text style={styles.conditionLabel}>Trạng thái hiện tại:</Text>
-              <Text
-                style={[
-                  styles.conditionVal,
-                  { color: data.scenario === 'S0' ? C.green : C.amber },
-                ]}
-              >
-                {data.scenario === 'S0' ? '● Tàu tĩnh (S0, σ=0.15°) — HỢP LỆ' : `● ${data.scenario} (σ > 1.0°) — TỪ CHỐI (NOT_STATIC)`}
-              </Text>
-            </View>
+            <Text style={[styles.commandRowSub, { color: colors.textSecondary }]}>
+              Yêu cầu tàu tĩnh trong 30 giây (Kịch bản S0).
+            </Text>
+            <Text
+              style={[
+                styles.conditionVal,
+                { color: data.scenario === 'S0' ? colors.green : colors.amber },
+              ]}
+            >
+              {data.scenario === 'S0'
+                ? '● Tàu tĩnh (S0) — Hợp lệ'
+                : `● ${data.scenario} — Sẽ từ chối nếu không tĩnh`}
+            </Text>
           </View>
           <ActionBtn
-            label="CALIBRATE"
+            label="Hiệu chuẩn"
             onPress={() => actions.sendCommand('calibrate_zero', false)}
             disabled={!isSupervisorOrAdmin}
             tone="secondary"
           />
         </View>
 
-        {/* Request Snapshot */}
-        <View style={styles.commandRowCard}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.commandRowTitle}>Yêu cầu trích xuất sóng (request_snapshot)</Text>
-            <Text style={styles.commandRowSub}>
-              Thiết bị gửi chuỗi 180s roll/pitch giảm mẫu (36 mẫu) và lưu trực tiếp vào Mock State.
+        <View
+          style={[
+            styles.commandRowCard,
+            { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+          ]}
+        >
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={[styles.commandRowTitle, { color: colors.title }]}>
+              Chụp trạng thái 180s
+            </Text>
+            <Text style={[styles.commandRowSub, { color: colors.textSecondary }]}>
+              Trích xuất chuỗi 36 mẫu roll/pitch lưu vào bộ nhớ phiên.
             </Text>
           </View>
           <ActionBtn
-            label="SNAPSHOT"
+            label="Chụp mẫu"
             onPress={() => actions.sendCommand('request_snapshot', false)}
             disabled={!isSupervisorOrAdmin}
             tone="secondary"
@@ -230,171 +219,100 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
         </View>
       </Panel>
 
-      {/* Snapshot Result Artifact in Mock State */}
       {data.latestSnapshot && (
-        <Panel title="BẢN CHỤP DỮ LIỆU ĐỘNG HỌC (LATEST SNAPSHOT 180s)" tag="MOCK STATE ARTIFACT">
-          <View style={styles.cfgRow}>
-            <View style={styles.cfgItem}>
-              <Text style={styles.cfgLabel}>MÃ SNAPSHOT:</Text>
-              <Text style={[styles.cfgVal, { color: C.cyan }]}>{data.latestSnapshot.snapshot_id}</Text>
-            </View>
-            <View style={styles.cfgItem}>
-              <Text style={styles.cfgLabel}>SỐ LƯỢNG MẪU:</Text>
-              <Text style={styles.cfgVal}>{data.latestSnapshot.sample_count} mẫu (180s)</Text>
-            </View>
-          </View>
-          <View style={styles.cfgRow}>
-            <View style={styles.cfgItem}>
-              <Text style={styles.cfgLabel}>GIỚI HẠN ROLL:</Text>
-              <Text style={styles.cfgVal}>
+        <Panel title="Bản chụp trạng thái gần nhất" tag={data.latestSnapshot.snapshot_id}>
+          <View style={{ gap: 6 }}>
+            <View style={styles.kvRow}>
+              <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Giới hạn Roll</Text>
+              <Text style={[styles.kvVal, { color: colors.tech }]}>
                 {data.latestSnapshot.roll_min.toFixed(1)}° .. {data.latestSnapshot.roll_max.toFixed(1)}°
               </Text>
             </View>
-            <View style={styles.cfgItem}>
-              <Text style={styles.cfgLabel}>RMS ROLL / MAI:</Text>
-              <Text style={[styles.cfgVal, { color: C.amber }]}>
+            <View style={styles.kvRow}>
+              <Text style={[styles.kvKey, { color: colors.textSecondary }]}>RMS Roll / MAI</Text>
+              <Text style={[styles.kvVal, { color: colors.amber }]}>
                 {data.latestSnapshot.rms_roll_deg.toFixed(1)}° / MAI {data.latestSnapshot.mai}
               </Text>
             </View>
           </View>
-          <Text style={styles.rollbackNote}>
-            * Dữ liệu snapshot 180s đã được trích xuất và lưu trong Mock State bởi {data.latestSnapshot.triggered_by}.
-          </Text>
         </Panel>
       )}
 
-      {/* Test Harness / Mock Utility Panel */}
+      {/* Group 3: Admin Simulation Controls */}
       <Panel
-        title="TIỆN ÍCH KIỂM THỬ (TEST HARNESS / MOCK ONLY)"
-        tag="UTILITY FOR QA / DEV"
+        title="Thiết lập mô phỏng & Lõi mô hình"
+        tag={isAdmin ? 'Quản trị viên' : 'Chỉ Quản trị viên'}
       >
-        <Text style={styles.secNote}>
-          Tiện ích giả lập sự cố kết nối phục vụ kiểm thử giao diện & vòng đời lệnh TIMEOUT (không phải lệnh cấu hình thiết bị trong Bảng 8.2 đề cương):
-        </Text>
-        <View style={styles.commandRowCard}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.commandRowTitle}>[TEST UTILITY] Thử nghiệm TIMEOUT (TTL 30s)</Text>
-            <Text style={styles.commandRowSub}>
-              Mô phỏng trường hợp mất gói tin QoS 1 hoặc thiết bị không phản hồi ACK (SENT → DELIVERED → TIMEOUT).
-            </Text>
-          </View>
-          <ActionBtn
-            label="TEST TIMEOUT"
-            onPress={() => actions.sendCommand('test_timeout', false)}
-            disabled={!isSupervisorOrAdmin}
-            tone="ghost"
-          />
-        </View>
-      </Panel>
-      {/* 4. Advanced Admin Only Panel */}
-      <Panel
-        title="THIẾT LẬP MÔ PHỎNG VÀ LÕI MÔ HÌNH"
-        tag={isAdmin ? 'ADMIN ACCESS GRANTED' : 'KHÓA: YÊU CẦU QUYỀN ADMIN'}
-      >
-        {/* Set Timewarp */}
         <View style={styles.adminSection}>
-          <Text style={styles.adminSectionTitle}>TỐC ĐỘ THỜI GIAN MÔ PHỎNG (TIMEWARP):</Text>
+          <Text style={[styles.adminSectionTitle, { color: colors.title }]}>
+            Tốc độ thời gian mô phỏng
+          </Text>
           <View style={styles.buttonTrio}>
-            {(['1', '5', '10'] as const).map((tw) => (
-              <Pressable
-                key={tw}
-                disabled={!isAdmin}
-                onPress={() => actions.sendCommand('set_timewarp', true, tw)}
-                style={[
-                  styles.trioBtn,
-                  cfg.timewarp === parseInt(tw, 10) && styles.trioBtnActive,
-                  !isAdmin && styles.btnDisabledOpacity,
-                ]}
-                accessibilityRole="button"
-              >
-                <Text
+            {(['1', '5', '10'] as const).map((tw) => {
+              const active = cfg.timewarp === parseInt(tw, 10);
+              return (
+                <Pressable
+                  key={tw}
+                  disabled={!isAdmin}
+                  onPress={() => actions.sendCommand('set_timewarp', true, tw)}
                   style={[
-                    styles.trioBtnText,
-                    cfg.timewarp === parseInt(tw, 10) && styles.trioBtnTextActive,
+                    styles.trioBtn,
+                    {
+                      backgroundColor: active ? colors.primaryContainer : colors.panel2,
+                      borderColor: active ? colors.primaryContainer : colors.borderSubtle,
+                    },
+                    !isAdmin && styles.btnDisabledOpacity,
                   ]}
+                  accessibilityRole="button"
                 >
-                  ×{tw}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text style={[styles.trioBtnText, { color: active ? '#FFFFFF' : colors.title }]}>
+                    ×{tw}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
-        {/* Set Model */}
         <View style={styles.adminSection}>
-          <Text style={styles.adminSectionTitle}>CHỌN MÔ HÌNH QUYẾT ĐỊNH CHÍNH (SET_MODEL):</Text>
+          <Text style={[styles.adminSectionTitle, { color: colors.title }]}>
+            Mô hình quyết định chính
+          </Text>
           <View style={styles.buttonTrio}>
             {(
               [
-                { id: 'RF', label: 'Random Forest (Edge)' },
-                { id: 'BASELINE_B', label: 'Baseline B (Heuristic)' },
+                { id: 'RF', label: 'Random Forest' },
+                { id: 'BASELINE_B', label: 'Baseline B' },
               ] as const
-            ).map((m) => (
-              <Pressable
-                key={m.id}
-                disabled={!isAdmin}
-                onPress={() => actions.sendCommand('set_model', true, m.id)}
-                style={[
-                  styles.trioBtn,
-                  { flex: 1 },
-                  cfg.active_model === m.id && styles.trioBtnActive,
-                  !isAdmin && styles.btnDisabledOpacity,
-                ]}
-                accessibilityRole="button"
-              >
-                <Text
+            ).map((m) => {
+              const active = cfg.active_model === m.id;
+              return (
+                <Pressable
+                  key={m.id}
+                  disabled={!isAdmin}
+                  onPress={() => actions.sendCommand('set_model', true, m.id)}
                   style={[
-                    styles.trioBtnText,
-                    cfg.active_model === m.id && styles.trioBtnTextActive,
+                    styles.trioBtn,
+                    {
+                      backgroundColor: active ? colors.primaryContainer : colors.panel2,
+                      borderColor: active ? colors.primaryContainer : colors.borderSubtle,
+                    },
+                    !isAdmin && styles.btnDisabledOpacity,
                   ]}
+                  accessibilityRole="button"
                 >
-                  {m.label}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text style={[styles.trioBtnText, { color: active ? '#FFFFFF' : colors.title }]}>
+                    {m.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
-        {/* Set Mode */}
         <View style={styles.adminSection}>
-          <Text style={styles.adminSectionTitle}>CHẾ ĐỘ NGUỒN TÍN HIỆU (SET_MODE):</Text>
-          <View style={styles.buttonTrio}>
-            <Pressable
-              disabled={!isAdmin}
-              onPress={() => actions.sendCommand('set_mode', true, 'SIMULATION')}
-              style={[
-                styles.trioBtn,
-                { flex: 1 },
-                cfg.source_mode === 'SIMULATION' && styles.trioBtnActive,
-                !isAdmin && styles.btnDisabledOpacity,
-              ]}
-              accessibilityRole="button"
-            >
-              <Text
-                style={[
-                  styles.trioBtnText,
-                  cfg.source_mode === 'SIMULATION' && styles.trioBtnTextActive,
-                ]}
-              >
-                SIMULATION (Mô phỏng)
-              </Text>
-            </Pressable>
-
-            <Pressable
-              disabled={!isAdmin}
-              onPress={() => actions.sendCommand('set_mode', true, 'SENSOR')}
-              style={[styles.trioBtn, { flex: 1 }, !isAdmin && styles.btnDisabledOpacity]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.trioBtnText}>SENSOR (Thử nghiệm REJECTED)</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Set Scenario Grid */}
-        <View style={styles.adminSection}>
-          <Text style={styles.adminSectionTitle}>
-            CHỌN KỊCH BẢN GIẢ LẬP (SET_SCENARIO — 8 TRƯỜNG HỢP):
+          <Text style={[styles.adminSectionTitle, { color: colors.title }]}>
+            Kịch bản thử nghiệm (8 trạng thái)
           </Text>
           <View style={styles.scenarioGrid}>
             {SCENARIOS.map((s) => {
@@ -406,7 +324,10 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
                   onPress={() => actions.setScenario(s.id)}
                   style={[
                     styles.scenarioBtn,
-                    active && styles.scenarioBtnActive,
+                    {
+                      backgroundColor: active ? colors.cyanContainerBg : colors.panel2,
+                      borderColor: active ? colors.tech : colors.borderSubtle,
+                    },
                     !isAdmin && styles.btnDisabledOpacity,
                   ]}
                   accessibilityRole="button"
@@ -414,64 +335,95 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
                   <Text
                     style={[
                       styles.scenarioBtnText,
-                      active && styles.scenarioBtnTextActive,
+                      { color: active ? colors.tech : colors.title },
                     ]}
                   >
                     {active ? `✓ ${s.id}` : s.id}
                   </Text>
-                  <Text style={styles.scenarioBtnDesc} numberOfLines={1}>
-                    {s.label.split(' - ')[1] ?? s.label}
+                  <Text style={[styles.scenarioBtnDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {s.label}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
         </View>
+
+        {/* Collapsible Test Utility */}
+        <Pressable
+          onPress={() => setShowTestUtility((v) => !v)}
+          style={[styles.collapseTrigger, { borderColor: colors.borderSubtle }]}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.collapseText, { color: colors.textSecondary }]}>
+            {showTestUtility ? '▾ Ẩn tiện ích kiểm thử TTL' : '▸ Tiện ích kiểm thử quá hạn lệnh (QA)'}
+          </Text>
+        </Pressable>
+
+        {showTestUtility && (
+          <View
+            style={[
+              styles.commandRowCard,
+              { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+            ]}
+          >
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.commandRowTitle, { color: colors.title }]}>
+                Thử nghiệm quá hạn (Timeout 30s)
+              </Text>
+              <Text style={[styles.commandRowSub, { color: colors.textSecondary }]}>
+                Giả lập mất phản hồi ACK từ thiết bị để kiểm tra trạng thái TIMEOUT.
+              </Text>
+            </View>
+            <ActionBtn
+              label="Thử Timeout"
+              onPress={() => actions.sendCommand('test_timeout', false)}
+              disabled={!isSupervisorOrAdmin}
+              tone="ghost"
+            />
+          </View>
+        )}
       </Panel>
 
-      {/* 5. Command Execution History & Lifecycle Audit */}
-      <Panel
-        title="NHẬT KÝ VÒNG ĐỜI LỆNH (COMMAND AUDIT LOG)"
-        tag="SENT → DELIVERED → APPLIED/REJECTED"
-      >
+      {/* Group 4: Command Audit History */}
+      <Panel title="Lịch sử thực thi lệnh" tag={`${data.commands.length} lệnh`}>
         {data.commands.length === 0 ? (
-          <Text style={styles.emptyHistoryText}>
-            Chưa có lệnh nào được phát lệnh trong phiên làm việc hiện tại.
+          <Text style={[styles.emptyHistoryText, { color: colors.textSecondary }]}>
+            Chưa có lệnh nào được gửi trong phiên làm việc hiện tại.
           </Text>
         ) : (
-          <View style={styles.historyList}>
+          <View style={{ gap: 10 }}>
             {data.commands.map((cmd) => {
               const color = statusColor(cmd.status);
               return (
-                <View key={cmd.id} style={styles.historyCard}>
+                <View
+                  key={cmd.id}
+                  style={[
+                    styles.historyCard,
+                    { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+                  ]}
+                >
                   <View style={styles.historyHeader}>
-                    <View style={styles.cmdTitleCol}>
-                      <Text style={styles.cmdIdText}>{cmd.id}</Text>
-                      <Text style={styles.cmdNameText}>{cmd.name}</Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={[styles.cmdNameText, { color: colors.title }]}>{cmd.name}</Text>
+                      <Text style={[styles.cmdIdText, { color: colors.textSecondary }]}>
+                        {cmd.id} • {cmd.at} • v{cmd.config_version}
+                      </Text>
                     </View>
                     <View
                       style={[
                         styles.cmdStatusPill,
-                        { borderColor: color, backgroundColor: `${color}1A` },
+                        { borderColor: color, backgroundColor: colors.panel },
                       ]}
                     >
                       <Text style={[styles.cmdStatusText, { color }]}>
-                        {cmd.status}
+                        {getCommandStatusNameVi(cmd.status)}
                       </Text>
                     </View>
                   </View>
-
-                  <View style={styles.historyMetaRow}>
-                    <Text style={styles.historyMetaTime}>🕒 {cmd.at}</Text>
-                    {cmd.issued_by && (
-                      <Text style={styles.historyMetaUser}>
-                        Người phát: <Text style={{ color: C.text }}>{cmd.issued_by}</Text>
-                      </Text>
-                    )}
-                    <Text style={styles.historyMetaVer}>v{cmd.config_version}</Text>
-                  </View>
-
-                  <Text style={styles.historyDetailText}>{cmd.detail}</Text>
+                  <Text style={[styles.historyDetailText, { color: colors.textSecondary }]}>
+                    {cmd.detail}
+                  </Text>
                 </View>
               );
             })}
@@ -482,332 +434,225 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
   );
 }
 
+/**
+ * MÀN HÌNH 5: BÁO CÁO HÀNH TRÌNH (Voyage Reports)
+ */
 export function VoyageReportsScreen({ data, actions }: ScreenProps) {
+  const { colors } = useTheme();
   const v = data.voyage;
-  const isSelected = (id: string) => data.selectedVoyageId === id;
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName="Tàu MV SVMG-01"
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
-      title="VOYAGE REPORTS"
-      subtitle="HÀNH TRÌNH GIÁM SÁT • DỮ LIỆU MÔ PHỎNG"
+      onBack={actions.back}
+      title="Báo cáo hành trình"
+      subtitle="Tổng hợp thống kê dao động và chỉ số bất thường theo chuyến đi"
     >
-      {/* 1. Voyage Selector Tabs */}
-      <Panel title="DANH SÁCH CHUYẾN ĐI MÔ PHỎNG" tag="CHỌN CHUYẾN">
-        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+      {/* Voyage Selector */}
+      <Panel title="Chọn hải trình" tag={`${data.voyages.length} chuyến`}>
+        <View style={styles.voyageSelectorRow}>
           {data.voyages.map((voy) => {
-            const active = isSelected(voy.id);
+            const active = data.selectedVoyageId === voy.id;
             return (
               <Pressable
                 key={voy.id}
                 onPress={() => actions.selectVoyage(voy.id)}
-                style={{
-                  flex: 1,
-                  minWidth: 95,
-                  paddingVertical: 8,
-                  paddingHorizontal: 8,
-                  borderRadius: 5,
-                  borderWidth: 1,
-                  borderColor: active ? C.cyan : C.border,
-                  backgroundColor: active ? '#EAF2FA' : C.panel,
-                  alignItems: 'center',
-                }}
+                style={[
+                  styles.voyageBtn,
+                  {
+                    backgroundColor: active ? colors.primaryContainer : colors.panel2,
+                    borderColor: active ? colors.primaryContainer : colors.borderSubtle,
+                  },
+                ]}
+                accessibilityRole="button"
               >
-                <Text style={{ color: active ? C.cyan : C.text, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>
-                  {active ? `● ${voy.id}` : voy.id}
+                <Text style={[styles.voyageBtnId, { color: active ? '#FFFFFF' : colors.title }]}>
+                  {voy.id}
                 </Text>
-                <Text style={{ color: C.muted, fontSize: 9, marginTop: 2 }} numberOfLines={1}>
-                  {voy.durationMinutes} min
+                <Text
+                  style={[
+                    styles.voyageBtnSub,
+                    { color: active ? 'rgba(255,255,255,0.85)' : colors.textSecondary },
+                  ]}
+                >
+                  {voy.durationMinutes} phút
                 </Text>
               </Pressable>
             );
           })}
         </View>
-        <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border }}>
-          <Value>{v.name}</Value>
-          <Body>{v.route}</Body>
-          <Small>Bắt đầu: {v.startTime} • Kết thúc: {v.endTime}</Small>
+
+        <View style={[styles.voyageMetaBox, { borderTopColor: colors.borderSubtle }]}>
+          <Text style={[styles.voyageName, { color: colors.title }]}>{v.name}</Text>
+          <Text style={[styles.voyageRoute, { color: colors.textSecondary }]}>{v.route}</Text>
         </View>
       </Panel>
 
-      {/* 2. Key Voyage Kinematic Metrics */}
+      {/* 2x2 KPIs */}
       <TwoCol>
         <MetricCard
-          label="THỜI LƯỢNG"
-          value={`${v.durationMinutes} phút`}
-          color={C.cyan}
-        />
-        <MetricCard
-          label="SỰ KIỆN CẢNH BÁO"
-          value={String(v.alarms)}
-          color={v.alarms > 0 ? C.amber : C.green}
-        />
-      </TwoCol>
-
-      <TwoCol>
-        <MetricCard
-          label="ROLL CỰC ĐẠI |°|"
+          label="Góc lắc cực đại"
           value={`${v.maxAbsRollDeg.toFixed(1)}°`}
-          color={v.maxAbsRollDeg > 15 ? C.red : C.amber}
+          subtext={`RMS: ${v.rmsRollDeg.toFixed(2)}°`}
+          color={v.maxAbsRollDeg >= 15 ? colors.red : colors.tech}
         />
         <MetricCard
-          label="RMS ROLL (T11)"
-          value={`${v.rmsRollDeg.toFixed(2)}°`}
-          color={C.cyan}
+          label="Góc chúi cực đại"
+          value={`${v.maxAbsPitchDeg.toFixed(1)}°`}
+          subtext={`RMS: ${v.rmsPitchDeg.toFixed(2)}°`}
+          color={colors.amber}
         />
       </TwoCol>
 
-      {/* Kinematic Statistical Distribution & RF Breakdown Charts */}
+      <TwoCol>
+        <MetricCard
+          label="MAI cực đại"
+          value={`${v.maiMax} / 100`}
+          subtext="Chỉ số lớn nhất"
+          color={v.maiMax >= 70 ? colors.red : v.maiMax >= 35 ? colors.amber : colors.green}
+        />
+        <MetricCard
+          label="MAI trung bình"
+          value={`${v.maiAvg} / 100`}
+          subtext={`Vượt ngưỡng: ${v.maiCautionMinutes} phút`}
+          color={v.maiAvg >= 70 ? colors.red : v.maiAvg >= 35 ? colors.amber : colors.green}
+        />
+      </TwoCol>
+
       <MobileVoyageDistributionChart voyage={v} />
       <MobileRfBreakdownChart voyage={v} />
 
-      {/* 3. Extreme Kinematics & MAI Bento */}
-      <Panel title="TỔNG QUAN CHỈ SỐ ĐỘNG HỌC & BẤT THƯỜNG" tag="KINEMATIC AUDIT">
-        <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>P95 ROLL (T11):</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.p95AbsRollDeg.toFixed(2)}°</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>MAX PITCH / RMS PITCH:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maxAbsPitchDeg.toFixed(2)}° / {v.rmsPitchDeg.toFixed(2)}°</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>MAI CỰC ĐẠI / TRUNG BÌNH:</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maiMax} / {v.maiAvg}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>THỜI LƯỢNG MAI &gt; 70:</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maiCautionMinutes} min</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>ĐỒNG THUẬN BASELINE B:</Text>
-            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.agreementPercent}%</Text>
-          </View>
-        </View>
-      </Panel>
-
-      {/* 4. Classification Breakdown */}
-      <Panel title="PHÂN BỐ TRẠNG THÁI RANDOM FOREST" tag="AI MODEL">
-        <View style={{ height: 12, backgroundColor: '#D0DDEB', borderRadius: 4, overflow: 'hidden', flexDirection: 'row', marginVertical: 8 }}>
-          <View style={{ width: `${v.rfDistribution.normalPct}%`, backgroundColor: C.green }} />
-          <View style={{ width: `${v.rfDistribution.highRollPct}%`, backgroundColor: C.amber }} />
-          <View style={{ width: `${v.rfDistribution.persistentOffsetPct}%`, backgroundColor: '#38BDF8' }} />
-          <View style={{ width: `${v.rfDistribution.amplitudeGrowthPct}%`, backgroundColor: C.red }} />
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
-          <Text style={{ color: C.green, fontSize: 10, fontFamily: 'monospace' }}>● NORMAL: {v.rfDistribution.normalPct}%</Text>
-          <Text style={{ color: C.amber, fontSize: 10, fontFamily: 'monospace' }}>● HIGH_ROLL: {v.rfDistribution.highRollPct}%</Text>
-          <Text style={{ color: '#38BDF8', fontSize: 10, fontFamily: 'monospace' }}>● OFFSET: {v.rfDistribution.persistentOffsetPct}%</Text>
-          <Text style={{ color: C.red, fontSize: 10, fontFamily: 'monospace' }}>● GROWTH: {v.rfDistribution.amplitudeGrowthPct}%</Text>
-        </View>
-      </Panel>
-
-      {/* 5. Navigation CTAs */}
       <ActionBtn
-        label="XEM BÁO CÁO KIỂM TOÁN CHI TIẾT →"
+        label="Xem báo cáo kiểm toán chi tiết →"
         onPress={() => actions.go('ReportDetails')}
+        tone="primary"
       />
       <ActionBtn
         tone="neutral"
-        label="PHÁT LẠI HÀNH TRÌNH (REPLAY & REVIEW) →"
+        label="Mở Phát lại và đánh giá →"
         onPress={() => actions.go('ReplayReview')}
       />
     </Page>
   );
 }
 
+/**
+ * MÀN HÌNH CHI TIẾT BÁO CÁO (Report Details)
+ */
 export function ReportDetailsScreen({ data, actions }: ScreenProps) {
+  const { colors } = useTheme();
   const v = data.voyage;
 
-  // Compute cargo risk evidence from reviews in alarms
   const tpCount = data.alarms.filter((a) => a.review === 'TRUE').length;
   const fpCount = data.alarms.filter((a) => a.review === 'FALSE').length;
   const uncertCount = data.alarms.filter((a) => !a.review || a.review === 'UNCERTAIN').length;
 
   const exportCsvDemo = () => {
     Alert.alert(
-      'XUẤT DỮ LIỆU CSV (121 MẪU)',
-      `Đã chuẩn bị tệp SVMG_${v.id}_telemetry.csv gồm 121 mẫu dữ liệu chuyển động (đúng chuẩn fixture T11/T15).\n\nCấu trúc: seq, t_sim_s, roll_deg, pitch_deg, source_mode, synthetic\nSố lượng: ${v.sampleCount} bản ghi\nThời lượng: 600s.`
+      'Xuất dữ liệu CSV',
+      `Đã chuẩn bị tệp SVMG_${v.id}_telemetry.csv (${v.sampleCount} mẫu, chuẩn T11/T15).`
     );
   };
 
   const exportPdfNotice = () => {
     Alert.alert(
-      'BÁO CÁO PDF CHÍNH THỨC',
-      'Dịch vụ xuất bản PDF chính thức có chứng thư số đang chờ Backend TV3 Report Service tích hợp.\n\nTrong chế độ Mock, toàn bộ thông số kiểm toán đã được hiển thị trực tiếp và đầy đủ trên màn hình này.'
+      'Báo cáo PDF chính thức',
+      'Dịch vụ xuất bản PDF có chữ ký số đang chờ Backend TV3 tích hợp. Toàn bộ số liệu kiểm toán đã hiển thị đầy đủ trên màn hình.'
     );
   };
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName="Tàu MV SVMG-01"
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
-      title="VOYAGE REPORT DETAILS"
-      subtitle="BÁO CÁO KIỂM TOÁN HÀNH TRÌNH — BẢNG 8.3"
+      title="Chi tiết báo cáo hành trình"
+      subtitle={`Mã hải trình ${v.id} • Kiểm toán số liệu T11`}
       onBack={actions.back}
     >
-      {/* Section 1: Voyage Metadata */}
-      <Panel title="THÔNG TIN HÀNH TRÌNH & THIẾT BỊ" tag="BẢNG 8.3 §1">
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Mã chuyến đi:</Text>
-            <Text style={{ color: C.cyan, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.id}</Text>
+      <Panel title="Thông số kiểm toán động học" tag={`${v.sampleCount} mẫu`}>
+        <View style={{ gap: 8 }}>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Góc lắc cực đại</Text>
+            <Text style={[styles.kvVal, { color: v.maxAbsRollDeg >= 15 ? colors.red : colors.tech }]}>
+              {v.maxAbsRollDeg.toFixed(2)}°
+            </Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Thiết bị giám sát:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.deviceId}</Text>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>RMS Roll (T11)</Text>
+            <Text style={[styles.kvVal, { color: colors.tech }]}>{v.rmsRollDeg.toFixed(2)}°</Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Thời lượng giám sát:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.durationMinutes} phút (121 mẫu / 600s)</Text>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Phân vị 95 Roll</Text>
+            <Text style={[styles.kvVal, { color: colors.tech }]}>{v.p95AbsRollDeg.toFixed(2)}°</Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Nguồn dữ liệu:</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.sourceMode}</Text>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Pitch cực đại / RMS</Text>
+            <Text style={[styles.kvVal, { color: colors.amber }]}>
+              {v.maxAbsPitchDeg.toFixed(2)}° / {v.rmsPitchDeg.toFixed(2)}°
+            </Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Phiên bản mô hình AI:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.modelVersion}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Phiên bản cấu hình:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>v{v.configVersion}</Text>
-          </View>
-        </View>
-      </Panel>
-
-      {/* Kinematic Statistical Distribution & RF Breakdown Charts */}
-      <MobileVoyageDistributionChart voyage={v} />
-      <MobileRfBreakdownChart voyage={v} />
-
-      {/* Section 2: Kinematic Statistics Audit (T11 Recomputed) */}
-      <Panel title="THỐNG KÊ ĐỘNG HỌC (T11 RECOMPUTED)" tag="KIỂM TOÁN T11">
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Tổng số mẫu (Sample Count):</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.sampleCount}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Roll cực đại (Max |Roll|):</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maxAbsRollDeg.toFixed(2)}°</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>RMS Roll (Khớp chuẩn T11):</Text>
-            <Text style={{ color: C.cyan, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.rmsRollDeg.toFixed(2)}° (7.083967°)</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>P95 Roll (Khớp chuẩn T11):</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.p95AbsRollDeg.toFixed(2)}° (13.36°)</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Pitch cực đại / RMS Pitch:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.maxAbsPitchDeg.toFixed(2)}° / {v.rmsPitchDeg.toFixed(2)}°</Text>
-          </View>
-        </View>
-        <Text style={[styles.rollbackNote, { marginTop: 8 }]}>
-          * Các chỉ số trên được tính toán độc lập và trùng khớp hoàn toàn với kịch bản kiểm thử T11 fixture.
-        </Text>
-      </Panel>
-
-      {/* Section 3: Anomaly Index & AI Distribution */}
-      <Panel title="CHỈ SỐ BẤT THƯỜNG MAI & SO SÁNH AI" tag="BẢNG 8.3 §3 & §6">
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>MAI Cực đại / Trung bình:</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maiMax} / {v.maiAvg}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Thời lượng MAI &gt; 70:</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace' }}>{v.maiCautionMinutes} phút</Text>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Tỉ lệ đồng thuận RF & Baseline B:</Text>
-            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.agreementPercent}%</Text>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Độ đồng thuận mô hình</Text>
+            <Text style={[styles.kvVal, { color: colors.green }]}>{v.agreementPercent}%</Text>
           </View>
         </View>
       </Panel>
 
-      {/* Section 4: Alarm Log */}
-      <Panel title="NHẬT KÝ SỰ KIỆN CẢNH BÁO" tag={`${data.alarms.length} SỰ KIỆN`}>
-        {data.alarms.map((x) => (
-          <LinkRow
-            key={x.id}
-            title={`${x.id} • ${x.level}`}
-            subtitle={`${x.title} | Trạng thái: ${x.status}`}
-            onPress={() => {
-              actions.selectAlarm(x.id);
-              actions.go('AlarmDetail');
-            }}
-          />
-        ))}
-      </Panel>
-
-      {/* Section 5: Cargo Risk Event Evidence */}
-      <Panel title="BẰNG CHỨNG RỦI RO HÀNG HÓA & PHẢN HỒI" tag="CARGO EVIDENCE">
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Xác nhận đúng (True Positive):</Text>
-            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{tpCount} sự kiện</Text>
+      <Panel title="Thống kê thẩm định cảnh báo" tag={`${data.alarms.length} sự kiện`}>
+        <View style={{ gap: 8 }}>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Xác nhận đúng</Text>
+            <Text style={[styles.kvVal, { color: colors.green }]}>{tpCount} sự kiện</Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Báo giả (False Positive):</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{fpCount} sự kiện</Text>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Báo giả</Text>
+            <Text style={[styles.kvVal, { color: colors.red }]}>{fpCount} sự kiện</Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Chưa rõ / Chưa đánh giá:</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace' }}>{uncertCount} sự kiện</Text>
+          <View style={styles.kvRow}>
+            <Text style={[styles.kvKey, { color: colors.textSecondary }]}>Chưa đánh giá / Chưa rõ</Text>
+            <Text style={[styles.kvVal, { color: colors.amber }]}>{uncertCount} sự kiện</Text>
           </View>
         </View>
-        <Text style={[styles.rollbackNote, { marginTop: 6 }]}>
-          * Thống kê này được cập nhật tự động khi người trực gắn nhãn tại màn hình Replay & Review.
-        </Text>
       </Panel>
 
-      {/* Section 6: Official Dossiers & Exports */}
-      <Panel title="HỒ SƠ HÀNH TRÌNH & XUẤT DỮ LIỆU" tag="EXPORTS">
+      <Panel title="Nhật ký cảnh báo trong chuyến">
+        <View style={{ gap: 8 }}>
+          {data.alarms.map((x) => (
+            <LinkRow
+              key={x.id}
+              title={`${x.id} · ${x.title}`}
+              subtitle={`${getAlarmLevelNameVi(x.level)} · ${x.at}`}
+              onPress={() => {
+                actions.selectAlarm(x.id);
+                actions.go('AlarmDetail');
+              }}
+            />
+          ))}
+        </View>
+      </Panel>
+
+      <Panel title="Xuất hồ sơ dữ liệu">
         <View style={{ gap: 10 }}>
-          <View style={{ padding: 10, borderRadius: 6, backgroundColor: C.panel2, borderWidth: 1, borderColor: C.borderSubtle }}>
-            <Text style={{ color: C.text, fontSize: 12, fontWeight: 'bold', fontFamily: 'monospace' }}>
-              DỮ LIỆU TELEMETRY CSV (121 MẪU)
-            </Text>
-            <Text style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>
-              Tệp CSV chuẩn chứa chuỗi thời gian roll, pitch và nhãn mô phỏng.
-            </Text>
-            <View style={{ marginTop: 8 }}>
-              <ActionBtn label="XUẤT CSV DEMO" onPress={exportCsvDemo} />
-            </View>
-          </View>
-
-          <View style={{ padding: 10, borderRadius: 6, backgroundColor: C.panel2, borderWidth: 1, borderColor: C.borderSubtle }}>
-            <Text style={{ color: C.text, fontSize: 12, fontWeight: 'bold', fontFamily: 'monospace' }}>
-              BÁO CÁO KIỂM TOÁN PDF CHÍNH THỨC
-            </Text>
-            <Text style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>
-              Dịch vụ sinh PDF có chữ ký số do TV3 Report Service xử lý từ CSDL.
-            </Text>
-            <View style={{ marginTop: 8 }}>
-              <ActionBtn tone="neutral" label="PDF – CHỜ BACKEND TV3" onPress={exportPdfNotice} />
-            </View>
-          </View>
+          <ActionBtn label="Xuất file CSV (121 mẫu)" onPress={exportCsvDemo} tone="primary" />
+          <ActionBtn label="Xuất PDF (Chờ tích hợp máy chủ)" onPress={exportPdfNotice} tone="ghost" />
         </View>
       </Panel>
-
-      <ActionBtn
-        tone="neutral"
-        label="PHÁT LẠI HÀNH TRÌNH (REPLAY & REVIEW) →"
-        onPress={() => actions.go('ReplayReview')}
-      />
     </Page>
   );
 }
 
+/**
+ * MÀN HÌNH 6: PHÁT LẠI VÀ ĐÁNH GIÁ (Replay & Review)
+ */
 export function ReplayReviewScreen({ data, actions }: ScreenProps) {
+  const { colors } = useTheme();
+  const [trackWidth, setTrackWidth] = useState(280);
+
   const points = data.replayPoints || [];
   const curIdx = Math.min(points.length - 1, Math.max(0, data.replayIndex || 0));
   const cur = points[curIdx] || points[0] || {
@@ -821,14 +666,12 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
     alarm_level: 'NORMAL' as const,
   };
 
-  // Extract trailing 40 samples around current index for waveform display
   const windowCount = 40;
   const startIdx = Math.max(0, curIdx - windowCount + 1);
   const slice = points.slice(startIdx, curIdx + 1);
   const rollWave = slice.map((p) => p.roll);
   const pitchWave = slice.map((p) => p.pitch);
 
-  // Check if current position matches an alarm event
   const activeAlarm = data.alarms.find(
     (a) =>
       (a.id === 'ALM-8441' && Math.abs(cur.t_sim_s - 60) <= 15) ||
@@ -837,189 +680,161 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
       (a.id === 'ALM-8492' && Math.abs(cur.t_sim_s - 480) <= 15)
   );
 
+  const scrubToX = (locationX: number) => {
+    const ratio = Math.max(0, Math.min(1, locationX / Math.max(1, trackWidth)));
+    const nextIdx = Math.round(ratio * Math.max(1, points.length - 1));
+    actions.setReplayIndex(nextIdx);
+  };
+
+  const handleTrackLayout = (e: LayoutChangeEvent) => {
+    if (e.nativeEvent.layout.width > 0) {
+      setTrackWidth(e.nativeEvent.layout.width);
+    }
+  };
+
+  const progressPct = (curIdx / Math.max(1, points.length - 1)) * 100;
+
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName="Tàu MV SVMG-01"
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
-      title="REPLAY & REVIEW"
-      subtitle="PHÁT LẠI CHUYẾN ĐI • 121 MẪU DỮ LIỆU ĐỘNG HỌC"
+      title="Phát lại và đánh giá"
+      subtitle={`Hải trình ${data.selectedVoyageId} • 121 mẫu dữ liệu động học`}
       onBack={actions.back}
     >
-      {/* 1. Playhead Telemetry Readout */}
-      <Panel title="ĐỒNG HỒ PHÁT LẠI & THÔNG SỐ HIỆN TẠI" tag={`MẪU ${curIdx + 1}/${points.length}`}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>MỐC THỜI GIAN VIRTUAL:</Text>
-            <Text style={{ color: C.cyan, fontSize: 20, fontFamily: 'monospace', fontWeight: 'bold' }}>
-              T+{cur.t_sim_s}s
-            </Text>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>TRẠNG THÁI RF:</Text>
-            <Text
-              style={{
-                color: cur.class_rf === 'NORMAL' ? C.green : cur.class_rf === 'AMPLITUDE_GROWTH' ? C.red : C.amber,
-                fontSize: 13,
-                fontFamily: 'monospace',
-                fontWeight: 'bold',
-              }}
-            >
-              {cur.class_rf}
-            </Text>
-          </View>
-        </View>
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border }}>
-          <View>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>ROLL:</Text>
-            <Text style={{ color: Math.abs(cur.roll) > 12 ? C.red : C.cyan, fontSize: 15, fontFamily: 'monospace', fontWeight: 'bold' }}>
-              {cur.roll > 0 ? '+' : ''}{cur.roll.toFixed(1)}°
-            </Text>
-          </View>
-          <View>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>PITCH:</Text>
-            <Text style={{ color: C.amber, fontSize: 15, fontFamily: 'monospace', fontWeight: 'bold' }}>
-              {cur.pitch > 0 ? '+' : ''}{cur.pitch.toFixed(1)}°
-            </Text>
-          </View>
-          <View>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>MAI INDEX:</Text>
-            <Text style={{ color: cur.mai > 70 ? C.red : C.amber, fontSize: 15, fontFamily: 'monospace', fontWeight: 'bold' }}>
-              {cur.mai} / 100
-            </Text>
-          </View>
-          <View>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>BASELINE B:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>
-              {cur.class_baseline_b}
-            </Text>
-          </View>
-        </View>
-      </Panel>
-
-      {/* 2D Vessel Visualizer Synchronized with Replay Playhead */}
-      <Panel title="TRỰC QUAN HÓA THÂN TÀU (REPLAY DYNAMICS)" tag={`T+${cur.t_sim_s}s`}>
-        <Inclinometer
-          rollDeg={cur.roll}
-          pitchDeg={cur.pitch}
-          mai={cur.mai}
-          alarmLevel={cur.alarm_level}
-          scenario="S0"
-          classRf={cur.class_rf}
-          sensorOk={true}
-          compact={false}
+      {/* 2x2 Synchronized Telemetry KPIs */}
+      <TwoCol>
+        <MetricCard
+          label="Mốc thời gian"
+          value={`T+${cur.t_sim_s}s`}
+          subtext={`Mẫu ${curIdx + 1} / ${points.length}`}
+          color={colors.tech}
         />
-      </Panel>
+        <MetricCard
+          label="Góc lắc ngang"
+          value={`${cur.roll > 0 ? '+' : ''}${cur.roll.toFixed(1)}°`}
+          subtext={cur.roll > 0.1 ? 'Mạn phải' : cur.roll < -0.1 ? 'Mạn trái' : 'Cân bằng'}
+          color={Math.abs(cur.roll) >= 12 ? colors.red : colors.tech}
+        />
+      </TwoCol>
 
-      {/* 2. Waveform Visualizer */}
-      <Panel title="ĐỒ THỊ DAO ĐỘNG THEO THỜI GIAN PHÁT LẠI" tag="WAVEFORM SLICE">
-        <MotionChart roll={rollWave} pitch={pitchWave} height={140} />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-          <Text style={{ color: C.muted, fontSize: 9, fontFamily: 'monospace' }}>Lịch sử {rollWave.length * 5}s trước</Text>
-          <Text style={{ color: C.cyan, fontSize: 9, fontFamily: 'monospace' }}>Playhead Cursor: T+{cur.t_sim_s}s</Text>
-        </View>
-      </Panel>
+      <TwoCol>
+        <MetricCard
+          label="Góc chúi dọc"
+          value={`${cur.pitch > 0 ? '+' : ''}${cur.pitch.toFixed(1)}°`}
+          subtext={cur.pitch > 0.1 ? 'Ngóc mũi' : cur.pitch < -0.1 ? 'Chúi mũi' : 'Mức chuẩn'}
+          color={colors.amber}
+        />
+        <MetricCard
+          label="Chỉ số MAI"
+          value={`${cur.mai} / 100`}
+          subtext={getRFClassNameVi(cur.class_rf)}
+          color={cur.mai >= 70 ? colors.red : cur.mai >= 35 ? colors.amber : colors.green}
+        />
+      </TwoCol>
 
-      {/* 3. Event Marker Alert Banner */}
-      {activeAlarm && (
-        <View
-          style={{
-            backgroundColor: activeAlarm.level === 'CRITICAL' ? C.errorContainerBg : C.warningContainerBg,
-            borderWidth: 1,
-            borderColor: activeAlarm.level === 'CRITICAL' ? C.red : C.amber,
-            borderRadius: 6,
-            padding: 10,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: activeAlarm.level === 'CRITICAL' ? C.red : C.amber, fontSize: 11, fontWeight: 'bold', fontFamily: 'monospace' }}>
-            ⚠️ SỰ KIỆN CẢNH BÁO TẠI MỐC T+{cur.t_sim_s}s: {activeAlarm.id}
-          </Text>
-          <Text style={{ color: C.text, fontSize: 11, marginTop: 2 }}>
-            {activeAlarm.title} — Mức độ: {activeAlarm.level}
-          </Text>
-        </View>
-      )}
+      {/* Vessel Visualizer Synchronized with Playhead */}
+      <Inclinometer
+        rollDeg={cur.roll}
+        pitchDeg={cur.pitch}
+        mai={cur.mai}
+        alarmLevel={cur.alarm_level}
+        scenario="S0"
+        classRf={cur.class_rf}
+        sensorOk={true}
+      />
 
-      {/* 4. Transport Deck & Scrubber */}
-      <Panel title="BỘ ĐIỀU KHIỂN PHÁT LẠI (TRANSPORT DECK)" tag="ĐIỀU KHIỂN">
-        {/* Scrubber slider bar representation */}
-        <View style={{ marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>0s (Bắt đầu)</Text>
-            <Text style={{ color: C.cyan, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>T+{cur.t_sim_s}s / 600s</Text>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>600s (Kết thúc)</Text>
+      {/* Touch-Draggable Transport Deck directly beneath Vessel Visualizer */}
+      <Panel title="Bàn điều khiển phát lại" tag={`T+${cur.t_sim_s}s / 600s`}>
+        {/* Touch Scrub Bar */}
+        <View style={{ gap: 6 }}>
+          <View style={styles.scrubHeaderRow}>
+            <Text style={[styles.scrubTimeLabel, { color: colors.textSecondary }]}>0s</Text>
+            <Text style={[styles.scrubCurrentLabel, { color: colors.tech }]}>
+              Kéo thanh bên dưới để tua
+            </Text>
+            <Text style={[styles.scrubTimeLabel, { color: colors.textSecondary }]}>600s</Text>
           </View>
-          <View style={{ height: 10, backgroundColor: '#D0DDEB', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
+
+          <View
+            style={styles.scrubTouchTarget}
+            onLayout={handleTrackLayout}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={(e) => scrubToX(e.nativeEvent.locationX)}
+            onResponderMove={(e) => scrubToX(e.nativeEvent.locationX)}
+          >
+            <View style={[styles.scrubTrack, { backgroundColor: colors.panel2, borderColor: colors.borderSubtle }]}>
+              <View
+                style={[
+                  styles.scrubFill,
+                  { width: `${progressPct}%`, backgroundColor: colors.tech },
+                ]}
+              />
+            </View>
             <View
-              style={{
-                width: `${(curIdx / Math.max(1, points.length - 1)) * 100}%`,
-                height: '100%',
-                backgroundColor: C.cyan,
-              }}
-            />
-          </View>
-        </View>
-
-        {/* Primary Controls */}
-        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
-          <View style={{ flex: 1 }}>
-            <ActionBtn
-              tone={data.replayPlaying ? 'primary' : 'secondary'}
-              label={data.replayPlaying ? '❚❚ TẠM DỪNG' : '▶ PHÁT TIẾP'}
-              onPress={() => actions.setReplayPlaying(!data.replayPlaying)}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <ActionBtn
-              tone="neutral"
-              label="VỀ ĐẦU (0s)"
-              onPress={() => {
-                actions.setReplayIndex(0);
-                actions.setReplayPlaying(false);
-              }}
+              style={[
+                styles.scrubThumb,
+                {
+                  left: `${progressPct}%`,
+                  backgroundColor: colors.primaryContainer,
+                  borderColor: colors.panel,
+                },
+              ]}
             />
           </View>
         </View>
 
         <TwoCol>
           <ActionBtn
+            tone={data.replayPlaying ? 'primary' : 'secondary'}
+            label={data.replayPlaying ? '❚❚ Tạm dừng' : '▶ Phát tiếp'}
+            onPress={() => actions.setReplayPlaying(!data.replayPlaying)}
+          />
+          <ActionBtn
             tone="neutral"
-            label="−10s (LÙI)"
+            label="Về đầu (0s)"
+            onPress={() => {
+              actions.setReplayIndex(0);
+              actions.setReplayPlaying(false);
+            }}
+          />
+        </TwoCol>
+
+        <TwoCol>
+          <ActionBtn
+            tone="neutral"
+            label="−10s"
             onPress={() => actions.setReplayIndex(Math.max(0, curIdx - 2))}
           />
           <ActionBtn
             tone="neutral"
-            label="+10s (TIẾN)"
+            label="+10s"
             onPress={() => actions.setReplayIndex(Math.min(points.length - 1, curIdx + 2))}
           />
         </TwoCol>
 
-        {/* Playback Speed Selector */}
-        <View style={{ marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border }}>
-          <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace', marginBottom: 6 }}>
-            TỐC ĐỘ PHÁT LẠI:
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+        <View style={[styles.speedBarWrap, { borderTopColor: colors.borderSubtle }]}>
+          <Text style={[styles.speedLabel, { color: colors.textSecondary }]}>Tốc độ phát:</Text>
+          <View style={styles.speedRow}>
             {[1, 5, 10, 20, 60].map((spd) => {
               const active = data.replaySpeed === spd;
               return (
                 <Pressable
                   key={spd}
                   onPress={() => actions.setReplaySpeed(spd)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 4,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: active ? C.cyan : C.border,
-                    backgroundColor: active ? '#EAF2FA' : C.panel,
-                  }}
+                  style={[
+                    styles.speedBtn,
+                    {
+                      backgroundColor: active ? colors.primaryContainer : colors.panel2,
+                      borderColor: active ? colors.primaryContainer : colors.borderSubtle,
+                    },
+                  ]}
+                  accessibilityRole="button"
                 >
-                  <Text style={{ color: active ? C.cyan : C.muted, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  <Text style={[styles.speedBtnText, { color: active ? '#FFFFFF' : colors.title }]}>
                     ×{spd}
                   </Text>
                 </Pressable>
@@ -1029,381 +844,421 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
         </View>
       </Panel>
 
-      {/* 5. Watchstander Alarm Review Deck */}
-      <Panel title="ĐÁNH GIÁ CẢNH BÁO CỦA NGƯỜI TRỰC (REVIEW)" tag="CARGO RISK EVIDENCE">
-        <Text style={[styles.secNote, { marginBottom: 10 }]}>
-          Gắn nhãn nhận định người trực cho các sự kiện cảnh báo trong chuyến đi. Đánh giá được lưu trực tiếp vào Mock State và cập nhật tỷ lệ chính xác vận hành:
-        </Text>
-        {data.alarms.map((alarm) => (
-          <View
-            key={alarm.id}
-            style={{
-              paddingVertical: 8,
-              borderBottomWidth: 1,
-              borderBottomColor: C.border,
-              gap: 6,
-            }}
+      {/* Active Event Callout if Playhead hits Alarm Window */}
+      {activeAlarm && (
+        <View
+          style={[
+            styles.replayEventBanner,
+            {
+              backgroundColor:
+                activeAlarm.level === 'CRITICAL' ? colors.errorContainerBg : colors.warningContainerBg,
+              borderColor: activeAlarm.level === 'CRITICAL' ? colors.red : colors.amber,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.replayEventTitle,
+              { color: activeAlarm.level === 'CRITICAL' ? colors.red : colors.amber },
+            ]}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>
-                {alarm.id} • {alarm.title}
-              </Text>
-              <Text
-                style={{
-                  color: alarm.review === 'TRUE' ? C.green : alarm.review === 'FALSE' ? C.red : C.amber,
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  fontWeight: 'bold',
-                }}
-              >
-                {alarm.review ? `[${alarm.review}]` : '[CHƯA ĐÁNH GIÁ]'}
-              </Text>
+            Sự kiện cảnh báo tại T+{cur.t_sim_s}s: {activeAlarm.id}
+          </Text>
+          <Text style={[styles.replayEventSub, { color: colors.title }]}>
+            {activeAlarm.title} ({getAlarmLevelNameVi(activeAlarm.level)})
+          </Text>
+        </View>
+      )}
+
+      {/* Waveform Slice */}
+      <Panel title="Biểu đồ sóng phát lại" tag={`Cửa sổ ${rollWave.length * 5}s`}>
+        <MotionChart roll={rollWave} pitch={pitchWave} height={155} />
+      </Panel>
+
+      {/* Watchstander Alarm Review */}
+      <Panel title="Đánh giá cảnh báo sau chuyến" tag="Thẩm định">
+        <Text style={[styles.secNote, { color: colors.textSecondary }]}>
+          Gắn nhãn xác nhận đúng hoặc báo giả để cập nhật thống kê báo cáo:
+        </Text>
+        <View style={{ gap: 12 }}>
+          {data.alarms.map((alarm) => (
+            <View
+              key={alarm.id}
+              style={[styles.reviewCard, { borderBottomColor: colors.borderSubtle }]}
+            >
+              <View style={styles.reviewHeader}>
+                <Text style={[styles.reviewTitle, { color: colors.title }]}>
+                  {alarm.id} · {alarm.title}
+                </Text>
+                <Severity level={alarm.level} />
+              </View>
+              <View style={styles.reviewBtnRow}>
+                {(
+                  [
+                    { key: 'TRUE', label: '✓ Đúng', activeColor: colors.green },
+                    { key: 'FALSE', label: '✗ Báo giả', activeColor: colors.red },
+                    { key: 'UNCERTAIN', label: '? Chưa rõ', activeColor: colors.amber },
+                  ] as const
+                ).map((opt) => {
+                  const selected = alarm.review === opt.key;
+                  return (
+                    <Pressable
+                      key={opt.key}
+                      onPress={() => actions.reviewAlarm(alarm.id, opt.key)}
+                      style={[
+                        styles.reviewBtn,
+                        {
+                          backgroundColor: selected ? colors.panel : colors.panel2,
+                          borderColor: selected ? opt.activeColor : colors.borderSubtle,
+                          borderWidth: selected ? 1.5 : 1,
+                        },
+                      ]}
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[
+                          styles.reviewBtnText,
+                          { color: selected ? opt.activeColor : colors.textSecondary },
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
-            <Text style={{ color: C.muted, fontSize: 10 }}>
-              Mức độ: {alarm.level} • Thời điểm: {alarm.at}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-              {(['TRUE', 'FALSE', 'UNCERTAIN'] as const).map((lbl) => (
-                <Pressable
-                  key={lbl}
-                  onPress={() => actions.reviewAlarm(alarm.id, lbl)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 6,
-                    borderRadius: 4,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: alarm.review === lbl ? (lbl === 'TRUE' ? C.green : lbl === 'FALSE' ? C.red : C.amber) : C.border,
-                    backgroundColor: alarm.review === lbl ? '#EAF2FA' : C.panel,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: alarm.review === lbl ? C.cyan : C.muted,
-                      fontSize: 10,
-                      fontFamily: 'monospace',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {lbl === 'TRUE' ? '✓ ĐÚNG' : lbl === 'FALSE' ? '✗ SAI' : '? CHƯA RÕ'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ))}
+          ))}
+        </View>
       </Panel>
     </Page>
   );
 }
+
 const styles = StyleSheet.create({
   disclaimerBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#2A1D0B',
     borderWidth: 1,
-    borderColor: '#7A5B2B',
-    borderRadius: 5,
-    padding: 10,
-  },
-  disclaimerIcon: {
-    fontSize: 16,
+    borderRadius: 10,
+    padding: 12,
   },
   disclaimerText: {
-    color: '#F2CA73',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    flex: 1,
-    lineHeight: 13,
+    fontSize: 13,
+    fontFamily: FONT.medium,
+    lineHeight: 19,
   },
-  cfgRow: {
+  secNote: {
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 19,
+  },
+  kvRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
+    gap: 10,
+    flexWrap: 'wrap',
   },
-  cfgItem: {
-    flex: 1,
-    gap: 2,
+  kvKey: {
+    fontSize: 13,
+    fontFamily: FONT.regular,
   },
-  cfgLabel: {
-    color: C.muted,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  cfgVal: {
-    color: C.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  activeProfileBadge: {
-    backgroundColor: C.primaryContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 3,
-    alignSelf: 'flex-start',
-  },
-  activeProfileText: {
-    color: C.canvas,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  thresholdBento: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 6,
-  },
-  thresholdTile: {
-    flex: 1,
-    backgroundColor: C.panel2,
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 4,
-    padding: 8,
-    alignItems: 'center',
-    gap: 2,
-  },
-  thresholdTileLabel: {
-    color: C.muted,
-    fontSize: 8,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  thresholdTileVal: {
-    fontSize: 16,
-    fontWeight: '800',
+  kvVal: {
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
     fontVariant: ['tabular-nums'],
-  },
-  thresholdTileSub: {
-    color: C.textSecondary,
-    fontSize: 8,
-  },
-  secNote: {
-    color: C.textSecondary,
-    fontSize: 11,
-    lineHeight: 15,
   },
   profileButtonGroup: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
   },
   profileSelectBtn: {
     flex: 1,
-    backgroundColor: C.panel2,
     borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 5,
+    borderRadius: 10,
     minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  profileSelectBtnActive: {
-    backgroundColor: '#EAF2FA',
-    borderColor: C.borderFocus,
+    paddingHorizontal: 6,
   },
   profileSelectBtnText: {
-    color: C.muted,
-    fontSize: 10,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  profileSelectBtnTextActive: {
-    color: C.cyanBright,
-  },
-  rollbackWell: {
-    gap: 4,
-    marginTop: 4,
-  },
-  rollbackNote: {
-    color: C.muted,
-    fontSize: 9,
-    textAlign: 'center',
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   commandRowCard: {
-    backgroundColor: C.bg,
     borderWidth: 1,
-    borderLeftWidth: 3,
-    borderColor: C.border,
-    borderRadius: 5,
-    padding: 10,
+    borderRadius: 10,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
   commandRowTitle: {
-    color: C.text,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   commandRowSub: {
-    color: C.muted,
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  conditionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  conditionLabel: {
-    color: C.muted,
-    fontSize: 9,
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 18,
   },
   conditionVal: {
-    fontSize: 9,
-    fontWeight: '800',
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    marginTop: 2,
   },
   adminSection: {
-    gap: 6,
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borderSubtle,
+    gap: 8,
   },
   adminSectionTitle: {
-    color: C.muted,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   buttonTrio: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 8,
   },
   trioBtn: {
     flex: 1,
-    minHeight: 38,
-    backgroundColor: C.panel2,
+    minHeight: 44,
     borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 4,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  trioBtnActive: {
-    backgroundColor: C.primaryContainer,
-    borderColor: C.cyan,
+    paddingHorizontal: 8,
   },
   trioBtnText: {
-    color: C.muted,
-    fontSize: 10,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  trioBtnTextActive: {
-    color: C.canvas,
+    fontSize: 13,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   scenarioGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   scenarioBtn: {
     width: '48%',
-    backgroundColor: C.panel2,
     borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 4,
-    padding: 8,
+    borderRadius: 10,
+    padding: 10,
+    minHeight: 54,
+    justifyContent: 'center',
     gap: 2,
   },
-  scenarioBtnActive: {
-    backgroundColor: '#EAF2FA',
-    borderColor: C.borderFocus,
-  },
   scenarioBtnText: {
-    color: C.muted,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  scenarioBtnTextActive: {
-    color: C.cyanBright,
+    fontSize: 14,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
   scenarioBtnDesc: {
-    color: C.textSecondary,
-    fontSize: 9,
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
   btnDisabledOpacity: {
-    opacity: 0.35,
+    opacity: 0.45,
+  },
+  collapseTrigger: {
+    borderTopWidth: 1,
+    paddingTop: 10,
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  collapseText: {
+    fontSize: 13,
+    fontFamily: FONT.medium,
   },
   emptyHistoryText: {
-    color: C.muted,
-    fontSize: 11,
+    fontSize: 13,
+    fontFamily: FONT.regular,
     textAlign: 'center',
-    paddingVertical: 12,
-  },
-  historyList: {
-    gap: 8,
+    paddingVertical: 10,
   },
   historyCard: {
-    backgroundColor: C.panel2,
     borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 5,
-    padding: 10,
-    gap: 4,
+    borderRadius: 10,
+    padding: 12,
+    gap: 6,
   },
   historyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-  },
-  cmdTitleCol: {
-    gap: 1,
-  },
-  cmdIdText: {
-    color: C.muted,
-    fontSize: 9,
-    fontFamily: 'monospace',
-    fontWeight: '700',
+    gap: 8,
   },
   cmdNameText: {
-    color: C.text,
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+  },
+  cmdIdText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontFamily: FONT.regular,
   },
   cmdStatusPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
     borderWidth: 1,
   },
   cmdStatusText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  historyMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 2,
-  },
-  historyMetaTime: {
-    color: C.muted,
-    fontSize: 9,
-  },
-  historyMetaUser: {
-    color: C.muted,
-    fontSize: 9,
-  },
-  historyMetaVer: {
-    color: C.cyan,
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   historyDetailText: {
-    color: C.textSecondary,
-    fontSize: 10,
-    lineHeight: 14,
-    marginTop: 2,
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 18,
+  },
+  voyageSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  voyageBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+  },
+  voyageBtnId: {
+    fontSize: 13,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
+  },
+  voyageBtnSub: {
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+  voyageMetaBox: {
+    borderTopWidth: 1,
+    paddingTop: 10,
+    gap: 3,
+  },
+  voyageName: {
+    fontSize: 15,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+  },
+  voyageRoute: {
+    fontSize: 13,
+    fontFamily: FONT.regular,
+  },
+  scrubHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  scrubTimeLabel: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    fontVariant: ['tabular-nums'],
+  },
+  scrubCurrentLabel: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
+  },
+  scrubTouchTarget: {
+    height: 44,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  scrubTrack: {
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  scrubFill: {
+    height: '100%',
+  },
+  scrubThumb: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    marginLeft: -10,
+  },
+  speedBarWrap: {
+    borderTopWidth: 1,
+    paddingTop: 10,
+    gap: 8,
+  },
+  speedLabel: {
+    fontSize: 13,
+    fontFamily: FONT.medium,
+  },
+  speedRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  speedBtn: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  speedBtnText: {
+    fontSize: 13,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+  },
+  replayEventBanner: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    gap: 3,
+  },
+  replayEventTitle: {
+    fontSize: 14,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
+  },
+  replayEventSub: {
+    fontSize: 13,
+    fontFamily: FONT.regular,
+  },
+  reviewCard: {
+    borderBottomWidth: 1,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  reviewTitle: {
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+    flex: 1,
+  },
+  reviewBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  reviewBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewBtnText: {
+    fontSize: 13,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
 });

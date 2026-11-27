@@ -10,62 +10,55 @@ import {
   View,
 } from 'react-native';
 import { ActionBtn, Panel } from '../components/UI';
-import { C, SHADOWS } from '../theme';
+import { FONT, SHADOWS, TYPOGRAPHY, useTheme } from '../theme';
 import { ScreenProps } from '../types/domain';
-import { mockRegister, mockForgotPassword } from '../data/mock';
+import { mockForgotPassword, mockRegister } from '../data/mock';
 
-/**
- * Brand banner common to all Authentication views.
- */
 function BrandBanner() {
+  const { colors, mode, toggleTheme } = useTheme();
   return (
-    <View style={styles.brandWell}>
-      <View style={styles.brandIconBox}>
-        <Text style={styles.brandIcon}>≋</Text>
+    <View
+      style={[
+        styles.brandWell,
+        { backgroundColor: colors.panel, borderColor: colors.border },
+        SHADOWS.card,
+      ]}
+    >
+      <View style={[styles.brandIconBox, { backgroundColor: colors.cyanContainerBg }]}>
+        <Text style={[styles.brandIcon, { color: colors.tech }]}>≋</Text>
       </View>
       <View style={styles.brandTextCol}>
-        <Text style={styles.brandEyebrow}>IOT • EDGE AI • MARITIME SAFETY</Text>
-        <Text style={styles.brandTitle}>Smart Vessel Motion Guard</Text>
-        <Text style={styles.brandSub}>
-          Hệ thống giám sát động học chuyển động tàu (TV4 Mock)
+        <Text style={[styles.brandEyebrow, { color: colors.tech }]}>
+          IoT • Edge AI • An toàn Hàng hải
+        </Text>
+        <Text style={[styles.brandTitle, { color: colors.title }]}>
+          Smart Vessel Motion Guard
+        </Text>
+        <Text style={[styles.brandSub, { color: colors.textSecondary }]}>
+          Hệ thống giám sát động học chuyển động tàu và phát hiện bất thường TinyML
         </Text>
       </View>
+      <Pressable
+        onPress={toggleTheme}
+        style={[
+          styles.themeChip,
+          { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+        ]}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.themeChipText, { color: colors.title }]}>
+          {mode === 'light' ? '☀' : '🌙'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
 
 /**
- * Stitch corner reticle accents.
- */
-function ReticleAccents() {
-  return (
-    <>
-      <View style={styles.reticleTL} pointerEvents="none" />
-      <View style={styles.reticleTR} pointerEvents="none" />
-      <View style={styles.reticleBL} pointerEvents="none" />
-      <View style={styles.reticleBR} pointerEvents="none" />
-    </>
-  );
-}
-
-/**
- * Hardware security RSA-4096 notice box.
- */
-function SecurityNotice() {
-  return (
-    <View style={styles.secNoticeBox}>
-      <Text style={styles.secNoticeIcon}>🔒</Text>
-      <Text style={styles.secNoticeText}>
-        RSA-4096 BRIDGE HARDWARE KEY ENCRYPTED • M4 DEMO
-      </Text>
-    </View>
-  );
-}
-
-/**
- * VIEW 1: Bridge Login Screen
+ * Màn hình 1: Đăng nhập Buồng lái
  */
 export function LoginScreen({ actions }: ScreenProps) {
+  const { colors } = useTheme();
   const [username, setUsername] = useState('operator');
   const [password, setPassword] = useState('demo123');
   const [visible, setVisible] = useState(false);
@@ -73,7 +66,7 @@ export function LoginScreen({ actions }: ScreenProps) {
 
   const submit = () => {
     if (!actions.login(username, password)) {
-      setError('Tài khoản hoặc mã truy cập (passcode) chưa đúng. Vui lòng thử lại.');
+      setError('Tên đăng nhập hoặc mật khẩu chưa đúng. Vui lòng kiểm tra lại.');
     } else {
       setError('');
     }
@@ -81,8 +74,8 @@ export function LoginScreen({ actions }: ScreenProps) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[styles.root, { backgroundColor: colors.canvas }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -90,90 +83,114 @@ export function LoginScreen({ actions }: ScreenProps) {
       >
         <BrandBanner />
 
-        <View style={styles.cardWrapper}>
-          <ReticleAccents />
+        <Panel title="Đăng nhập Buồng lái">
+          <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
+            Nhập thông tin định danh sĩ quan trực ca hoặc giám sát viên:
+          </Text>
 
-          <Panel title="ACCESS CONTROL LEVEL 1" tag="SYS_ID: 994-IMU-BRG">
-            <Text style={styles.formTitle}>Đăng nhập Buồng lái</Text>
-            <Text style={styles.formSubtitle}>
-              Nhập mã sĩ quan trực ca hoặc cán bộ giám sát buồng lái:
-            </Text>
+          <Text style={[styles.fieldLabel, { color: colors.title }]}>
+            Mã Sĩ quan / Tên đăng nhập
+          </Text>
+          <TextInput
+            value={username}
+            onChangeText={(val) => {
+              setUsername(val);
+              setError('');
+            }}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: colors.panel2,
+                borderColor: colors.borderSubtle,
+                color: colors.title,
+              },
+            ]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Tên đăng nhập"
+            placeholder="operator / supervisor / admin"
+            placeholderTextColor={colors.muted}
+          />
 
-            <Text style={styles.fieldLabel}>TÊN ĐĂNG NHẬP / OFFICER ID</Text>
+          <View style={styles.labelRow}>
+            <Text style={[styles.fieldLabel, { color: colors.title }]}>Mật khẩu truy cập</Text>
+            <Pressable
+              onPress={() => actions.go('ForgotPassword')}
+              accessibilityRole="button"
+              hitSlop={10}
+              style={styles.inlineLinkBtn}
+            >
+              <Text style={[styles.keyRecoveryText, { color: colors.tech }]}>
+                Khôi phục mật mã?
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.passwordRow}>
             <TextInput
-              value={username}
+              value={password}
               onChangeText={(val) => {
-                setUsername(val);
+                setPassword(val);
                 setError('');
               }}
-              style={styles.textInput}
-              autoCapitalize="none"
-              accessibilityLabel="Tên đăng nhập"
-              placeholder="operator / supervisor / admin"
-              placeholderTextColor={C.muted}
+              style={[
+                styles.textInput,
+                {
+                  flex: 1,
+                  backgroundColor: colors.panel2,
+                  borderColor: colors.borderSubtle,
+                  color: colors.title,
+                },
+              ]}
+              secureTextEntry={!visible}
+              accessibilityLabel="Mật khẩu"
+              placeholder="Nhập mật khẩu truy cập"
+              placeholderTextColor={colors.muted}
             />
+            <Pressable
+              onPress={() => setVisible((v) => !v)}
+              style={[
+                styles.showPassBtn,
+                { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+              ]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.showPassText, { color: colors.tech }]}>
+                {visible ? 'Ẩn' : 'Hiện'}
+              </Text>
+            </Pressable>
+          </View>
 
-            <View style={styles.labelRow}>
-              <Text style={styles.fieldLabel}>MẬT MÃ BUỒNG LÁI / PASSCODE</Text>
-              <Pressable
-                onPress={() => actions.go('ForgotPassword')}
-                accessibilityRole="button"
-                hitSlop={8}
-              >
-                <Text style={styles.keyRecoveryText}>KEY_RECOVERY</Text>
-              </Pressable>
+          {error ? (
+            <View
+              style={[
+                styles.errorBox,
+                { backgroundColor: colors.errorContainerBg, borderColor: colors.red },
+              ]}
+            >
+              <Text style={[styles.errorText, { color: colors.red }]}>{error}</Text>
             </View>
+          ) : null}
 
-            <View style={styles.passwordRow}>
-              <TextInput
-                value={password}
-                onChangeText={(val) => {
-                  setPassword(val);
-                  setError('');
-                }}
-                style={[styles.textInput, { flex: 1 }]}
-                secureTextEntry={!visible}
-                accessibilityLabel="Mật mã"
-                placeholder="Nhập mã truy cập"
-                placeholderTextColor={C.muted}
-              />
-              <Pressable
-                onPress={() => setVisible((v) => !v)}
-                style={styles.showPassBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.showPassText}>{visible ? 'ẨN' : 'HIỆN'}</Text>
-              </Pressable>
-            </View>
+          <View style={{ marginTop: 10 }}>
+            <ActionBtn label="Đăng nhập hệ thống →" onPress={submit} tone="primary" />
+          </View>
 
-            <SecurityNotice />
+          <View style={[styles.footerNav, { borderTopColor: colors.borderSubtle }]}>
+            <Pressable
+              onPress={() => actions.go('Register')}
+              style={styles.navLink}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.navLinkText, { color: colors.tech }]}>
+                Đăng ký tài khoản Sĩ quan trực ca →
+              </Text>
+            </Pressable>
+          </View>
+        </Panel>
 
-            {error ? <Text style={styles.errorText}>⚠ {error}</Text> : null}
-
-            <View style={{ marginTop: 8 }}>
-              <ActionBtn
-                label="ĐĂNG NHẬP HỆ THỐNG →"
-                onPress={submit}
-                tone="primary"
-              />
-            </View>
-
-            <View style={styles.footerNav}>
-              <Pressable
-                onPress={() => actions.go('Register')}
-                style={styles.navLink}
-                accessibilityRole="button"
-              >
-                <Text style={styles.navLinkText}>
-                  Đăng ký tài khoản Sĩ quan trực ca (Operator) →
-                </Text>
-              </Pressable>
-            </View>
-          </Panel>
-        </View>
-
-        <Text style={styles.complianceNotice}>
-          SMART VESSEL MOTION GUARD • PHÂN HỆ XÁC THỰC MOCK CONSOLE TV4
+        <Text style={[styles.complianceNotice, { color: colors.textSecondary }]}>
+          Smart Vessel Motion Guard • Phiên bản mô phỏng giao diện di động
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -181,9 +198,10 @@ export function LoginScreen({ actions }: ScreenProps) {
 }
 
 /**
- * VIEW 2: Officer Register Screen
+ * Màn hình 2: Đăng ký Sĩ quan
  */
 export function RegisterScreen({ actions }: ScreenProps) {
+  const { colors } = useTheme();
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -218,8 +236,8 @@ export function RegisterScreen({ actions }: ScreenProps) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[styles.root, { backgroundColor: colors.canvas }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -227,138 +245,184 @@ export function RegisterScreen({ actions }: ScreenProps) {
       >
         <BrandBanner />
 
-        <View style={styles.cardWrapper}>
-          <ReticleAccents />
+        <Panel title="Đăng ký Sĩ quan">
+          <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
+            Tạo tài khoản trực ca giám sát động học tàu mới:
+          </Text>
 
-          <Panel title="OFFICER ONBOARDING" tag="RBAC: TABLE 3.1">
-            <Text style={styles.formTitle}>Đăng ký Sĩ quan</Text>
-            <Text style={styles.formSubtitle}>
-              Tạo tài khoản trực ca giám sát động học tàu mới:
-            </Text>
+          <Text style={[styles.fieldLabel, { color: colors.title }]}>Họ và tên sĩ quan</Text>
+          <TextInput
+            value={fullName}
+            onChangeText={(val) => {
+              setFullName(val);
+              setError('');
+            }}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: colors.panel2,
+                borderColor: colors.borderSubtle,
+                color: colors.title,
+              },
+            ]}
+            accessibilityLabel="Họ và tên"
+            placeholder="Ví dụ: Sĩ quan Nguyễn Văn A"
+            placeholderTextColor={colors.muted}
+          />
 
-            <Text style={styles.fieldLabel}>HỌ VÀ TÊN SĨ QUAN (FULL NAME)</Text>
+          <Text style={[styles.fieldLabel, { color: colors.title }]}>Tên đăng nhập</Text>
+          <TextInput
+            value={username}
+            onChangeText={(val) => {
+              setUsername(val);
+              setError('');
+            }}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: colors.panel2,
+                borderColor: colors.borderSubtle,
+                color: colors.title,
+              },
+            ]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Tên đăng nhập"
+            placeholder="Ví dụ: officer_bridge01"
+            placeholderTextColor={colors.muted}
+          />
+
+          <Text style={[styles.fieldLabel, { color: colors.title }]}>Mật khẩu truy cập</Text>
+          <View style={styles.passwordRow}>
             <TextInput
-              value={fullName}
+              value={password}
               onChangeText={(val) => {
-                setFullName(val);
+                setPassword(val);
                 setError('');
               }}
-              style={styles.textInput}
-              accessibilityLabel="Họ và tên"
-              placeholder="e.g. Sĩ quan Nguyễn Văn A"
-              placeholderTextColor={C.muted}
-            />
-
-            <Text style={styles.fieldLabel}>TÊN ĐĂNG NHẬP / MÃ SĨ QUAN (OFFICER ID)</Text>
-            <TextInput
-              value={username}
-              onChangeText={(val) => {
-                setUsername(val);
-                setError('');
-              }}
-              style={styles.textInput}
-              autoCapitalize="none"
-              accessibilityLabel="Tên đăng nhập"
-              placeholder="e.g. officer_bridge01"
-              placeholderTextColor={C.muted}
-            />
-
-            <Text style={styles.fieldLabel}>MẬT KHẨU TRUY CẬP (PASSCODE)</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                value={password}
-                onChangeText={(val) => {
-                  setPassword(val);
-                  setError('');
-                }}
-                style={[styles.textInput, { flex: 1 }]}
-                secureTextEntry={!visible}
-                accessibilityLabel="Mật khẩu"
-                placeholder="Tối thiểu 6 ký tự"
-                placeholderTextColor={C.muted}
-              />
-              <Pressable
-                onPress={() => setVisible((v) => !v)}
-                style={styles.showPassBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.showPassText}>{visible ? 'ẨN' : 'HIỆN'}</Text>
-              </Pressable>
-            </View>
-
-            <Text style={styles.fieldLabel}>XÁC NHẬN MẬT KHẨU (CONFIRM PASSCODE)</Text>
-            <TextInput
-              value={confirmPassword}
-              onChangeText={(val) => {
-                setConfirmPassword(val);
-                setError('');
-              }}
-              style={styles.textInput}
+              style={[
+                styles.textInput,
+                {
+                  flex: 1,
+                  backgroundColor: colors.panel2,
+                  borderColor: colors.borderSubtle,
+                  color: colors.title,
+                },
+              ]}
               secureTextEntry={!visible}
-              accessibilityLabel="Xác nhận mật khẩu"
-              placeholder="Nhập lại mật khẩu"
-              placeholderTextColor={C.muted}
+              accessibilityLabel="Mật khẩu"
+              placeholder="Tối thiểu 6 ký tự"
+              placeholderTextColor={colors.muted}
             />
+            <Pressable
+              onPress={() => setVisible((v) => !v)}
+              style={[
+                styles.showPassBtn,
+                { backgroundColor: colors.panel2, borderColor: colors.borderSubtle },
+              ]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.showPassText, { color: colors.tech }]}>
+                {visible ? 'Ẩn' : 'Hiện'}
+              </Text>
+            </Pressable>
+          </View>
 
-            <View style={styles.roleLockBox}>
-              <Text style={styles.roleLockTitle}>
-                VAI TRÒ HỆ THỐNG: OPERATOR (SĨ QUAN TRỰC CA)
-              </Text>
-              <Text style={styles.roleLockText}>
-                Quy chuẩn Bảng 3.1 Đề cương v2.0: Tài khoản tự đăng ký chỉ có quyền Sĩ quan trực ca (Operator / View-Only). Quyền Supervisor và Admin do Quản trị viên cấp phát riêng.
-              </Text>
+          <Text style={[styles.fieldLabel, { color: colors.title }]}>Xác nhận mật khẩu</Text>
+          <TextInput
+            value={confirmPassword}
+            onChangeText={(val) => {
+              setConfirmPassword(val);
+              setError('');
+            }}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: colors.panel2,
+                borderColor: colors.borderSubtle,
+                color: colors.title,
+              },
+            ]}
+            secureTextEntry={!visible}
+            accessibilityLabel="Xác nhận mật khẩu"
+            placeholder="Nhập lại mật khẩu"
+            placeholderTextColor={colors.muted}
+          />
+
+          <View
+            style={[
+              styles.roleLockBox,
+              { backgroundColor: colors.cyanContainerBg, borderColor: colors.borderSubtle },
+            ]}
+          >
+            <Text style={[styles.roleLockTitle, { color: colors.title }]}>
+              Phân quyền tài khoản (Bảng 3.1)
+            </Text>
+            <Text style={[styles.roleLockText, { color: colors.textSecondary }]}>
+              Tài khoản tự đăng ký có quyền Sĩ quan trực ca (Operator / Chỉ xem). Quyền Giám sát viên và Quản trị viên do hệ thống cấp phát riêng.
+            </Text>
+          </View>
+
+          {error ? (
+            <View
+              style={[
+                styles.errorBox,
+                { backgroundColor: colors.errorContainerBg, borderColor: colors.red },
+              ]}
+            >
+              <Text style={[styles.errorText, { color: colors.red }]}>{error}</Text>
             </View>
+          ) : null}
 
-            {error ? <Text style={styles.errorText}>⚠ {error}</Text> : null}
-
-            {pendingNotice ? (
-              <View style={styles.pendingNoticeBanner}>
-                <Text style={styles.pendingNoticeTitle}>
-                  THÔNG BÁO DỊCH VỤ XÁC THỰC:
-                </Text>
-                <Text style={styles.pendingNoticeText}>{pendingNotice}</Text>
-                <View style={{ marginTop: 8 }}>
-                  <ActionBtn
-                    label="CHUYỂN SANG ĐĂNG NHẬP NGAY →"
-                    onPress={() => actions.go('Login')}
-                    tone="primary"
-                  />
-                </View>
-              </View>
-            ) : (
+          {pendingNotice ? (
+            <View
+              style={[
+                styles.pendingNoticeBanner,
+                { backgroundColor: colors.warningContainerBg, borderColor: colors.amber },
+              ]}
+            >
+              <Text style={[styles.pendingNoticeTitle, { color: colors.amber }]}>
+                Thông báo dịch vụ xác thực
+              </Text>
+              <Text style={[styles.pendingNoticeText, { color: colors.title }]}>
+                {pendingNotice}
+              </Text>
               <View style={{ marginTop: 8 }}>
                 <ActionBtn
-                  label="XÁC NHẬN ĐĂNG KÝ SĨ QUAN →"
-                  onPress={submit}
+                  label="Chuyển sang Đăng nhập ngay →"
+                  onPress={() => actions.go('Login')}
                   tone="primary"
                 />
               </View>
-            )}
-
-            <View style={styles.footerNav}>
-              <Pressable
-                onPress={() => actions.go('Login')}
-                style={styles.navLink}
-                accessibilityRole="button"
-              >
-                <Text style={styles.navLinkText}>← Quay lại Đăng nhập</Text>
-              </Pressable>
             </View>
-          </Panel>
-        </View>
+          ) : (
+            <View style={{ marginTop: 10 }}>
+              <ActionBtn label="Xác nhận đăng ký →" onPress={submit} tone="primary" />
+            </View>
+          )}
 
-        <Text style={styles.complianceNotice}>
-          HỆ THỐNG BẢO VỆ ĐỘNG HỌC TÀU • QUY CHUẨN AN TOÀN HÀNG HẢI
-        </Text>
+          <View style={[styles.footerNav, { borderTopColor: colors.borderSubtle }]}>
+            <Pressable
+              onPress={() => actions.go('Login')}
+              style={styles.navLink}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.navLinkText, { color: colors.tech }]}>
+                ← Quay lại Đăng nhập
+              </Text>
+            </Pressable>
+          </View>
+        </Panel>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 /**
- * VIEW 3: Forgot Password / Key Recovery Screen
+ * Màn hình 3: Khôi phục mật mã
  */
 export function ForgotPasswordScreen({ actions }: ScreenProps) {
+  const { colors } = useTheme();
   const [identifier, setIdentifier] = useState('');
   const [error, setError] = useState('');
   const [pendingNotice, setPendingNotice] = useState('');
@@ -381,8 +445,8 @@ export function ForgotPasswordScreen({ actions }: ScreenProps) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[styles.root, { backgroundColor: colors.canvas }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -390,70 +454,85 @@ export function ForgotPasswordScreen({ actions }: ScreenProps) {
       >
         <BrandBanner />
 
-        <View style={styles.cardWrapper}>
-          <ReticleAccents />
+        <Panel title="Khôi phục Mật mã">
+          <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>
+            Yêu cầu cấp lại mã truy cập buồng lái hoặc đặt lại mật khẩu:
+          </Text>
 
-          <Panel title="KEY RECOVERY PROTOCOL" tag="SYS_ID: 994-IMU-BRG">
-            <Text style={styles.formTitle}>Khôi phục Mật mã</Text>
-            <Text style={styles.formSubtitle}>
-              Yêu cầu cấp lại mã truy cập buồng lái hoặc đặt lại mật mã:
-            </Text>
+          <Text style={[styles.fieldLabel, { color: colors.title }]}>
+            Mã sĩ quan hoặc Email buồng lái
+          </Text>
+          <TextInput
+            value={identifier}
+            onChangeText={(val) => {
+              setIdentifier(val);
+              setError('');
+            }}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: colors.panel2,
+                borderColor: colors.borderSubtle,
+                color: colors.title,
+              },
+            ]}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Mã sĩ quan hoặc email"
+            placeholder="Ví dụ: operator hoặc officer@vessel01.vn"
+            placeholderTextColor={colors.muted}
+          />
 
-            <Text style={styles.fieldLabel}>MÃ SĨ QUAN HOẶC EMAIL BUỒNG LÁI</Text>
-            <TextInput
-              value={identifier}
-              onChangeText={(val) => {
-                setIdentifier(val);
-                setError('');
-              }}
-              style={styles.textInput}
-              autoCapitalize="none"
-              accessibilityLabel="Mã sĩ quan hoặc email"
-              placeholder="e.g. operator hoặc officer.jensen@vessel01.bridge"
-              placeholderTextColor={C.muted}
-            />
+          {error ? (
+            <View
+              style={[
+                styles.errorBox,
+                { backgroundColor: colors.errorContainerBg, borderColor: colors.red },
+              ]}
+            >
+              <Text style={[styles.errorText, { color: colors.red }]}>{error}</Text>
+            </View>
+          ) : null}
 
-            {error ? <Text style={styles.errorText}>⚠ {error}</Text> : null}
-
-            {pendingNotice ? (
-              <View style={styles.pendingNoticeBanner}>
-                <Text style={styles.pendingNoticeTitle}>
-                  TRẠNG THÁI HẠ TẦNG XÁC THỰC:
-                </Text>
-                <Text style={styles.pendingNoticeText}>{pendingNotice}</Text>
-                <View style={{ marginTop: 8 }}>
-                  <ActionBtn
-                    label="QUAY LẠI MÀN HÌNH ĐĂNG NHẬP"
-                    onPress={() => actions.go('Login')}
-                    tone="primary"
-                  />
-                </View>
-              </View>
-            ) : (
+          {pendingNotice ? (
+            <View
+              style={[
+                styles.pendingNoticeBanner,
+                { backgroundColor: colors.warningContainerBg, borderColor: colors.amber },
+              ]}
+            >
+              <Text style={[styles.pendingNoticeTitle, { color: colors.amber }]}>
+                Trạng thái hạ tầng xác thực
+              </Text>
+              <Text style={[styles.pendingNoticeText, { color: colors.title }]}>
+                {pendingNotice}
+              </Text>
               <View style={{ marginTop: 8 }}>
                 <ActionBtn
-                  label="GỬI YÊU CẦU ĐẶT LẠI MẬT MÃ →"
-                  onPress={submit}
+                  label="Quay lại màn hình Đăng nhập"
+                  onPress={() => actions.go('Login')}
                   tone="primary"
                 />
               </View>
-            )}
-
-            <View style={styles.footerNav}>
-              <Pressable
-                onPress={() => actions.go('Login')}
-                style={styles.navLink}
-                accessibilityRole="button"
-              >
-                <Text style={styles.navLinkText}>← Quay lại Đăng nhập</Text>
-              </Pressable>
             </View>
-          </Panel>
-        </View>
+          ) : (
+            <View style={{ marginTop: 10 }}>
+              <ActionBtn label="Gửi yêu cầu đặt lại mật mã →" onPress={submit} tone="primary" />
+            </View>
+          )}
 
-        <Text style={styles.complianceNotice}>
-          CƠ CHẾ BẢO MẬT PHẦN CỨNG • THỦ TỤC CẤP PHÁT THẺ RSA-4096
-        </Text>
+          <View style={[styles.footerNav, { borderTopColor: colors.borderSubtle }]}>
+            <Pressable
+              onPress={() => actions.go('Login')}
+              style={styles.navLink}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.navLinkText, { color: colors.tech }]}>
+                ← Quay lại Đăng nhập
+              </Text>
+            </Pressable>
+          </View>
+        </Panel>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -462,127 +541,71 @@ export function ForgotPasswordScreen({ actions }: ScreenProps) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: C.canvas,
   },
   scrollContent: {
-    paddingHorizontal: 14,
-    paddingTop: 16,
-    paddingBottom: 24,
-    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 28,
+    gap: 14,
   },
   brandWell: {
-    backgroundColor: C.panel,
     borderWidth: 1,
-    borderLeftWidth: 3.5,
-    borderColor: C.borderSubtle,
-    borderLeftColor: C.borderNavy,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    ...SHADOWS.card,
   },
   brandIconBox: {
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: '#EAF2FA',
-    borderWidth: 1,
-    borderColor: C.borderSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   brandIcon: {
-    color: C.cyan,
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 24,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
   brandTextCol: {
     flex: 1,
+    gap: 2,
   },
   brandEyebrow: {
-    color: C.cyanBright,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontSize: 12,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   brandTitle: {
-    color: C.text,
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    marginTop: 1,
+    fontSize: 18,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
   brandSub: {
-    color: C.muted,
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+    lineHeight: 16,
   },
-  cardWrapper: {
-    position: 'relative',
+  themeChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reticleTL: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: 12,
-    height: 12,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderColor: C.cyan,
-    zIndex: 10,
-  },
-  reticleTR: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderTopWidth: 2,
-    borderRightWidth: 2,
-    borderColor: C.cyan,
-    zIndex: 10,
-  },
-  reticleBL: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    width: 12,
-    height: 12,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-    borderColor: C.cyan,
-    zIndex: 10,
-  },
-  reticleBR: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderBottomWidth: 2,
-    borderRightWidth: 2,
-    borderColor: C.cyan,
-    zIndex: 10,
-  },
-  formTitle: {
+  themeChipText: {
     fontSize: 16,
-    fontWeight: '800',
-    color: C.text,
-    marginTop: 2,
   },
   formSubtitle: {
-    fontSize: 11,
-    color: C.muted,
-    marginTop: 2,
-    marginBottom: 6,
+    ...TYPOGRAPHY.secondary,
+    marginBottom: 4,
   },
   fieldLabel: {
-    color: C.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
     marginTop: 6,
   },
   labelRow: {
@@ -591,133 +614,109 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 6,
   },
+  inlineLinkBtn: {
+    minHeight: 36,
+    justifyContent: 'center',
+  },
   keyRecoveryText: {
-    color: C.cyan,
-    fontSize: 10,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
+    fontSize: 13,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   textInput: {
     borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: '#FFFFFF',
-    color: C.text,
     fontSize: 14,
-    minHeight: 44,
-    marginTop: 2,
+    fontFamily: FONT.regular,
+    minHeight: 46,
+    marginTop: 4,
   },
   passwordRow: {
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 4,
   },
   showPassBtn: {
     borderWidth: 1,
-    borderColor: C.borderSubtle,
-    borderRadius: 8,
-    backgroundColor: C.panelHigh,
-    paddingHorizontal: 12,
-    minHeight: 44,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    minHeight: 46,
+    minWidth: 56,
     alignItems: 'center',
     justifyContent: 'center',
   },
   showPassText: {
-    color: C.cyan,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  secNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(2, 132, 199, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(2, 132, 199, 0.25)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    marginTop: 10,
-  },
-  secNoticeIcon: {
-    fontSize: 12,
-  },
-  secNoticeText: {
-    color: C.text,
-    fontSize: 9.5,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontSize: 13,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   roleLockBox: {
-    backgroundColor: '#EAF2FA',
     borderWidth: 1,
-    borderLeftWidth: 3.5,
-    borderColor: C.borderSubtle,
-    borderLeftColor: C.borderNavy,
     borderRadius: 10,
-    padding: 10,
-    marginTop: 10,
-    gap: 3,
-  },
-  roleLockTitle: {
-    color: C.text,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  roleLockText: {
-    color: C.muted,
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  pendingNoticeBanner: {
-    backgroundColor: 'rgba(217, 119, 6, 0.1)',
-    borderWidth: 1,
-    borderColor: '#D97706',
-    borderRadius: 12,
     padding: 12,
     marginTop: 10,
     gap: 4,
-    ...SHADOWS.warningGlow,
+  },
+  roleLockTitle: {
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
+  },
+  roleLockText: {
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 18,
+  },
+  pendingNoticeBanner: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+    gap: 4,
   },
   pendingNoticeTitle: {
-    color: '#B45309',
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 14,
+    fontFamily: FONT.bold,
+    fontWeight: '700',
   },
   pendingNoticeText: {
-    color: C.text,
-    fontSize: 10.5,
-    lineHeight: 15,
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    lineHeight: 18,
+  },
+  errorBox: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
   },
   errorText: {
-    color: C.red,
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 6,
+    fontSize: 13,
+    fontFamily: FONT.medium,
+    fontWeight: '500',
   },
   footerNav: {
     borderTopWidth: 1,
-    borderTopColor: C.borderSubtle,
     marginTop: 12,
-    paddingTop: 10,
+    paddingTop: 12,
     alignItems: 'center',
   },
   navLink: {
-    paddingVertical: 4,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   navLinkText: {
-    color: C.text,
-    fontSize: 11,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
+    fontSize: 14,
+    fontFamily: FONT.semibold,
+    fontWeight: '600',
   },
   complianceNotice: {
-    color: C.muted,
-    fontSize: 9.5,
+    fontSize: 12,
+    fontFamily: FONT.regular,
     textAlign: 'center',
-    marginTop: 2,
   },
 });
