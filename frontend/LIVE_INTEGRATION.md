@@ -34,6 +34,12 @@ và CSS dùng chung. Chọn chế độ ở màn hình đăng nhập:
 | Tình trạng thiết bị | `health/devices`, `devices/{id}/health` | Hoàn thành | Health gửi định kỳ (không theo từng telemetry); `inference_ms` có thể trống |
 | Giám sát mô hình AI | `monitor/agreement`, `monitor/drift`, telemetry | Hoàn thành (chỉ Supervisor/Admin, như MOCK) | Đồng thuận chỉ tính cặp mà cả RF và Baseline B có lớp phân loại; UNKNOWN/FAULT bị loại (UNKNOWN == UNKNOWN không phải đồng thuận); SENSOR/SIMULATION không gộp. Firmware chính trả `class_rf=UNKNOWN` → hiển thị "Chưa đủ dữ liệu để đánh giá đồng thuận"; drift PSI Backend báo `available=false` |
 
+## Multi-Node: hầm hàng (Cargo Node)
+
+Mực nước, nhiệt độ, độ ẩm hầm hàng đến từ **Cargo Node** (ESP32 thứ 2), không còn đi cùng telemetry của tàu. LIVE gọi `GET /api/v1/devices/{tàu}/cargo` (5 s) và hiển thị trên **Tổng quan** và **Giám sát chuyển động** kèm trạng thái kết nối **riêng** của Node 2
+(`CHƯA GẮN CARGO NODE` · `CHƯA CÓ DỮ LIỆU HẦM HÀNG` · `CARGO NODE OFFLINE / DỮ LIỆU CŨ` · `LỖI DHT22` · `CARGO NODE TRỰC TUYẾN`). Cargo Node không bao giờ được chọn làm "tàu chính".
+Admin phải gắn Cargo Node vào tàu (`PATCH /devices/{id}` với `parent_device_id`) thì dữ liệu mới xuất hiện. Chưa có cảnh báo hầm hàng (chờ ngưỡng).
+
 Không có trong Backend nên LIVE không hiển thị (MOCK vẫn có): đăng ký/quên mật khẩu, snapshot 180 s, chọn kịch bản/timewarp/mô hình từ xa,
 thông tin tĩnh của tàu (IMO, tên tàu).
 

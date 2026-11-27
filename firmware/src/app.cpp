@@ -122,8 +122,6 @@ void send_telemetry() {
   MsgTelemetry t;
   msg_fill_telemetry(&t, &E, (uint64_t)(esp_timer_get_time() / 1000), t_now_abs(), TIMEWARP, MODE,
                      MODE == SVMG_SRC_SIMULATION ? (int)sim_scenario() : -1, sensor_ok(), sim_sea_state());
-  t.cargo_water_pct = io_read_cargo_water_pct();
-  io_read_cargo_dht(&t.cargo_temp_c, &t.cargo_humidity_pct);
   char js[768];
   size_t n = msg_build_telemetry(js, sizeof js, ID, SEQ + 1, t);
   if (n && net_publish("telemetry", js, (int)n, 0, false) >= 0) SEQ++;   // seq chỉ tiêu thụ khi thật sự giao cho MQTT

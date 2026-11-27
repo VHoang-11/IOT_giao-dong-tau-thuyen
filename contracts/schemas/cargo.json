@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SVMG Cargo Hold Telemetry",
+  "description": "Bản tin hầm hàng từ Cargo Node (ESP32 thứ 2, chỉ đo mực nước + nhiệt độ/độ ẩm) qua svmg/{device_id}/cargo. KHÔNG chứa roll/pitch/đặc trưng chuyển động. Giá trị không đọc được (cảm biến lỗi) gửi null, không gửi số giả.",
+  "type": "object",
+  "required": ["device_id", "boot_id", "seq", "uptime_ms", "sensor_ok", "cargo_water_pct", "cargo_temp_c", "cargo_humidity_pct"],
+  "properties": {
+    "device_id": {"type": "string"},
+    "boot_id": {"type": "string"},
+    "seq": {"type": "integer", "minimum": 0},
+    "uptime_ms": {"type": "integer", "minimum": 0},
+    "sensor_ok": {"type": "boolean", "description": "false khi DHT22 không đọc được (nhiệt độ/độ ẩm = null)"},
+    "cargo_water_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "cargo_temp_c": {"type": ["number", "null"]},
+    "cargo_humidity_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+    "source_mode": {"type": "string", "enum": ["SENSOR", "SIMULATION"]},
+    "parent_device_id": {"type": "string", "description": "Tàu/Motion Node mà hầm hàng này thuộc về. Chỉ để đối chiếu: liên kết chính thức do Admin đặt trên Backend."}
+  }
+}

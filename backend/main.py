@@ -108,6 +108,7 @@ app.add_middleware(
 )
 app.include_router(health.router)
 app.include_router(devices.router)
+app.include_router(cargo_router.router)
 app.include_router(auth.router)
 app.include_router(alarms.router)
 app.include_router(alarms.ws_router)

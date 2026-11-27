@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Device, Voyage
-from app.models.enums import VoyageStatus
+from app.models.enums import NodeType, VoyageStatus
 from app.services.audit import audit
 
 log = logging.getLogger("svmg.voyages")
@@ -64,6 +64,8 @@ def start_voyage(db: Session, actor: str, device_id: str, voyage_id: Optional[st
         raise VoyageNotFound(f"Không tìm thấy thiết bị '{device_id}'")
     if not dev.enabled:
         raise VoyageConflict(f"Thiết bị '{device_id}' đã bị vô hiệu hóa, không thể bắt đầu chuyến mới")
+    if dev.node_type == NodeType.CARGO:
+        raise VoyageConflict(f"'{device_id}' là Cargo Node; hãy bắt đầu chuyến cho thiết bị chính của nó")
     active = _active_voyage(db, device_id)
     if active is not None:
         raise VoyageConflict(f"Thiết bị '{device_id}' đang có chuyến '{active.voyage_id}' chưa kết thúc")

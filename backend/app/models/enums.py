@@ -6,6 +6,12 @@ class SourceMode(str, enum.Enum):
     SIMULATION = "SIMULATION"
 
 
+class NodeType(str, enum.Enum):
+    """Multi-Node: MOTION = ESP32 do dao dong (telemetry/event); CARGO = ESP32 ham hang (chi topic cargo)."""
+    MOTION = "MOTION"
+    CARGO = "CARGO"
+
+
 class MotionClass(str, enum.Enum):
     NORMAL = "NORMAL"
     HIGH_ROLL = "HIGH_ROLL"

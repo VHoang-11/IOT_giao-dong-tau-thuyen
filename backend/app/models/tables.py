@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.models.enums import (
-    AlarmLevel, AlarmState, CommandState, DeviceState, MotionClass, Role, SourceMode, VoyageStatus,
+    AlarmLevel, AlarmState, CommandState, DeviceState, MotionClass, NodeType, Role, SourceMode, VoyageStatus,
 )
 
 
@@ -62,6 +62,11 @@ class Device(Base):
     feature_schema_version: Mapped[Optional[str]] = mapped_column(String(64))
     preprocessing_version: Mapped[Optional[str]] = mapped_column(String(64))
     feature_count: Mapped[Optional[int]] = mapped_column(Integer)
+    # Multi-Node: CARGO = mach ham hang (chi gui topic cargo). Tu dong dat khi nhan ban tin cargo dau tien hoac khi Admin gan parent.
+    node_type: Mapped[NodeType] = mapped_column(_enum(NodeType), default=NodeType.MOTION,
+                                                server_default=NodeType.MOTION.value)
+    # Tau/Motion Node ma Cargo Node thuoc ve. CHI Admin dat (khong lay tu payload thiet bi).
+    parent_device_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
@@ -98,6 +103,77 @@ class Telemetry(Base):
     config_version: Mapped[int] = mapped_column(Integer)
     sensor_ok: Mapped[bool] = mapped_column(Boolean)
     server_rx_time: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class CargoTelemetry(Base):
+    """Ban tin `cargo` tu Cargo Node (muc nuoc, nhiet do, do am ham hang). Khong chua roll/pitch."""
+    __tablename__ = "cargo_telemetry"
+    __table_args__ = (
+        UniqueConstraint("device_id", "boot_id", "seq", name="uq_cargo_dedup"),
+        Index("ix_cargo_dev_rx", "device_id", "server_rx_time"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True)
+    boot_id: Mapped[str] = mapped_column(String(64))
+    seq: Mapped[int] = mapped_column(Integer)
+    uptime_ms: Mapped[int] = mapped_column(Integer)
+    source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode))
+    sensor_ok: Mapped[bool] = mapped_column(Boolean)
+    cargo_water_pct: Mapped[Optional[float]] = mapped_column(Float)
+    cargo_temp_c: Mapped[Optional[float]] = mapped_column(Float)
+    cargo_humidity_pct: Mapped[Optional[float]] = mapped_column(Float)
+    # Thiet bi tu khai (chi doi chieu, KHONG dung de lien ket): lien ket chinh thuc la devices.parent_device_id do Admin dat
+    reported_parent_device_id: Mapped[Optional[str]] = mapped_column(String(64))
+    server_rx_time: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class CargoHoldConfig(Base):
+    """Cau hinh ham hang theo Cargo Node: kich thuoc/loai hang/hieu chuan + (tuy chon) ghi de nguong.
+    KHONG co gia tri mac dinh cho chieu sau ham/thang do cam bien nuoc: thieu thi canh bao nuoc la UNKNOWN (NOT_CONFIGURED)."""
+    __tablename__ = "cargo_hold_configs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)   # Cargo Node
+    version: Mapped[int] = mapped_column(Integer, default=1)                      # tang moi lan sua (lich su o audit_log)
+    vessel_type: Mapped[Optional[str]] = mapped_column(String(64))
+    cargo_type: Mapped[Optional[str]] = mapped_column(String(64))
+    cargo_hold_depth_mm: Mapped[Optional[float]] = mapped_column(Float)
+    water_sensor_full_scale_mm: Mapped[Optional[float]] = mapped_column(Float)    # 100 % chiet ap = bao nhieu mm
+    sensor_calibrated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    thresholds: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)             # ghi de so voi bo mac dinh (cargo/thresholds.py)
+    updated_by: Mapped[str] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class CargoAlert(Base):
+    """Vong doi canh bao ham hang (ACTIVE -> ACKED -> CLEARED). Tach rieng khoi bang `alarms` (canh bao dao dong)."""
+    __tablename__ = "cargo_alerts"
+    __table_args__ = (
+        # moi (Cargo Node, chi so) chi co toi da 1 canh bao CHUA giai toa
+        Index("uq_cargo_alert_open", "device_id", "metric", unique=True,
+              sqlite_where=text("state != 'CLEARED'"), postgresql_where=text("state != 'CLEARED'")),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True)                 # Cargo Node
+    parent_device_id: Mapped[Optional[str]] = mapped_column(String(64), index=True)  # tau chinh luc mo canh bao
+    metric: Mapped[str] = mapped_column(String(16))                                 # WATER | TEMPERATURE | HUMIDITY
+    state: Mapped[AlarmState] = mapped_column(_enum(AlarmState), default=AlarmState.ACTIVE)
+    level: Mapped[AlarmLevel] = mapped_column(_enum(AlarmLevel))
+    max_level: Mapped[AlarmLevel] = mapped_column(_enum(AlarmLevel))
+    value: Mapped[float] = mapped_column(Float)                                     # gia tri moi nhat theo `unit` (nuoc: mm)
+    peak_value: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(8))
+    source_mode: Mapped[SourceMode] = mapped_column(_enum(SourceMode))
+    data_class: Mapped[str] = mapped_column(String(24))                             # SIMULATION | SENSOR_UNCALIBRATED | SENSOR_CALIBRATED
+    threshold_warning: Mapped[Optional[float]] = mapped_column(Float)
+    threshold_critical: Mapped[Optional[float]] = mapped_column(Float)
+    threshold_version: Mapped[str] = mapped_column(String(64))
+    last_boot_id: Mapped[str] = mapped_column(String(64))
+    last_seq: Mapped[int] = mapped_column(Integer)
+    opened_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    acked_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
+    acked_by: Mapped[Optional[str]] = mapped_column(String(64))
+    cleared_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime())
+    escalated: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class AlarmEvent(Base):

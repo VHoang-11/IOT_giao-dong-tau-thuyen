@@ -18,6 +18,7 @@ import {
 } from '../components/UI';
 import { SCENARIOS, fakeWavePoints } from '../data/mock';
 import { C } from '../theme';
+import { f, n } from '../data/format';
 import { CommandStatus, ScreenProps } from '../types/domain';
 
 export function ControlCenterScreen({ data, actions }: ScreenProps) {
@@ -39,7 +40,7 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -74,12 +75,12 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           <View style={styles.cfgItem}>
             <Text style={styles.cfgLabel}>MÔ HÌNH CHÍNH:</Text>
             <Text style={[styles.cfgVal, { color: C.cyan }]}>
-              {cfg.active_model === 'RF' ? 'Random Forest (Edge)' : 'Baseline B'}
+              {cfg.active_model === null ? '—' : cfg.active_model === 'RF' ? 'Random Forest (Edge)' : 'Baseline B'}
             </Text>
           </View>
           <View style={styles.cfgItem}>
             <Text style={styles.cfgLabel}>TỐC ĐỘ VIRTUAL:</Text>
-            <Text style={[styles.cfgVal, { color: C.amber }]}>×{cfg.timewarp}</Text>
+            <Text style={[styles.cfgVal, { color: C.amber }]}>{cfg.timewarp === null ? '—' : `×${cfg.timewarp}`}</Text>
           </View>
         </View>
 
@@ -88,21 +89,21 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           <View style={styles.thresholdTile}>
             <Text style={styles.thresholdTileLabel}>ROLL WARNING</Text>
             <Text style={[styles.thresholdTileVal, { color: C.amber }]}>
-              {cfg.roll_warning_deg.toFixed(1)}°
+              {f(cfg.roll_warning_deg, 1, '°')}
             </Text>
             <Text style={styles.thresholdTileSub}>Amber Limit</Text>
           </View>
           <View style={styles.thresholdTile}>
             <Text style={styles.thresholdTileLabel}>CRITICAL TRIP</Text>
             <Text style={[styles.thresholdTileVal, { color: C.red }]}>
-              {cfg.roll_trip_deg.toFixed(1)}°
+              {f(cfg.roll_trip_deg, 1, '°')}
             </Text>
             <Text style={styles.thresholdTileSub}>Red Limit</Text>
           </View>
           <View style={styles.thresholdTile}>
             <Text style={styles.thresholdTileLabel}>MAI ALERT</Text>
             <Text style={[styles.thresholdTileVal, { color: C.cyan }]}>
-              {cfg.mai_alert_threshold.toFixed(2)}
+              {f(cfg.mai_alert_threshold, 2)}
             </Text>
             <Text style={styles.thresholdTileSub}>Damped α</Text>
           </View>
@@ -191,17 +192,19 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.commandRowTitle}>Hiệu chuẩn độ lệch 0 (calibrate_zero)</Text>
             <Text style={styles.commandRowSub}>
-              Đo độ lệch tĩnh và kiểm tra độ ổn định tín hiệu trong 30s. Điều kiện: Tàu tĩnh (kịch bản S0, σ ≤ 1.0°).
+              Đo độ lệch tĩnh và kiểm tra độ ổn định tín hiệu trong 30s. Điều kiện: Tàu tĩnh (σ ≤ 1.0°).
             </Text>
             <View style={styles.conditionRow}>
               <Text style={styles.conditionLabel}>Trạng thái hiện tại:</Text>
               <Text
                 style={[
                   styles.conditionVal,
-                  { color: data.scenario === 'S0' ? C.green : C.amber },
+                  { color: data.mode === 'live' ? C.muted : data.scenario === 'S0' ? C.green : C.amber },
                 ]}
               >
-                {data.scenario === 'S0' ? '● Tàu tĩnh (S0, σ=0.15°) — HỢP LỆ' : `● ${data.scenario} (σ > 1.0°) — TỪ CHỐI (NOT_STATIC)`}
+                {data.mode === 'live'
+                  ? '● Thiết bị tự kiểm tra độ tĩnh ~30s (REJECTED nếu tàu còn dao động)'
+                  : data.scenario === 'S0' ? '● Tàu tĩnh (S0, σ=0.15°) — HỢP LỆ' : `● ${data.scenario} (σ > 1.0°) — TỪ CHỐI (NOT_STATIC)`}
               </Text>
             </View>
           </View>
@@ -213,7 +216,8 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           />
         </View>
 
-        {/* Request Snapshot */}
+        {/* Request Snapshot (MOCK: firmware/Backend chưa có lệnh này) */}
+        {data.mode === 'mock' && (
         <View style={styles.commandRowCard}>
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.commandRowTitle}>Yêu cầu trích xuất sóng (request_snapshot)</Text>
@@ -228,6 +232,7 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
             tone="secondary"
           />
         </View>
+        )}
       </Panel>
 
       {/* Snapshot Result Artifact in Mock State */}
@@ -264,6 +269,7 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
       )}
 
       {/* Test Harness / Mock Utility Panel */}
+      {data.mode === 'mock' && (
       <Panel
         title="TIỆN ÍCH KIỂM THỬ (TEST HARNESS / MOCK ONLY)"
         tag="UTILITY FOR QA / DEV"
@@ -286,12 +292,14 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           />
         </View>
       </Panel>
+      )}
       {/* 4. Advanced Admin Only Panel */}
       <Panel
         title="THIẾT LẬP MÔ PHỎNG VÀ LÕI MÔ HÌNH"
         tag={isAdmin ? 'ADMIN ACCESS GRANTED' : 'KHÓA: YÊU CẦU QUYỀN ADMIN'}
       >
         {/* Set Timewarp */}
+        {data.mode === 'mock' && (
         <View style={styles.adminSection}>
           <Text style={styles.adminSectionTitle}>TỐC ĐỘ THỜI GIAN MÔ PHỎNG (TIMEWARP):</Text>
           <View style={styles.buttonTrio}>
@@ -319,6 +327,8 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
             ))}
           </View>
         </View>
+
+        )}
 
         {/* Set Model */}
         <View style={styles.adminSection}>
@@ -356,6 +366,7 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
         </View>
 
         {/* Set Mode */}
+        {data.mode === 'mock' && (
         <View style={styles.adminSection}>
           <Text style={styles.adminSectionTitle}>CHẾ ĐỘ NGUỒN TÍN HIỆU (SET_MODE):</Text>
           <View style={styles.buttonTrio}>
@@ -391,7 +402,10 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
           </View>
         </View>
 
+        )}
+
         {/* Set Scenario Grid */}
+        {data.mode === 'mock' && (
         <View style={styles.adminSection}>
           <Text style={styles.adminSectionTitle}>
             CHỌN KỊCH BẢN GIẢ LẬP (SET_SCENARIO — 8 TRƯỜNG HỢP):
@@ -427,6 +441,20 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
             })}
           </View>
         </View>
+        )}
+
+        {/* Restart device (LIVE, Admin) */}
+        {data.mode === 'live' && (
+          <View style={styles.adminSection}>
+            <Text style={styles.adminSectionTitle}>KHỞI ĐỘNG LẠI THIẾT BỊ (RESTART_DEVICE):</Text>
+            <ActionBtn
+              label="RESTART THIẾT BỊ"
+              onPress={() => actions.sendCommand('restart_device', true)}
+              disabled={!isAdmin}
+              tone="ghost"
+            />
+          </View>
+        )}
       </Panel>
 
       {/* 5. Command Execution History & Lifecycle Audit */}
@@ -468,7 +496,7 @@ export function ControlCenterScreen({ data, actions }: ScreenProps) {
                         Người phát: <Text style={{ color: C.text }}>{cmd.issued_by}</Text>
                       </Text>
                     )}
-                    <Text style={styles.historyMetaVer}>v{cmd.config_version}</Text>
+                    <Text style={styles.historyMetaVer}>{cmd.config_version === null ? '' : `v${cmd.config_version}`}</Text>
                   </View>
 
                   <Text style={styles.historyDetailText}>{cmd.detail}</Text>
@@ -488,12 +516,12 @@ export function VoyageReportsScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
       title="VOYAGE REPORTS"
-      subtitle="HÀNH TRÌNH GIÁM SÁT • DỮ LIỆU MÔ PHỎNG"
+      subtitle={data.mode === 'live' ? 'HÀNH TRÌNH GIÁM SÁT • DỮ LIỆU BACKEND' : 'HÀNH TRÌNH GIÁM SÁT • DỮ LIỆU MÔ PHỎNG'}
     >
       {/* 1. Voyage Selector Tabs */}
       <Panel title="DANH SÁCH CHUYẾN ĐI MÔ PHỎNG" tag="CHỌN CHUYẾN">
@@ -520,7 +548,7 @@ export function VoyageReportsScreen({ data, actions }: ScreenProps) {
                   {active ? `● ${voy.id}` : voy.id}
                 </Text>
                 <Text style={{ color: C.muted, fontSize: 9, marginTop: 2 }} numberOfLines={1}>
-                  {voy.durationMinutes} min
+                  {n(voy.durationMinutes, ' min')}
                 </Text>
               </Pressable>
             );
@@ -530,6 +558,12 @@ export function VoyageReportsScreen({ data, actions }: ScreenProps) {
           <Value>{v.name}</Value>
           <Body>{v.route}</Body>
           <Small>Bắt đầu: {v.startTime} • Kết thúc: {v.endTime}</Small>
+          {data.mode === 'live' && v.provisional && v.metricsLoaded ? (
+            <Small>⚠ Chuyến đang chạy: số liệu chỉ là TẠM THỜI.</Small>
+          ) : null}
+          {data.mode === 'live' && v.id !== '—' && !v.metricsLoaded ? (
+            <Small>Đang tải số liệu chuyến từ Backend…</Small>
+          ) : null}
         </View>
       </Panel>
 
@@ -537,25 +571,25 @@ export function VoyageReportsScreen({ data, actions }: ScreenProps) {
       <TwoCol>
         <MetricCard
           label="THỜI LƯỢNG"
-          value={`${v.durationMinutes} phút`}
+          value={v.durationMinutes === null ? '—' : `${v.durationMinutes} phút`}
           color={C.cyan}
         />
         <MetricCard
           label="SỰ KIỆN CẢNH BÁO"
-          value={String(v.alarms)}
-          color={v.alarms > 0 ? C.amber : C.green}
+          value={n(v.alarms)}
+          color={v.alarms === null ? C.muted : v.alarms > 0 ? C.amber : C.green}
         />
       </TwoCol>
 
       <TwoCol>
         <MetricCard
           label="ROLL CỰC ĐẠI |°|"
-          value={`${v.maxAbsRollDeg.toFixed(1)}°`}
-          color={v.maxAbsRollDeg > 15 ? C.red : C.amber}
+          value={f(v.maxAbsRollDeg, 1, '°')}
+          color={v.maxAbsRollDeg === null ? C.muted : v.maxAbsRollDeg > 15 ? C.red : C.amber}
         />
         <MetricCard
           label="RMS ROLL (T11)"
-          value={`${v.rmsRollDeg.toFixed(2)}°`}
+          value={f(v.rmsRollDeg, 2, '°')}
           color={C.cyan}
         />
       </TwoCol>
@@ -569,23 +603,23 @@ export function VoyageReportsScreen({ data, actions }: ScreenProps) {
         <View style={{ gap: 8 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>P95 ROLL (T11):</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.p95AbsRollDeg.toFixed(2)}°</Text>
+            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{f(v.p95AbsRollDeg, 2, '°')}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>MAX PITCH / RMS PITCH:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maxAbsPitchDeg.toFixed(2)}° / {v.rmsPitchDeg.toFixed(2)}°</Text>
+            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{f(v.maxAbsPitchDeg, 2, '°')} / {f(v.rmsPitchDeg, 2, '°')}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>MAI CỰC ĐẠI / TRUNG BÌNH:</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maiMax} / {v.maiAvg}</Text>
+            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{n(v.maiMax)} / {n(v.maiAvg)}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: C.border }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>THỜI LƯỢNG MAI &gt; 70:</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maiCautionMinutes} min</Text>
+            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{n(v.maiCautionMinutes, ' min')}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>ĐỒNG THUẬN BASELINE B:</Text>
-            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.agreementPercent}%</Text>
+            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{n(v.agreementPercent, '%')}</Text>
           </View>
         </View>
       </Panel>
@@ -593,16 +627,16 @@ export function VoyageReportsScreen({ data, actions }: ScreenProps) {
       {/* 4. Classification Breakdown */}
       <Panel title="PHÂN BỐ TRẠNG THÁI RANDOM FOREST" tag="AI MODEL">
         <View style={{ height: 12, backgroundColor: '#D0DDEB', borderRadius: 4, overflow: 'hidden', flexDirection: 'row', marginVertical: 8 }}>
-          <View style={{ width: `${v.rfDistribution.normalPct}%`, backgroundColor: C.green }} />
-          <View style={{ width: `${v.rfDistribution.highRollPct}%`, backgroundColor: C.amber }} />
-          <View style={{ width: `${v.rfDistribution.persistentOffsetPct}%`, backgroundColor: '#38BDF8' }} />
-          <View style={{ width: `${v.rfDistribution.amplitudeGrowthPct}%`, backgroundColor: C.red }} />
+          <View style={{ width: `${v.rfDistribution.normalPct ?? 0}%`, backgroundColor: C.green }} />
+          <View style={{ width: `${v.rfDistribution.highRollPct ?? 0}%`, backgroundColor: C.amber }} />
+          <View style={{ width: `${v.rfDistribution.persistentOffsetPct ?? 0}%`, backgroundColor: '#38BDF8' }} />
+          <View style={{ width: `${v.rfDistribution.amplitudeGrowthPct ?? 0}%`, backgroundColor: C.red }} />
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
-          <Text style={{ color: C.green, fontSize: 10, fontFamily: 'monospace' }}>● NORMAL: {v.rfDistribution.normalPct}%</Text>
-          <Text style={{ color: C.amber, fontSize: 10, fontFamily: 'monospace' }}>● HIGH_ROLL: {v.rfDistribution.highRollPct}%</Text>
-          <Text style={{ color: '#38BDF8', fontSize: 10, fontFamily: 'monospace' }}>● OFFSET: {v.rfDistribution.persistentOffsetPct}%</Text>
-          <Text style={{ color: C.red, fontSize: 10, fontFamily: 'monospace' }}>● GROWTH: {v.rfDistribution.amplitudeGrowthPct}%</Text>
+          <Text style={{ color: C.green, fontSize: 10, fontFamily: 'monospace' }}>● NORMAL: {n(v.rfDistribution.normalPct, '%')}</Text>
+          <Text style={{ color: C.amber, fontSize: 10, fontFamily: 'monospace' }}>● HIGH_ROLL: {n(v.rfDistribution.highRollPct, '%')}</Text>
+          <Text style={{ color: '#38BDF8', fontSize: 10, fontFamily: 'monospace' }}>● OFFSET: {n(v.rfDistribution.persistentOffsetPct, '%')}</Text>
+          <Text style={{ color: C.red, fontSize: 10, fontFamily: 'monospace' }}>● GROWTH: {n(v.rfDistribution.amplitudeGrowthPct, '%')}</Text>
         </View>
       </Panel>
 
@@ -631,20 +665,24 @@ export function ReportDetailsScreen({ data, actions }: ScreenProps) {
   const exportCsvDemo = () => {
     Alert.alert(
       'XUẤT DỮ LIỆU CSV (121 MẪU)',
-      `Đã chuẩn bị tệp SVMG_${v.id}_telemetry.csv gồm 121 mẫu dữ liệu chuyển động (đúng chuẩn fixture T11/T15).\n\nCấu trúc: seq, t_sim_s, roll_deg, pitch_deg, source_mode, synthetic\nSố lượng: ${v.sampleCount} bản ghi\nThời lượng: 600s.`
+      data.mode === 'live'
+        ? `Backend cung cấp CSV tại GET /api/v1/voyages/${v.id}/telemetry.csv (cần JWT). Ứng dụng mobile chưa hỗ trợ tải tệp có xác thực; hãy tải bằng dashboard web.\n\nSố bản ghi: ${n(v.sampleCount)}`
+        : `Đã chuẩn bị tệp SVMG_${v.id}_telemetry.csv gồm 121 mẫu dữ liệu chuyển động (đúng chuẩn fixture T11/T15).\n\nCấu trúc: seq, t_sim_s, roll_deg, pitch_deg, source_mode, synthetic\nSố lượng: ${v.sampleCount} bản ghi\nThời lượng: 600s.`
     );
   };
 
   const exportPdfNotice = () => {
     Alert.alert(
       'BÁO CÁO PDF CHÍNH THỨC',
-      'Dịch vụ xuất bản PDF chính thức có chứng thư số đang chờ Backend TV3 Report Service tích hợp.\n\nTrong chế độ Mock, toàn bộ thông số kiểm toán đã được hiển thị trực tiếp và đầy đủ trên màn hình này.'
+      data.mode === 'live'
+        ? `Backend sinh PDF tại GET /api/v1/voyages/${v.id}/report.pdf (cần JWT). Ứng dụng mobile chưa hỗ trợ tải tệp có xác thực; hãy tải bằng dashboard web.`
+        : 'Dịch vụ xuất bản PDF chính thức có chứng thư số đang chờ Backend TV3 Report Service tích hợp.\n\nTrong chế độ Mock, toàn bộ thông số kiểm toán đã được hiển thị trực tiếp và đầy đủ trên màn hình này.'
     );
   };
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -665,7 +703,7 @@ export function ReportDetailsScreen({ data, actions }: ScreenProps) {
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Thời lượng giám sát:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.durationMinutes} phút (121 mẫu / 600s)</Text>
+            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{data.mode === 'live' ? n(v.durationMinutes, ' phút') : `${v.durationMinutes} phút (121 mẫu / 600s)`}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Nguồn dữ liệu:</Text>
@@ -677,7 +715,7 @@ export function ReportDetailsScreen({ data, actions }: ScreenProps) {
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Phiên bản cấu hình:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>v{v.configVersion}</Text>
+            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.configVersion === null ? '—' : `v${v.configVersion}`}</Text>
           </View>
         </View>
       </Panel>
@@ -691,23 +729,23 @@ export function ReportDetailsScreen({ data, actions }: ScreenProps) {
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Tổng số mẫu (Sample Count):</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.sampleCount}</Text>
+            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{n(v.sampleCount)}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Roll cực đại (Max |Roll|):</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maxAbsRollDeg.toFixed(2)}°</Text>
+            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{f(v.maxAbsRollDeg, 2, '°')}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>RMS Roll (Khớp chuẩn T11):</Text>
-            <Text style={{ color: C.cyan, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.rmsRollDeg.toFixed(2)}° (7.083967°)</Text>
+            <Text style={{ color: C.cyan, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{f(v.rmsRollDeg, 2, '°')}{data.mode === 'mock' ? ' (7.083967°)' : ''}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>P95 Roll (Khớp chuẩn T11):</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.p95AbsRollDeg.toFixed(2)}° (13.36°)</Text>
+            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{f(v.p95AbsRollDeg, 2, '°')}{data.mode === 'mock' ? ' (13.36°)' : ''}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Pitch cực đại / RMS Pitch:</Text>
-            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{v.maxAbsPitchDeg.toFixed(2)}° / {v.rmsPitchDeg.toFixed(2)}°</Text>
+            <Text style={{ color: C.text, fontSize: 12, fontFamily: 'monospace' }}>{f(v.maxAbsPitchDeg, 2, '°')} / {f(v.rmsPitchDeg, 2, '°')}</Text>
           </View>
         </View>
         <Text style={[styles.rollbackNote, { marginTop: 8 }]}>
@@ -720,15 +758,15 @@ export function ReportDetailsScreen({ data, actions }: ScreenProps) {
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>MAI Cực đại / Trung bình:</Text>
-            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.maiMax} / {v.maiAvg}</Text>
+            <Text style={{ color: C.amber, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{n(v.maiMax)} / {n(v.maiAvg)}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Thời lượng MAI &gt; 70:</Text>
-            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace' }}>{v.maiCautionMinutes} phút</Text>
+            <Text style={{ color: C.red, fontSize: 12, fontFamily: 'monospace' }}>{n(v.maiCautionMinutes, ' phút')}</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: C.muted, fontSize: 11, fontFamily: 'monospace' }}>Tỉ lệ đồng thuận RF & Baseline B:</Text>
-            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{v.agreementPercent}%</Text>
+            <Text style={{ color: C.green, fontSize: 12, fontFamily: 'monospace', fontWeight: 'bold' }}>{n(v.agreementPercent, '%')}</Text>
           </View>
         </View>
       </Panel>
@@ -809,6 +847,7 @@ export function ReportDetailsScreen({ data, actions }: ScreenProps) {
 
 export function ReplayReviewScreen({ data, actions }: ScreenProps) {
   const points = data.replayPoints || [];
+  const endT = points.length ? points[points.length - 1].t_sim_s : 0;
   const curIdx = Math.min(points.length - 1, Math.max(0, data.replayIndex || 0));
   const cur = points[curIdx] || points[0] || {
     seq: 0,
@@ -817,9 +856,30 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
     pitch: 0,
     class_rf: 'NORMAL' as const,
     class_baseline_b: 'NORMAL' as const,
-    mai: 14,
+    mai: null as number | null,
     alarm_level: 'NORMAL' as const,
   };
+
+  if (data.mode === 'live' && points.length === 0) {
+    return (
+      <Page
+        vesselName={data.vesselName}
+        utcTime={data.telemetry.utc_time}
+        isHornMuted={data.buzzerMuted}
+        onToggleHorn={actions.toggleBuzzer}
+        title="REPLAY & REVIEW"
+        subtitle="PHÁT LẠI CHUYẾN ĐI • DỮ LIỆU BACKEND"
+        onBack={actions.back}
+      >
+        <Panel title="CHƯA CÓ DỮ LIỆU PHÁT LẠI" tag="BACKEND">
+          <Text style={styles.secNote}>
+            Chuyến đi đang chọn chưa có telemetry hợp lệ (hoặc đang tải). Hãy tạo chuyến đi cho thiết bị trên Backend
+            rồi quay lại.
+          </Text>
+        </Panel>
+      </Page>
+    );
+  }
 
   // Extract trailing 40 samples around current index for waveform display
   const windowCount = 40;
@@ -829,7 +889,11 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
   const pitchWave = slice.map((p) => p.pitch);
 
   // Check if current position matches an alarm event
-  const activeAlarm = data.alarms.find(
+  const activeAlarm = data.mode === 'live'
+    ? cur.alarm_id
+      ? data.alarms.find((a) => a.title.startsWith(`${cur.alarm_id} `))
+      : undefined
+    : data.alarms.find(
     (a) =>
       (a.id === 'ALM-8441' && Math.abs(cur.t_sim_s - 60) <= 15) ||
       (a.id === 'ALM-8450' && Math.abs(cur.t_sim_s - 150) <= 15) ||
@@ -839,12 +903,12 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
       title="REPLAY & REVIEW"
-      subtitle="PHÁT LẠI CHUYẾN ĐI • 121 MẪU DỮ LIỆU ĐỘNG HỌC"
+      subtitle={`PHÁT LẠI CHUYẾN ĐI • ${points.length} MẪU DỮ LIỆU ĐỘNG HỌC`}
       onBack={actions.back}
     >
       {/* 1. Playhead Telemetry Readout */}
@@ -886,8 +950,8 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
           </View>
           <View>
             <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>MAI INDEX:</Text>
-            <Text style={{ color: cur.mai > 70 ? C.red : C.amber, fontSize: 15, fontFamily: 'monospace', fontWeight: 'bold' }}>
-              {cur.mai} / 100
+            <Text style={{ color: (cur.mai ?? 0) > 70 ? C.red : C.amber, fontSize: 15, fontFamily: 'monospace', fontWeight: 'bold' }}>
+              {n(cur.mai)} / 100
             </Text>
           </View>
           <View>
@@ -909,6 +973,7 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
           scenario="S0"
           classRf={cur.class_rf}
           sensorOk={true}
+          sourceLabel={data.mode === 'live' ? points[curIdx]?.source_mode : undefined}
           compact={false}
         />
       </Panel>
@@ -917,7 +982,7 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
       <Panel title="ĐỒ THỊ DAO ĐỘNG THEO THỜI GIAN PHÁT LẠI" tag="WAVEFORM SLICE">
         <MotionChart roll={rollWave} pitch={pitchWave} height={140} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-          <Text style={{ color: C.muted, fontSize: 9, fontFamily: 'monospace' }}>Lịch sử {rollWave.length * 5}s trước</Text>
+          <Text style={{ color: C.muted, fontSize: 9, fontFamily: 'monospace' }}>Lịch sử {slice.length ? Math.round(cur.t_sim_s - slice[0].t_sim_s) : 0}s trước</Text>
           <Text style={{ color: C.cyan, fontSize: 9, fontFamily: 'monospace' }}>Playhead Cursor: T+{cur.t_sim_s}s</Text>
         </View>
       </Panel>
@@ -949,8 +1014,8 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
         <View style={{ marginBottom: 12 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
             <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>0s (Bắt đầu)</Text>
-            <Text style={{ color: C.cyan, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>T+{cur.t_sim_s}s / 600s</Text>
-            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>600s (Kết thúc)</Text>
+            <Text style={{ color: C.cyan, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' }}>T+{cur.t_sim_s}s / {endT}s</Text>
+            <Text style={{ color: C.muted, fontSize: 10, fontFamily: 'monospace' }}>{endT}s (Kết thúc)</Text>
           </View>
           <View style={{ height: 10, backgroundColor: '#D0DDEB', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
             <View
@@ -987,12 +1052,12 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
         <TwoCol>
           <ActionBtn
             tone="neutral"
-            label="−10s (LÙI)"
+            label={data.mode === 'live' ? '−2 MẪU (LÙI)' : '−10s (LÙI)'}
             onPress={() => actions.setReplayIndex(Math.max(0, curIdx - 2))}
           />
           <ActionBtn
             tone="neutral"
-            label="+10s (TIẾN)"
+            label={data.mode === 'live' ? '+2 MẪU (TIẾN)' : '+10s (TIẾN)'}
             onPress={() => actions.setReplayIndex(Math.min(points.length - 1, curIdx + 2))}
           />
         </TwoCol>
@@ -1032,7 +1097,7 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
       {/* 5. Watchstander Alarm Review Deck */}
       <Panel title="ĐÁNH GIÁ CẢNH BÁO CỦA NGƯỜI TRỰC (REVIEW)" tag="CARGO RISK EVIDENCE">
         <Text style={[styles.secNote, { marginBottom: 10 }]}>
-          Gắn nhãn nhận định người trực cho các sự kiện cảnh báo trong chuyến đi. Đánh giá được lưu trực tiếp vào Mock State và cập nhật tỷ lệ chính xác vận hành:
+          Gắn nhãn nhận định người trực cho các sự kiện cảnh báo trong chuyến đi. {data.mode === 'live' ? 'Nhãn được lưu lên Backend (cần quyền Supervisor trở lên).' : 'Đánh giá được lưu trực tiếp vào Mock State và cập nhật tỷ lệ chính xác vận hành:'}
         </Text>
         {data.alarms.map((alarm) => (
           <View
@@ -1066,7 +1131,10 @@ export function ReplayReviewScreen({ data, actions }: ScreenProps) {
               {(['TRUE', 'FALSE', 'UNCERTAIN'] as const).map((lbl) => (
                 <Pressable
                   key={lbl}
-                  onPress={() => actions.reviewAlarm(alarm.id, lbl)}
+                  onPress={async () => {
+                    const r = await actions.reviewAlarm(alarm.id, lbl);
+                    if (!r.ok) Alert.alert('KHÔNG LƯU ĐƯỢC NHÃN', r.message);
+                  }}
                   style={{
                     flex: 1,
                     paddingVertical: 6,

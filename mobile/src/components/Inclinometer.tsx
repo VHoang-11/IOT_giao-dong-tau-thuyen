@@ -10,6 +10,8 @@ export interface InclinometerProps {
   mai?: number | null;
   alarmLevel?: AlarmLevel;
   scenario?: Scenario;
+  /** LIVE: nhãn nguồn dữ liệu thật (SENSOR/SIMULATION) thay cho nhãn DEMO và tên kịch bản. */
+  sourceLabel?: string;
   classRf?: string;
   sourceMode?: 'SIMULATION' | 'SENSOR';
   sensorOk?: boolean;
@@ -22,6 +24,7 @@ export function Inclinometer({
   mai = 0,
   alarmLevel = 'NORMAL',
   scenario = 'S0',
+  sourceLabel,
   classRf = 'NORMAL',
   sourceMode = 'SIMULATION',
   sensorOk = true,
@@ -74,7 +77,7 @@ export function Inclinometer({
         <View style={styles.titleRow}>
           <Text style={styles.headerTitle}>2D VESSEL DYNAMICS</Text>
           <View style={styles.demoBadge}>
-            <Text style={styles.demoBadgeText}>DEMO / SIM</Text>
+            <Text style={styles.demoBadgeText}>{sourceLabel ?? 'DEMO / SIM'}</Text>
           </View>
         </View>
 
@@ -387,7 +390,7 @@ export function Inclinometer({
           <View style={styles.subPill}>
             <Text style={styles.subPillText}>{classRf}</Text>
           </View>
-          <Text style={styles.scenarioTag}>SCN: {scenario}</Text>
+          {sourceLabel ? null : <Text style={styles.scenarioTag}>SCN: {scenario}</Text>}
         </View>
       </View>
     </View>

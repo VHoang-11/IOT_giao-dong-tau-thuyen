@@ -22,8 +22,8 @@ from app.services.voyages import active_voyage_id
 from commands.config_service import mark_applied as mark_config_applied
 from commands.service import handle_ack as handle_command_ack
 from notify.service import notify_device_offline
-from app.models import AlarmEvent, Device, DeviceHealth, Telemetry
-from app.models.enums import AlarmLevel, DeviceState, MotionClass, SourceMode
+from app.models import AlarmEvent, CargoTelemetry, Device, DeviceHealth, Telemetry
+from app.models.enums import AlarmLevel, DeviceState, MotionClass, NodeType, SourceMode
 from ingest.stats import stats
 from ingest.validator import validate
 
@@ -53,9 +53,9 @@ def _too_long(data: dict[str, Any]) -> Optional[str]:
         if isinstance(value, str) and len(value) > FIELD_MAX_STR.get(key, DEFAULT_MAX_STR):
             return f"trường '{key}' quá dài (tối đa {FIELD_MAX_STR.get(key, DEFAULT_MAX_STR)} ký tự)"
     return None
-TOPIC_RE = re.compile(r"^svmg/([A-Za-z0-9_.-]{1,64})/(telemetry|event|status|health|cmd/ack)$")
+TOPIC_RE = re.compile(r"^svmg/([A-Za-z0-9_.-]{1,64})/(telemetry|event|status|health|cargo|cmd/ack)$")
 SUBSCRIPTIONS = [("svmg/+/telemetry", 0), ("svmg/+/event", 1), ("svmg/+/status", 1),
-                 ("svmg/+/health", 0), ("svmg/+/cmd/ack", 1)]
+                 ("svmg/+/health", 0), ("svmg/+/cargo", 0), ("svmg/+/cmd/ack", 1)]
 
 
 class Outcome(str, Enum):
@@ -208,8 +208,30 @@ def _handle_health(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) ->
     return Result(Outcome.STORED, "health", dev_id)
 
 
+def _handle_cargo(db: Session, dev_id: str, p: dict[str, Any], rx: datetime) -> Result:
+    """Ban tin ham hang tu Cargo Node. Tach hoan toan khoi telemetry/FSM canh bao dao dong."""
+    if _dedup_exists(db, CargoTelemetry, dev_id, p["boot_id"], p["seq"]):
+        return Result(Outcome.DUPLICATE, "cargo", dev_id)
+    dev = _get_or_create_device(db, dev_id)
+    dev.last_seen = rx
+    dev.boot_id = p["boot_id"]
+    dev.node_type = NodeType.CARGO          # thiet bi gui topic cargo la Cargo Node, khong phai tau chinh
+    if "source_mode" in p:
+        dev.source_mode = SourceMode(p["source_mode"])
+    db.add(CargoTelemetry(
+        device_id=dev_id, boot_id=p["boot_id"], seq=p["seq"], uptime_ms=p["uptime_ms"],
+        source_mode=SourceMode(p["source_mode"]) if "source_mode" in p else dev.source_mode,
+        sensor_ok=p["sensor_ok"], cargo_water_pct=p["cargo_water_pct"], cargo_temp_c=p["cargo_temp_c"],
+        cargo_humidity_pct=p["cargo_humidity_pct"], reported_parent_device_id=p.get("parent_device_id"),
+        server_rx_time=rx))
+    ok = _commit_or_duplicate(db)
+    if ok:
+        telemetry_hub.publish({"type": "cargo", **p, "device_id": dev_id, "server_rx_time": _iso(rx)})
+    return Result(Outcome.STORED if ok else Outcome.DUPLICATE, "cargo", dev_id)
+
+
 _HANDLERS = {"telemetry": _handle_telemetry, "event": _handle_event,
-             "status": _handle_status, "health": _handle_health}
+             "status": _handle_status, "health": _handle_health, "cargo": _handle_cargo}
 
 
 def handle_message(db: Session, topic: str, payload: bytes, rx_time: Optional[datetime] = None) -> Result:

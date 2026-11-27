@@ -9,6 +9,12 @@ topic write svmg/vessel-demo-01/cmd/ack
 topic read svmg/vessel-demo-01/cmd
 topic read svmg/vessel-demo-01/config
 
+# Cargo Node (ESP32 thứ 2: chiết áp mực nước + DHT22): chỉ ghi cargo/status/health, KHÔNG đọc cmd/config
+user vessel-demo-01-cargo
+topic write svmg/vessel-demo-01-cargo/cargo
+topic write svmg/vessel-demo-01-cargo/status
+topic write svmg/vessel-demo-01-cargo/health
+
 # Backend: đọc tất cả, ghi cmd/config
 user backend
 topic read svmg/#

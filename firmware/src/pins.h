@@ -6,8 +6,7 @@ constexpr int PIN_BTN_MODE = 14, PIN_BTN_SCN = 27, PIN_BTN_ACK = 13;   // INPUT_
 constexpr int PIN_LED_G = 33, PIN_LED_Y = 26, PIN_LED_R = 25;
 constexpr int PIN_BUZZER = 32;
 constexpr int PIN_POT = 34;                                            // ADC1, dùng được khi WiFi bật
-constexpr int PIN_POT_WATER = 35;                                      // ADC1, mực nước hầm hàng
-constexpr int PIN_DHT = 4;                                             // DHT22 nhiệt độ & độ ẩm hầm hàng
+// GPIO 35 (mực nước) và GPIO 4 (DHT22) thuộc Cargo Node riêng: xem target_cargo/. Motion Node không dùng.
 
 constexpr uint8_t I2C_ADDR_MPU = 0x68;
 constexpr uint8_t I2C_ADDR_LCD = 0x27;

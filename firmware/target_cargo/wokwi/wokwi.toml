@@ -1,0 +1,8 @@
+# Cargo Node (ESP32 thứ 2: chiết áp mực nước GPIO 35 + DHT22 GPIO 4).
+# Build trước: cd firmware/target_cargo && pio run
+# Chạy song song với Motion Node bằng cách mở thêm 1 cửa sổ VS Code tại firmware/target_cargo/
+[wokwi]
+version = 1
+firmware = '../.pio/build/esp32dev/firmware.bin'
+elf = '../.pio/build/esp32dev/firmware.elf'
+rfc2217ServerPort = 4002

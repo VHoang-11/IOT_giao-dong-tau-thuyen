@@ -29,7 +29,7 @@ const fmtAngle = (n: number | null, suffix = '°') =>
 
 export function OverviewScreen({ data, actions }: ScreenProps) {
   const t = data.telemetry;
-  const samples = fakeWavePoints(data.scenario, t.seq, 44);
+  const samples = data.getSeries(44);
   const unackAlarms = data.alarms.filter((a) => a.status === 'RAISED').length;
 
   const rollDir =
@@ -60,7 +60,7 @@ export function OverviewScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={t.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -200,6 +200,7 @@ export function OverviewScreen({ data, actions }: ScreenProps) {
         mai={t.mai}
         alarmLevel={t.alarm_level}
         scenario={data.scenario}
+        sourceLabel={data.mode === 'live' ? t.source_mode : undefined}
         classRf={t.class_rf}
         sensorOk={t.sensor_ok}
         compact={true}
@@ -257,8 +258,7 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
 
   const sampleCount =
     bufferSec === '10s' ? 24 : bufferSec === '30s' ? 48 : bufferSec === '1m' ? 80 : 120;
-  const activeSeq = isFrozen ? frozenSeq : t.seq;
-  const samples = fakeWavePoints(data.scenario, activeSeq, sampleCount);
+  const samples = data.getSeries(sampleCount, isFrozen ? frozenSeq : undefined);
 
   const toggleFreeze = () => {
     if (!isFrozen) {
@@ -271,7 +271,7 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={t.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -300,7 +300,7 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
                     bufferSec === b && styles.bufferBtnTextActive,
                   ]}
                 >
-                  {b}
+                  {data.mode === 'live' ? String(({ '10s': 24, '30s': 48, '1m': 80, '5m': 120 } as const)[b]) : b}
                 </Text>
               </Pressable>
             ))}
@@ -351,6 +351,7 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
           mai={t.mai}
           alarmLevel={t.alarm_level}
           scenario={data.scenario}
+        sourceLabel={data.mode === 'live' ? t.source_mode : undefined}
           classRf={t.class_rf}
           sensorOk={t.sensor_ok}
           compact={false}
@@ -361,14 +362,14 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
       </Panel>
 
       {/* Waveform Trace Chart */}
-      <Panel title="ROLL & PITCH OSCILLOSCOPE" tag={`${bufferSec.toUpperCase()} TRACE`}>
+      <Panel title="ROLL & PITCH OSCILLOSCOPE" tag={data.mode === 'live' ? `${samples.roll.length} MẪU` : `${bufferSec.toUpperCase()} TRACE`}>
         <MotionChart
           roll={samples.roll}
           pitch={samples.pitch}
           height={180}
           offline={!t.sensor_ok}
-          warningDeg={data.config.roll_warning_deg}
-          tripDeg={data.config.roll_trip_deg}
+          warningDeg={data.config.roll_warning_deg ?? undefined}
+          tripDeg={data.config.roll_trip_deg ?? undefined}
           onTouchSample={setTouchedMotion}
         />
       </Panel>
@@ -415,10 +416,14 @@ export function LiveMotionScreen({ data, actions }: ScreenProps) {
         </View>
         <View style={styles.modelRow}>
           <Text style={styles.modelKey}>Độ tương thích (Agreement):</Text>
-          <Text style={[styles.modelVal, { color: C.green }]}>96.2% PATTERN MATCH</Text>
+          <Text style={[styles.modelVal, { color: data.model.agreementPercent === null ? C.muted : C.green }]}>
+            {data.model.agreementPercent === null ? 'CHƯA ĐỦ DỮ LIỆU' : `${data.model.agreementPercent}% PATTERN MATCH`}
+          </Text>
         </View>
         <Text style={styles.modelDisclaimer}>
-          Dữ liệu và nhãn được tính từ bộ sinh tín hiệu giả lập, không phải suy luận AI trực tiếp trên máy khách.
+          {data.mode === 'live'
+            ? 'Nhãn RF/Baseline B do thiết bị tính và gửi lên qua Backend; ứng dụng không tự suy luận AI.'
+            : 'Dữ liệu và nhãn được tính từ bộ sinh tín hiệu giả lập, không phải suy luận AI trực tiếp trên máy khách.'}
         </Text>
       </Panel>
 
@@ -448,7 +453,7 @@ export function AlarmsScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -490,10 +495,10 @@ export function AlarmsScreen({ data, actions }: ScreenProps) {
 
       {/* Interactive MAI & Alarm Timeline */}
       <MobileMaiChart
-        currentMai={data.telemetry.sensor_ok ? (data.telemetry.mai ?? 14) : 0}
+        currentMai={data.telemetry.sensor_ok ? (data.telemetry.mai ?? 0) : 0}
         alarms={data.alarms}
         thresholdCaution={35}
-        thresholdCritical={Math.round(data.config.mai_alert_threshold * 100)}
+        thresholdCritical={Math.round((data.config.mai_alert_threshold ?? 0.7) * 100)}
         height={135}
         onSelectAlarm={(id) => {
           actions.selectAlarm(id);
@@ -646,33 +651,26 @@ export function AlarmDetailScreen({ data, actions }: ScreenProps) {
   const color = SEVERITY_COLORS[alarm.level];
   const isRaised = alarm.status === 'RAISED';
   const isCleared = alarm.status === 'CLEARED';
-  const frozenSamples = fakeWavePoints('S3', 38, 48);
+  const frozenSamples = data.mode === 'mock' ? fakeWavePoints('S3', 38, 48) : { roll: [] as number[], pitch: [] as number[] };
 
-  const handleMute = () => {
-    if (alarm.level === 'CRITICAL') {
-      Alert.alert(
-        'REJECTED: KHÔNG THỂ MUTE',
-        'Theo quy chuẩn an toàn hàng hải và đề cương dự án, cảnh báo mức CRITICAL tuyệt đối không được tắt còi (MUTE).'
-      );
-      return;
-    }
-    actions.muteAlarm(alarm.id);
-    Alert.alert('BUZZER MUTED', `Đã tạm ngắt chuông cho sự kiện ${alarm.id} trong tối đa 300 giây.`);
+  const handleMute = async () => {
+    const r = await actions.muteAlarm(alarm.id);
+    Alert.alert(r.ok ? 'BUZZER MUTED' : 'REJECTED: KHÔNG THỂ MUTE', r.message);
   };
 
-  const handleAck = () => {
-    actions.ackAlarm(alarm.id);
-    Alert.alert('ACKNOWLEDGED', `Sĩ quan đã tiếp nhận sự kiện ${alarm.id}. Trạng thái chuyển thành ACKED.`);
+  const handleAck = async () => {
+    const r = await actions.ackAlarm(alarm.id);
+    Alert.alert(r.ok ? 'ACKNOWLEDGED' : 'KHÔNG THỂ ACK', r.message);
   };
 
   const handleSaveNote = () => {
-    actions.updateAlarmNote(alarm.id, note);
-    Alert.alert('ĐÃ LƯU GHI CHÚ', 'Đã cập nhật nhật ký sĩ quan trực ca vào sự kiện.');
+    const r = actions.updateAlarmNote(alarm.id, note);
+    Alert.alert(r.ok ? 'ĐÃ LƯU GHI CHÚ' : 'KHÔNG LƯU ĐƯỢC GHI CHÚ', r.message);
   };
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -697,18 +695,19 @@ export function AlarmDetailScreen({ data, actions }: ScreenProps) {
         <View style={styles.detailMetaGrid}>
           <View style={styles.metaCell}>
             <Text style={styles.metaCellLabel}>TÀU & CẢM BIẾN</Text>
-            <Text style={styles.metaCellVal}>Vessel Demo 01</Text>
-            <Text style={styles.metaCellSub}>MPU6050 Mast #1</Text>
+            <Text style={styles.metaCellVal}>{data.mode === 'live' ? data.vesselName : 'Vessel Demo 01'}</Text>
+            <Text style={styles.metaCellSub}>{data.mode === 'live' ? data.deviceId ?? '—' : 'MPU6050 Mast #1'}</Text>
           </View>
           <View style={styles.metaCell}>
             <Text style={styles.metaCellLabel}>THỜI ĐIỂM KÍCH HOẠT</Text>
             <Text style={styles.metaCellVal}>{alarm.utcTime ?? alarm.at}</Text>
-            <Text style={[styles.metaCellSub, { color: C.green }]}>● Edge Synced</Text>
+            <Text style={[styles.metaCellSub, { color: C.green }]}>{data.mode === 'live' ? '● Ghi nhận bởi Backend' : '● Edge Synced'}</Text>
           </View>
         </View>
       </Panel>
 
-      {/* Frozen Waveform Capture */}
+      {/* Frozen Waveform Capture (chỉ MOCK: Backend không lưu dạng sóng riêng theo cảnh báo) */}
+      {data.mode === 'mock' && (
       <Panel title="FROZEN ROLL WAVEFORM (30s CAPTURE)" tag="INCIDENT WELL">
         <MotionChart
           roll={frozenSamples.roll}
@@ -722,8 +721,29 @@ export function AlarmDetailScreen({ data, actions }: ScreenProps) {
           <Text style={styles.frozenSubText}>Chu kỳ lắc: 9.4s</Text>
         </View>
       </Panel>
+      )}
 
       {/* Event Timeline Sequence */}
+      {data.mode === 'live' ? (
+        <Panel title="NHẬT KÝ CHUỖI SỰ KIỆN (TIMELINE AUDIT)" tag="BACKEND">
+          <View style={styles.timeline}>
+            {(alarm.timeline ?? []).map((ev, i) => (
+              <View key={`${ev.time}-${i}`} style={styles.timelineItem}>
+                <View
+                  style={[
+                    styles.timelineDot,
+                    { backgroundColor: ev.tone === 'trigger' ? C.red : ev.tone === 'ok' ? C.green : C.muted },
+                  ]}
+                />
+                <Text style={[styles.timelineTime, ev.tone === 'trigger' ? { color: C.red, fontWeight: '800' } : null]}>
+                  {ev.time}
+                </Text>
+                <Text style={styles.timelineText}>{ev.text}</Text>
+              </View>
+            ))}
+          </View>
+        </Panel>
+      ) : (
       <Panel title="NHẬT KÝ CHUỖI SỰ KIỆN (TIMELINE AUDIT)" tag="CHRONOLOGICAL">
         <View style={styles.timeline}>
           <View style={styles.timelineItem}>
@@ -752,10 +772,14 @@ export function AlarmDetailScreen({ data, actions }: ScreenProps) {
           </View>
         </View>
       </Panel>
+      )}
 
       {/* Officer Remarks & Action Touchpad */}
       <Panel title="THAO TÁC CỦA SĨ QUAN TRỰC CA" tag="RESPONSE CONSOLE">
         <Text style={styles.remarksLabel}>GHI CHÚ NHẬT KÝ BUỒNG LÁI (OFFICER LOG NOTE)</Text>
+        {data.mode === 'live' ? (
+          <Text style={styles.actionWarningNote}>Backend chưa có API ghi chú cảnh báo nên chưa thể lưu ghi chú.</Text>
+        ) : (
         <View style={styles.noteInputRow}>
           <TextInput
             value={note}
@@ -768,6 +792,7 @@ export function AlarmDetailScreen({ data, actions }: ScreenProps) {
             <Text style={styles.saveNoteBtnText}>LƯU</Text>
           </Pressable>
         </View>
+        )}
 
         <View style={styles.actionBtnStack}>
           <ActionBtn

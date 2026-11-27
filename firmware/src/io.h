@@ -11,5 +11,3 @@ void io_all_leds(bool on);
 void io_beep(uint16_t ms);                                           // chặn, chỉ dùng lúc khởi động
 ButtonEvent io_poll_buttons(uint32_t now_ms);                        // gọi thường xuyên (mỗi vài ms)
 int  io_read_sea_state();                                            // chiết áp -> 0..5, có trễ chống nhảy
-float io_read_cargo_water_pct();                                       // chiết áp mực nước hầm hàng -> 0..100 %
-void io_read_cargo_dht(float *temp_c, float *humidity_pct);            // DHT22 hầm hàng (cache mỗi 2s, NAN nếu lỗi)

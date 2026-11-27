@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Device, DeviceConfigVersion
+from app.models.enums import NodeType
 from app.services.audit import audit
 from commands.params import CommandInvalid
 from commands.publisher import PublishFailed, get_publisher
@@ -66,6 +67,8 @@ def _publish_new_version(db: Session, dev: Device, body: dict[str, Any], actor: 
                          action: str, detail: dict[str, Any]) -> DeviceConfigVersion:
     if not dev.enabled:
         raise ConfigConflict("Thiết bị đã bị Admin vô hiệu hóa, không nhận cấu hình")
+    if dev.node_type == NodeType.CARGO:
+        raise ConfigConflict("Cargo Node chỉ đo hầm hàng, không nhận cấu hình (không có topic config)")
     existing = history(db, dev.device_id)
     # so phien ban phai vuot ca ban server da tao lan ban thiet bi dang bao cao
     version = max([r.config_version for r in existing] + [dev.config_version or 0]) + 1

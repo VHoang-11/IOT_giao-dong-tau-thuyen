@@ -1,0 +1,14 @@
+# Cargo Node (ESP32 thứ 2: chiết áp mực nước GPIO 35 + DHT22 GPIO 4). Chạy SONG SONG với Motion Node (wokwi.toml).
+# Build trước:  cd firmware/target_cargo && pio run
+#
+# LƯU Ý (chưa kiểm chứng trên Wokwi, cần mở thử): extension Wokwi tìm sơ đồ tên "diagram.json" cạnh file cấu hình.
+# Sơ đồ của node này là diagram_cargo.json nên để chạy cần một thư mục riêng chứa:
+#   <thư mục>/diagram.json  = bản sao diagram_cargo.json
+#   <thư mục>/wokwi.toml    = bản sao file này (đường dẫn firmware bên dưới tính từ thư mục chứa file cấu hình)
+# rồi mở thêm một cửa sổ VS Code cho node thứ 2 (hoặc dán diagram_cargo.json vào một dự án Wokwi web mới).
+# Cổng rfc2217 dùng 4002 để không đụng 4000 (Motion Node) và 4001 (rf4_shadow).
+[wokwi]
+version = 1
+firmware = '../target_cargo/.pio/build/esp32dev/firmware.bin'
+elf = '../target_cargo/.pio/build/esp32dev/firmware.elf'
+rfc2217ServerPort = 4002

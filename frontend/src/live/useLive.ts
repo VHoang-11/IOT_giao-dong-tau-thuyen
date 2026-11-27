@@ -1,7 +1,7 @@
 // Lớp dữ liệu LIVE: polling các endpoint GET thật của FastAPI. Không bao giờ thay dữ liệu lỗi bằng MOCK.
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ApiError,apiRequest} from '../api';
-import type {AlarmOut,AlarmStats,DeviceHealthSummary,DeviceOut,LiveTelemetry} from '../api';
+import type {AlarmOut,AlarmStats,CargoOut,DeviceHealthSummary,DeviceOut,LiveTelemetry} from '../api';
 
 export interface Resource<T>{data:T|null;error:string;status:number|null;loading:boolean;updatedAt:number|null;reload:()=>void}
 
@@ -81,7 +81,37 @@ export function linkInfo(rows:LiveTelemetry[]|null,apiError:string,healthStale:b
  return {...base,state:'ONLINE',label:'● TRỰC TUYẾN (LIVE)',kind:'normal',fresh:latest};
 }
 
+export type CargoState='NO_NODE'|'API_ERROR'|'NO_DATA'|'STALE'|'SENSOR_FAULT'|'ONLINE';
+export interface CargoInfo{state:CargoState;label:string;kind:string;ageS:number|null;staleAfterS:number;node:DeviceOut|null;latest:CargoOut|null;fresh:CargoOut|null}
+
+/** Trạng thái RIÊNG của Cargo Node (ESP32 thứ 2): độc lập với kết nối của tàu chính.
+ *  Dữ liệu cũ/offline → fresh=null, không hiển thị số cuối như thời gian thực. Lỗi DHT22 (sensor_ok=false) vẫn giữ mực nước (chiết áp) nhưng nhiệt độ/độ ẩm là null. */
+export function cargoInfo(rows:CargoOut[]|null,apiError:string,node:DeviceOut|null,healthStale:boolean|null,now:number):CargoInfo{
+ const latest=rows&&rows.length?rows[0]:null;
+ const gaps:number[]=[];
+ for(let i=0;rows&&i<Math.min(rows.length-1,20);i++){
+  if(rows[i].device_id!==rows[i+1].device_id||rows[i].boot_id!==rows[i+1].boot_id)continue;
+  const g=(parseTime(rows[i].server_rx_time)-parseTime(rows[i+1].server_rx_time))/1000;
+  if(Number.isFinite(g)&&g>0)gaps.push(g);
+ }
+ gaps.sort((a,b)=>a-b);
+ const staleAfterS=Math.max(30,3*(gaps.length?gaps[Math.floor(gaps.length/2)]:0));
+ const t=parseTime(latest?.server_rx_time);
+ const ageS=Number.isFinite(t)?Math.max(0,Math.round((now-t)/1000)):null;
+ const base={ageS,staleAfterS,node,latest};
+ if(apiError)return {...base,state:'API_ERROR',label:'MẤT KẾT NỐI BACKEND (HẦM HÀNG)',kind:'critical',fresh:null};
+ if(!node)return {...base,state:'NO_NODE',label:'CHƯA GẮN CARGO NODE',kind:'neutral',fresh:null};
+ if(!latest)return {...base,state:'NO_DATA',label:'CHƯA CÓ DỮ LIỆU HẦM HÀNG',kind:'fault',fresh:null};
+ if(ageS===null||ageS>staleAfterS||healthStale===true)return {...base,state:'STALE',label:`CARGO NODE OFFLINE / DỮ LIỆU CŨ (${ageS??'?'}s)`,kind:'critical',fresh:null};
+ if(!latest.sensor_ok)return {...base,state:'SENSOR_FAULT',label:'LỖI DHT22 (sensor_ok=false)',kind:'fault',fresh:latest};
+ return {...base,state:'ONLINE',label:'● CARGO NODE TRỰC TUYẾN',kind:'normal',fresh:latest};
+}
+
+/** Tàu chính = thiết bị KHÔNG phải Cargo Node. */
+export const isMotionNode=(d:DeviceOut)=>d.node_type!=='CARGO';
+
 export interface LiveCore{
+ cargo:Resource<CargoOut[]>;cargoLink:CargoInfo;
  devices:Resource<DeviceOut[]>;telemetry:Resource<LiveTelemetry[]>;alarms:Resource<AlarmOut[]>;alarmStats:Resource<AlarmStats>;
  health:Resource<DeviceHealthSummary[]>;deviceId:string|null;link:LinkInfo;now:number;reloadAll:()=>void;
 }
@@ -90,7 +120,7 @@ export interface LiveCore{
 export function useLiveCore(token:string|null,selectedDevice:string|null,onUnauthorized:()=>void):LiveCore{
  const devices=useResource<DeviceOut[]>(token,'/api/v1/devices',30000,onUnauthorized);
  const deviceId=useMemo(()=>{
-  const list=devices.data??[];
+  const list=(devices.data??[]).filter(isMotionNode);   // Cargo Node không bao giờ là "tàu chính"
   if(selectedDevice&&list.some(d=>d.device_id===selectedDevice))return selectedDevice;
   const sorted=[...list].sort((a,b)=>(parseTime(b.last_seen)||0)-(parseTime(a.last_seen)||0));
   return sorted[0]?.device_id??null;
@@ -99,10 +129,14 @@ export function useLiveCore(token:string|null,selectedDevice:string|null,onUnaut
  const telemetry=useResource<LiveTelemetry[]>(token,enc?`/api/v1/devices/${enc}/telemetry?limit=120`:null,5000,onUnauthorized);
  const alarms=useResource<AlarmOut[]>(token,enc?`/api/v1/alarms?device_id=${enc}&limit=100`:null,5000,onUnauthorized);
  const alarmStats=useResource<AlarmStats>(token,enc?`/api/v1/alarms/stats?device_id=${enc}`:null,10000,onUnauthorized);
+ const cargo=useResource<CargoOut[]>(token,enc?`/api/v1/devices/${enc}/cargo?limit=60`:null,5000,onUnauthorized);
  const health=useResource<DeviceHealthSummary[]>(token,token?'/api/v1/health/devices':null,10000,onUnauthorized);
  const now=useNow(1000);
  const healthStale=health.data?.find(h=>h.device_id===deviceId)?.stale??null;
  const link=linkInfo(telemetry.data,telemetry.error,healthStale,now);
- const reloadAll=useCallback(()=>{telemetry.reload();alarms.reload();alarmStats.reload();health.reload();},[telemetry.reload,alarms.reload,alarmStats.reload,health.reload]);
- return {devices,telemetry,alarms,alarmStats,health,deviceId,link,now,reloadAll};
+ const cargoNode=(devices.data??[]).find(d=>d.node_type==='CARGO'&&d.parent_device_id===deviceId)??null;
+ const cargoHealthStale=cargoNode?health.data?.find(h=>h.device_id===cargoNode.device_id)?.stale??null:null;
+ const cargoLink=cargoInfo(cargo.data,cargo.error,cargoNode,cargoHealthStale,now);
+ const reloadAll=useCallback(()=>{telemetry.reload();alarms.reload();alarmStats.reload();health.reload();cargo.reload();},[telemetry.reload,alarms.reload,alarmStats.reload,health.reload,cargo.reload]);
+ return {devices,telemetry,alarms,alarmStats,health,cargo,cargoLink,deviceId,link,now,reloadAll};
 }

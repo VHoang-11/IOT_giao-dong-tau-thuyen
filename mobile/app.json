@@ -12,7 +12,7 @@
       "package": "edu.demo.svmg.mobile"
     },
     "extra": {
-      "dataSource": "mock"
+      "dataSource": "live-or-mock (chọn khi đăng nhập)"
     }
   }
 }

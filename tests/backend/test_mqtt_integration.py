@@ -25,7 +25,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from app.core.config import settings  # noqa: E402
 from app.core.db import Base, build_engine  # noqa: E402
-from app.models import Alarm, Command, Device, DeviceConfigVersion, Telemetry  # noqa: E402
+from app.models import Alarm, CargoTelemetry, Command, Device, DeviceConfigVersion, Telemetry  # noqa: E402
 from app.models.enums import CommandName, CommandState, DeviceState  # noqa: E402
 from commands import config_service, service as cmd_service  # noqa: E402
 from commands.publisher import PublishFailed  # noqa: E402
@@ -215,6 +215,27 @@ def test_telemetry_travels_through_real_broker_into_database(device, sess):
     dev = one(sess, select(Device))
     assert dev.device_id == DEV and dev.last_seen is not None                    # tu dang ky + last_seen
     assert stats.snapshot()["by_kind"]["telemetry"] == {"STORED": 1}
+
+
+def test_cargo_node_message_travels_through_real_broker_Multi_Node(broker, backend, sess):
+    """Multi-Node: Cargo Node la thiet bi RIENG gui svmg/{id}/cargo (QoS 0); backend subscribe svmg/+/cargo that."""
+    cargo = FakeDevice(broker.port, dev="vessel-demo-01-cargo")
+    try:
+        p = json.loads((EX / "cargo_sample.json").read_text(encoding="utf-8"))
+        cargo.pub("cargo", p)
+        row = eventually(lambda: one(sess, select(CargoTelemetry)), what="ban tin cargo duoc luu")
+        assert (row.device_id, row.seq, row.cargo_water_pct, row.cargo_temp_c) == ("vessel-demo-01-cargo", 42, 18.5, 27.4)
+        dev = one(sess, select(Device).where(Device.device_id == "vessel-demo-01-cargo"))
+        assert dev.node_type.value == "CARGO" and dev.parent_device_id is None
+        assert one(sess, select(Telemetry)) is None                        # khong sinh telemetry/roll/pitch
+        cargo.pub("cargo", p)                                              # gui trung -> chi luu 1
+        eventually(lambda: stats.snapshot()["by_kind"]["cargo"].get("DUPLICATE") == 1, what="trung duoc loai")
+        assert len(rows(sess, CargoTelemetry)) == 1
+        cargo.pub("cargo", {**p, "seq": 43, "cargo_water_pct": 150})       # ngoai khoang 0..100 -> bi tu choi
+        eventually(lambda: stats.snapshot()["by_kind"]["cargo"].get("INVALID") == 1, what="ban tin sai bi tu choi")
+        assert len(rows(sess, CargoTelemetry)) == 1
+    finally:
+        cargo.close()
 
 
 def test_alarm_lifecycle_driven_by_events_over_mqtt(device, sess):

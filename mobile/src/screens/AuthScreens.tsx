@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ActivityIndicator } from 'react-native';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 import { ActionBtn, Panel } from '../components/UI';
 import { C, SHADOWS } from '../theme';
-import { ScreenProps } from '../types/domain';
+import { DataMode, ScreenProps } from '../types/domain';
 import { mockRegister, mockForgotPassword } from '../data/mock';
 
 /**
@@ -66,16 +67,33 @@ function SecurityNotice() {
  * VIEW 1: Bridge Login Screen
  */
 export function LoginScreen({ actions }: ScreenProps) {
-  const [username, setUsername] = useState('operator');
-  const [password, setPassword] = useState('demo123');
+  const [mode, setMode] = useState<DataMode>('live');
+  const [url, setUrl] = useState(
+    process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'android' ? 'http://10.0.2.2:8000' : 'http://localhost:8000')
+  );
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [visible, setVisible] = useState(false);
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const submit = () => {
-    if (!actions.login(username, password)) {
-      setError('Tài khoản hoặc mã truy cập (passcode) chưa đúng. Vui lòng thử lại.');
-    } else {
-      setError('');
+  const switchMode = (next: DataMode) => {
+    setMode(next);
+    setError('');
+    // MOCK dùng tài khoản demo; LIVE dùng tài khoản thật trên Backend (không điền sẵn mật khẩu).
+    setUsername(next === 'mock' ? 'operator' : '');
+    setPassword(next === 'mock' ? 'demo123' : '');
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const r = await actions.login(username, password, { mode, url });
+      if (!r.ok) setError(r.message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -99,6 +117,53 @@ export function LoginScreen({ actions }: ScreenProps) {
               Nhập mã sĩ quan trực ca hoặc cán bộ giám sát buồng lái:
             </Text>
 
+            <Text style={styles.fieldLabel}>NGUỒN DỮ LIỆU</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+              {(['live', 'mock'] as const).map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => switchMode(m)}
+                  accessibilityRole="button"
+                  style={{
+                    flex: 1,
+                    paddingVertical: 9,
+                    borderRadius: 6,
+                    alignItems: 'center',
+                    borderWidth: 1.5,
+                    borderColor: mode === m ? C.cyan : C.border,
+                    backgroundColor: mode === m ? '#EAF2FA' : C.panel,
+                  }}
+                >
+                  <Text style={{ color: mode === m ? C.cyan : C.muted, fontSize: 11, fontWeight: '800', fontFamily: 'monospace' }}>
+                    {m === 'live' ? 'LIVE (BACKEND THẬT)' : 'MOCK (DEMO)'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {mode === 'live' && (
+              <>
+                <Text style={styles.fieldLabel}>ĐỊA CHỈ BACKEND</Text>
+                <TextInput
+                  value={url}
+                  onChangeText={(val) => {
+                    setUrl(val);
+                    setError('');
+                  }}
+                  style={styles.textInput}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  accessibilityLabel="Địa chỉ Backend"
+                  placeholder="http://192.168.1.10:8000"
+                  placeholderTextColor={C.muted}
+                />
+                <Text style={[styles.formSubtitle, { marginTop: 4 }]}>
+                  Emulator Android dùng 10.0.2.2; điện thoại thật dùng IP LAN của máy chạy Backend (cùng Wi‑Fi).
+                </Text>
+              </>
+            )}
+
             <Text style={styles.fieldLabel}>TÊN ĐĂNG NHẬP / OFFICER ID</Text>
             <TextInput
               value={username}
@@ -109,19 +174,21 @@ export function LoginScreen({ actions }: ScreenProps) {
               style={styles.textInput}
               autoCapitalize="none"
               accessibilityLabel="Tên đăng nhập"
-              placeholder="operator / supervisor / admin"
+              placeholder={mode === 'mock' ? 'operator / supervisor / admin' : 'Tài khoản Backend'}
               placeholderTextColor={C.muted}
             />
 
             <View style={styles.labelRow}>
               <Text style={styles.fieldLabel}>MẬT MÃ BUỒNG LÁI / PASSCODE</Text>
-              <Pressable
-                onPress={() => actions.go('ForgotPassword')}
-                accessibilityRole="button"
-                hitSlop={8}
-              >
-                <Text style={styles.keyRecoveryText}>KEY_RECOVERY</Text>
-              </Pressable>
+              {mode === 'mock' && (
+                <Pressable
+                  onPress={() => actions.go('ForgotPassword')}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                >
+                  <Text style={styles.keyRecoveryText}>KEY_RECOVERY</Text>
+                </Pressable>
+              )}
             </View>
 
             <View style={styles.passwordRow}>
@@ -152,22 +219,30 @@ export function LoginScreen({ actions }: ScreenProps) {
 
             <View style={{ marginTop: 8 }}>
               <ActionBtn
-                label="ĐĂNG NHẬP HỆ THỐNG →"
+                label={busy ? 'ĐANG KẾT NỐI…' : mode === 'live' ? 'ĐĂNG NHẬP BACKEND →' : 'ĐĂNG NHẬP HỆ THỐNG →'}
                 onPress={submit}
                 tone="primary"
+                disabled={busy}
               />
+              {busy && <ActivityIndicator style={{ marginTop: 8 }} color={C.cyan} />}
             </View>
 
             <View style={styles.footerNav}>
-              <Pressable
-                onPress={() => actions.go('Register')}
-                style={styles.navLink}
-                accessibilityRole="button"
-              >
-                <Text style={styles.navLinkText}>
-                  Đăng ký tài khoản Sĩ quan trực ca (Operator) →
+              {mode === 'mock' ? (
+                <Pressable
+                  onPress={() => actions.go('Register')}
+                  style={styles.navLink}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.navLinkText}>
+                    Đăng ký tài khoản Sĩ quan trực ca (Operator) →
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.formSubtitle}>
+                  Tài khoản LIVE do Admin tạo trên Backend (không tự đăng ký trên ứng dụng).
                 </Text>
-              </Pressable>
+              )}
             </View>
           </Panel>
         </View>

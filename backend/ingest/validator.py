@@ -14,6 +14,7 @@ SCHEMA_FILES = {
     "event": "event.json",
     "status": "status.json",
     "health": "health.json",
+    "cargo": "cargo.json",
     "cmd/ack": "command_ack.json",
     "cmd": "command.json",      # downlink: validate truoc khi gui
     "config": "config.json",    # downlink: validate truoc khi gui

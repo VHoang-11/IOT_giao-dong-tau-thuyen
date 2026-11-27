@@ -34,7 +34,7 @@ backend/
 │   ├── schemas/             # Pydantic request/response
 │   ├── routers/             # auth, devices, alarms, commands, device_health, notify, voyages, replay, monitor, ingest_stats, retention, health
 │   └── services/            # audit, auth, voyages, retention
-├── ingest/                  # validator (JSON Schema), service (xử lý bản tin), consumer (paho), stats (bộ đếm)
+├── ingest/                  # validator (JSON Schema), service (xử lý bản tin telemetry/event/status/health/cargo), consumer (paho), stats (bộ đếm)
 ├── alarms/                  # service (vòng đời cảnh báo), realtime (WebSocket hub)
 ├── commands/                # params (an toàn), service (vòng đời lệnh), config_service, publisher
 ├── notify/                  # Telegram + email webhook
@@ -115,7 +115,7 @@ Mọi lần bị từ chối (403) và mọi lệnh/cấu hình đều ghi vào 
 |------|----------|
 | Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/change-password` |
 | Người dùng (Admin) | `GET/POST /users`, `PATCH /users/{id}` |
-| Thiết bị | `GET /devices`, `/devices/{id}`, `/devices/{id}/telemetry`; Admin: `POST /devices`, `PATCH /devices/{id}` |
+| Thiết bị | `GET /devices`, `/devices/{id}`, `/devices/{id}/telemetry`, `/devices/{id}/cargo`; Admin: `POST /devices`, `PATCH /devices/{id}` (đặt tên, bật/tắt, gắn Cargo Node qua `parent_device_id`) |
 | Sức khỏe | `GET /health/devices` (kèm trạng thái hiệu chuẩn), `/devices/{id}/health` |
 | Giám sát mô hình | `GET /monitor/agreement`, `/monitor/drift` |
 | Số đếm ingest | `GET /ingest/stats` (Supervisor), `POST /ingest/stats/reset` (Admin) |
@@ -137,11 +137,22 @@ Tất cả đường dẫn trên có tiền tố `/api/v1` (trừ `/healthz`, `/
 
 Topic `svmg/{device_id}/…` theo `contracts/mqtt_topics.md`.
 
-- `telemetry`, `event`, `status` (kể cả LWT), `health`, `cmd/ack` đi vào `ingest/service.py`: kiểm tra topic → JSON → **JSON Schema** → `device_id` trong payload phải trùng topic → chống trùng theo `(device_id, boot_id, seq)` → lưu + gắn `server_rx_time`.
+- `telemetry`, `event`, `status` (kể cả LWT), `health`, `cargo`, `cmd/ack` đi vào `ingest/service.py`: kiểm tra topic → JSON → **JSON Schema** → `device_id` trong payload phải trùng topic → chống trùng theo `(device_id, boot_id, seq)` → lưu + gắn `server_rx_time`.
 - `event` cập nhật vòng đời cảnh báo (`alarms/service.py`); `cmd/ack` cập nhật vòng đời lệnh.
 - **Khớp thiết bị thật (M1):** thiết bị không gửi `voyage_id` → backend gán theo chuyến đang chạy của thiết bị lúc nhận bản tin (cả telemetry lẫn cảnh báo mới). `seq` dùng chung giữa telemetry và event nên tỉ lệ nhận trừ số `seq` do event chiếm (`data_quality.seq_used_by_events`). `cmd_id = "cfg-<ver>"` là ack cấu hình (không có bản ghi lệnh): `APPLIED` → `applied=true`, `REJECTED` → `rejected_reason` (cột mới, migration 0006), không bao giờ coi là đã áp dụng. Số thực nguyên (`20.0`) được gửi dạng số nguyên (`20`) để CRC khớp cách thiết bị dựng lại chuỗi (`4fa6` ≠ `0902`).
 - **Lệnh:** `start_voyage`/`stop_voyage` bị chặn (thiết bị không hỗ trợ; dùng `POST /voyages`); `mute_alarm.duration_s` ≤ 300; `calibrate_zero` mặc định TTL 60 s, tối thiểu 45 s (thiết bị hiệu chuẩn ~30 s). `ack_alarm` chỉ do backend dùng nội bộ: `POST /alarms/{id}/ack` thử báo xuống thiết bị (`device_ack`: `sent` / `not_applicable` / `unsupported` / `failed`), **không bao giờ** làm hỏng ACK đã ghi; hiện `unsupported` vì `contracts/schemas/command.json` chưa có `ack_alarm`.
 - Lệnh và cấu hình đi xuống qua `commands/` (`cmd` QoS 1; `config` QoS 1 + retained).
+
+## Multi-Node: Cargo Node (hầm hàng)
+
+Tàu có hai ESP32: *Motion Node* (dao động, như trên) và *Cargo Node* (mực nước + nhiệt độ/độ ẩm hầm hàng, topic `svmg/{id}/cargo`, QoS 0). Backend lưu bản tin cargo ở bảng `cargo_telemetry` (chống trùng theo `(device_id, boot_id, seq)`), **tách hoàn toàn** khỏi `telemetry` và FSM cảnh báo dao động.
+
+- Thiết bị gửi `cargo` được đánh dấu `node_type=CARGO` (không phải tàu chính); Cargo Node **không nhận lệnh, cấu hình hay chuyến đi** (409).
+- Liên kết với tàu chính do **Admin** đặt: `PATCH /api/v1/devices/{cargo_id}` với `{"parent_device_id":"<tàu chính>"}` (`null` để gỡ). `parent_device_id` trong payload chỉ lưu để đối chiếu.
+- `GET /api/v1/devices/{id}/cargo` (id tàu chính → gộp mọi Cargo Node gắn vào; hoặc id Cargo Node). Giá trị không đọc được là `null`, không phải 0.
+- Các cột `cargo_*` trong `telemetry` (migration 0007) được giữ lại cho dữ liệu cũ; Motion Node không còn gửi.
+- **Nâng cấp CSDL đã có** (đang ở schema 0006, chưa có bảng `alembic_version`): `alembic stamp 0006` rồi `alembic upgrade head` (áp dụng 0007 và 0008). Dev tự `create_all` chỉ tạo bảng mới, **không** thêm cột vào bảng cũ.
+- *Chưa có:* luật cảnh báo hầm hàng (chờ ngưỡng chính thức).
 
 ## Quy tắc an toàn đã cài đặt (đều có test)
 

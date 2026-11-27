@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -7,7 +7,14 @@ import {
   View,
 } from 'react-native';
 import { C, SEVERITY_COLORS, SEVERITY_BG, SHADOWS } from '../theme';
-import { AlarmLevel } from '../types/domain';
+import { AlarmLevel, DataMode, LinkStatus } from '../types/domain';
+
+/** Cho Page biết đang ở MOCK hay LIVE để không hiển thị chuỗi demo (độ trễ giả, "SIMULATION MODE"...) trên dữ liệu thật. */
+export const DataModeContext = React.createContext<{
+  mode: DataMode;
+  link: LinkStatus | null;
+  source: string | null;
+}>({ mode: 'mock', link: null, source: null });
 
 export function Page({
   title,
@@ -30,6 +37,10 @@ export function Page({
   onToggleHorn?: () => void;
   unackCount?: number;
 }) {
+  const ctx = useContext(DataModeContext);
+  const isLive = ctx.mode === 'live';
+  const linkColor =
+    ctx.link?.state === 'ONLINE' ? C.green : ctx.link?.state === 'SENSOR_FAULT' ? C.amber : C.red;
   return (
     <ScrollView
       style={styles.page}
@@ -55,7 +66,7 @@ export function Page({
               <View>
                 <Text style={styles.vesselName}>{vesselName}</Text>
                 <Text style={styles.vesselSub}>
-                  BRIDGE TELEMETRY {unackCount > 0 ? `• ${unackCount} UNACK` : '• NORMAL'}
+                  BRIDGE TELEMETRY {unackCount > 0 ? `• ${unackCount} UNACK` : isLive ? '• KHÔNG CÓ CẢNH BÁO MỞ' : '• NORMAL'}
                 </Text>
               </View>
             </View>
@@ -97,14 +108,26 @@ export function Page({
       <View style={styles.telemetryRibbon}>
         <View style={styles.ribbonRow}>
           <View style={styles.simBadge}>
-            <View style={styles.simDot} />
-            <Text style={styles.simText}>SIMULATION MODE (DEMO)</Text>
+            <View style={[styles.simDot, isLive ? { backgroundColor: linkColor } : null]} />
+            <Text style={[styles.simText, isLive ? { color: linkColor } : null]}>
+              {isLive
+                ? `${ctx.link?.label ?? 'LIVE'}${ctx.source ? ` • ${ctx.source}` : ''}`
+                : 'SIMULATION MODE (DEMO)'}
+            </Text>
           </View>
-          <Text style={styles.utcTime}>{utcTime ?? '14:28:12 UTC'}</Text>
+          <Text style={styles.utcTime}>{utcTime ?? (isLive ? '—' : '14:28:12 UTC')}</Text>
         </View>
         <View style={styles.ribbonSubRow}>
-          <Text style={styles.streamText}>● 40Hz BLE/LTE Telemetry Link</Text>
-          <Text style={styles.latencyText}>Latency: 24ms</Text>
+          <Text style={styles.streamText}>
+            {isLive ? '● Backend REST (JWT) • làm mới 5–10s' : '● 40Hz BLE/LTE Telemetry Link'}
+          </Text>
+          <Text style={styles.latencyText}>
+            {isLive
+              ? ctx.link?.ageS !== null && ctx.link?.ageS !== undefined
+                ? `Mẫu cuối: ${ctx.link.ageS}s trước`
+                : 'Chưa có mẫu'
+              : 'Latency: 24ms'}
+          </Text>
         </View>
       </View>
 

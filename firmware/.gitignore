@@ -3,3 +3,4 @@ include/secrets.h
 include/baseline_params.h
 compile_commands.json
 *.bak
+target_cargo/include/secrets_cargo.h

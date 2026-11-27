@@ -10,6 +10,8 @@ import {
 } from '../components/UI';
 import { MobileModelConcordanceChart } from '../components/MobileModelConcordanceChart';
 import { C } from '../theme';
+import { f, n } from '../data/format';
+import { formatDateTimeUtc } from '../data/liveMapper';
 import { Route, ScreenProps } from '../types/domain';
 
 export function MoreScreen({ data, actions }: ScreenProps) {
@@ -29,7 +31,7 @@ export function MoreScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -138,7 +140,7 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={data.telemetry.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -147,7 +149,52 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
       onBack={actions.back}
     >
       {/* 1. Status Callout Banner */}
-      {isOffline ? (
+      {data.mode === 'live' ? (
+        <View
+          style={[
+            styles.calloutBanner,
+            data.link?.state === 'ONLINE'
+              ? { borderColor: C.green, backgroundColor: C.greenContainerBg }
+              : data.link?.state === 'SENSOR_FAULT'
+              ? { borderColor: C.amber, backgroundColor: C.warningContainerBg }
+              : { borderColor: C.red, backgroundColor: C.errorContainerBg },
+          ]}
+        >
+          <View style={styles.calloutHeader}>
+            <View
+              style={[
+                styles.statusDot,
+                {
+                  backgroundColor:
+                    data.link?.state === 'ONLINE' ? C.green : data.link?.state === 'SENSOR_FAULT' ? C.amber : C.red,
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.calloutTitle,
+                {
+                  color:
+                    data.link?.state === 'ONLINE' ? C.green : data.link?.state === 'SENSOR_FAULT' ? C.amber : C.red,
+                },
+              ]}
+            >
+              {data.link?.label ?? '—'}
+            </Text>
+          </View>
+          <Text style={styles.calloutText}>
+            {data.link?.state === 'ONLINE'
+              ? `Backend đang nhận telemetry từ thiết bị (mẫu cuối ${data.link.ageS ?? '?'}s trước).`
+              : data.link?.state === 'SENSOR_FAULT'
+              ? 'Backend báo sensor_ok=false: tín hiệu góc nghiêng không hợp lệ, không hiển thị trạng thái NORMAL.'
+              : data.link?.state === 'API_ERROR'
+              ? data.link.error ?? 'Không kết nối được Backend.'
+              : data.link?.state === 'NO_DATA'
+              ? 'Backend chưa nhận bản tin telemetry nào từ thiết bị này.'
+              : 'Thiết bị im lặng quá ngưỡng cho phép. Dữ liệu cảm biến không khả dụng và không được hiển thị như thời gian thực.'}
+          </Text>
+        </View>
+      ) : isOffline ? (
         <View style={[styles.calloutBanner, { borderColor: C.red, backgroundColor: C.errorContainerBg }]}>
           <View style={styles.calloutHeader}>
             <View style={[styles.statusDot, { backgroundColor: C.red }]} />
@@ -186,8 +233,12 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
       <TwoCol>
         <MetricCard
           label="ĐIỂM SỨC KHỎE (FR17)"
-          value={`${h.healthScore}/100`}
-          color={h.healthScore >= 80 ? C.green : h.healthScore >= 40 ? C.amber : C.red}
+          value={h.healthScore === null ? h.healthStatus : `${h.healthScore}/100`}
+          color={
+            h.healthScore === null
+              ? h.healthStatus === 'HEALTHY' ? C.green : h.healthStatus === 'DEGRADED' ? C.amber : C.red
+              : h.healthScore >= 80 ? C.green : h.healthScore >= 40 ? C.amber : C.red
+          }
         />
         <MetricCard
           label="TRẠNG THÁI CẢM BIẾN"
@@ -199,13 +250,13 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
       <TwoCol>
         <MetricCard
           label="LỖI BUS I2C"
-          value={String(h.i2cErrors)}
-          color={h.i2cErrors > 0 ? C.red : C.green}
+          value={n(h.i2cErrors)}
+          color={h.i2cErrors === null ? C.muted : h.i2cErrors > 0 ? C.red : C.green}
         />
         <MetricCard
           label="FREE HEAP"
-          value={`${h.freeHeapKb} KB`}
-          color={h.freeHeapKb < 80 ? C.amber : C.cyan}
+          value={f(h.freeHeapKb, 1, ' KB')}
+          color={h.freeHeapKb !== null && h.freeHeapKb < 80 ? C.amber : C.cyan}
         />
       </TwoCol>
 
@@ -217,7 +268,7 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
         />
         <MetricCard
           label="UPTIME THIẾT BỊ"
-          value={`${h.uptimeMinutes} min`}
+          value={n(h.uptimeMinutes, ' min')}
           color={C.cyan}
         />
       </TwoCol>
@@ -226,29 +277,29 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
       <Panel title="CHẨN ĐOÁN PHẦN CỨNG & BUS TRUYỀN THÔNG" tag="ESP32 • MPU6050">
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>MÃ THIẾT BỊ (DEVICE ID):</Text>
-          <Text style={styles.metaVal}>vessel-demo-01</Text>
+          <Text style={styles.metaVal}>{data.deviceId ?? '—'}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>BOOT ID / FIRMWARE:</Text>
-          <Text style={styles.metaVal}>mock-boot-01 (v1.2.0-esp32)</Text>
+          <Text style={styles.metaVal}>{data.bootId ?? '—'}{data.firmware ? ` (${data.firmware})` : ''}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>TẦN SỐ BUS I2C:</Text>
-          <Text style={styles.metaVal}>400 kHz (Fast Mode)</Text>
+          <Text style={styles.metaVal}>{data.mode === 'live' ? '—' : '400 kHz (Fast Mode)'}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>TÌNH TRẠNG BUS I2C:</Text>
-          <Text style={[styles.metaVal, { color: h.i2cErrors > 0 ? C.red : C.green }]}>
-            {h.lastI2cError || 'Hoạt động bình thường (0 NACK)'}
+          <Text style={[styles.metaVal, { color: (h.i2cErrors ?? 0) > 0 ? C.red : h.i2cErrors === null ? C.muted : C.green }]}>
+            {h.lastI2cError || (h.i2cErrors === null ? '—' : h.i2cErrors > 0 ? `${h.i2cErrors} lỗi I2C` : 'Hoạt động bình thường (0 NACK)')}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>BỘ NHỚ HEAP TỐI THIỂU:</Text>
-          <Text style={styles.metaVal}>{h.minFreeHeapKb} KB (Phân mảnh {h.heapFragmentationPct}%)</Text>
+          <Text style={styles.metaVal}>{f(h.minFreeHeapKb, 1, ' KB')}{h.heapFragmentationPct !== null ? ` (Phân mảnh ${h.heapFragmentationPct}%)` : ''}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>THỜI GIAN SUY LUẬN AI:</Text>
-          <Text style={[styles.metaVal, { color: C.cyan }]}>{h.inferenceMs} ms / mẫu</Text>
+          <Text style={[styles.metaVal, { color: C.cyan }]}>{n(h.inferenceMs, ' ms / mẫu')}</Text>
         </View>
       </Panel>
 
@@ -256,33 +307,33 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
       <Panel title="BỘ ĐỆM NGOẠI TUYẾN & HÀNG ĐỢI (FR19)" tag="FLASH RING BUFFER">
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>DUNG LƯỢNG BỘ ĐỆM TỐI ĐA:</Text>
-          <Text style={styles.metaVal}>{h.bufferCapacity} mẫu (~83 phút khi mất mạng)</Text>
+          <Text style={styles.metaVal}>{n(h.bufferCapacity, ' mẫu')}{data.mode === 'mock' ? ' (~83 phút khi mất mạng)' : ''}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>SỐ MẪU ĐANG LƯU ĐỆM:</Text>
-          <Text style={[styles.metaVal, { color: h.bufferUsed > 0 ? C.amber : C.green }]}>
-            {h.bufferUsed} / {h.bufferCapacity} mẫu ({((h.bufferUsed / h.bufferCapacity) * 100).toFixed(1)}%)
+          <Text style={[styles.metaVal, { color: (h.bufferUsed ?? 0) > 0 ? C.amber : C.green }]}>
+            {h.bufferUsed === null || !h.bufferCapacity ? '—' : `${h.bufferUsed} / ${h.bufferCapacity} mẫu (${((h.bufferUsed / h.bufferCapacity) * 100).toFixed(1)}%)`}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>TRẠNG THÁI HÀNG ĐỢI:</Text>
           <Text style={[styles.metaVal, { color: h.bufferStatus === 'BUFFERING' ? C.amber : C.green }]}>
-            {h.bufferStatus === 'BUFFERING' ? 'ĐANG LƯU BÙ (BUFFERING)' : 'ĐỒNG BỘ TRỰC TIẾP (EMPTY)'}
+            {h.bufferStatus === 'BUFFERING' ? 'ĐANG LƯU BÙ (BUFFERING)' : h.bufferStatus === 'EMPTY' ? 'ĐỒNG BỘ TRỰC TIẾP (EMPTY)' : h.bufferStatus === 'OVERFLOW' ? 'TRÀN BỘ ĐỆM (OVERFLOW)' : '—'}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>ĐỘ TRỄ HÀNG ĐỢI (QUEUE RTT):</Text>
-          <Text style={styles.metaVal}>{h.queueLatencyMs} ms</Text>
+          <Text style={styles.metaVal}>{n(h.queueLatencyMs, ' ms')}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>BẢN TIN TELEMETRY GẦN NHẤT:</Text>
           <Text style={[styles.metaVal, { color: isOffline ? C.red : C.green }]}>
-            {h.lastPacketUtc} ({h.packetGapS}s gap)
+            {h.lastPacketUtc}{h.packetGapS !== null ? ` (${h.packetGapS}s gap)` : ''}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>SỐ LẦN RECONNECT MQTT:</Text>
-          <Text style={styles.metaVal}>{h.mqttReconnects} lần</Text>
+          <Text style={styles.metaVal}>{n(h.mqttReconnects, ' lần')}</Text>
         </View>
       </Panel>
 
@@ -290,20 +341,24 @@ export function DeviceHealthScreen({ data, actions }: ScreenProps) {
       <Panel title="HIỆU CHUẨN ĐIỂM 0 (HEEL ZERO CALIBRATION)" tag="FR18 STATUS">
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>TRẠNG THÁI HIỆU CHUẨN:</Text>
-          <Text style={[styles.metaVal, { color: cal ? C.green : C.muted }]}>
-            {cal ? 'ĐÃ HIỆU CHUẨN (30S TĨNH)' : 'MẶC ĐỊNH NHÀ MÁY (0.0°)'}
+          <Text style={[styles.metaVal, { color: cal || (data.mode === 'live' && h.lastCalibratedAt) ? C.green : C.muted }]}>
+            {data.mode === 'live'
+              ? h.lastCalibratedAt
+                ? `LẦN CUỐI ${formatDateTimeUtc(h.lastCalibratedAt)} (${h.lastCalibrationState ?? '—'})`
+                : 'CHƯA GHI NHẬN HIỆU CHUẨN'
+              : cal ? 'ĐÃ HIỆU CHUẨN (30S TĨNH)' : 'MẶC ĐỊNH NHÀ MÁY (0.0°)'}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>ĐỘ LỆCH ROLL HIỆN TẠI (OFFSET):</Text>
           <Text style={[styles.metaVal, { color: C.cyan, fontWeight: 'bold' }]}>
-            {cal ? `${cal.roll_offset_deg > 0 ? '+' : ''}${cal.roll_offset_deg.toFixed(2)}°` : '0.00°'}
+            {cal ? `${cal.roll_offset_deg > 0 ? '+' : ''}${cal.roll_offset_deg.toFixed(2)}°` : data.mode === 'live' ? '—' : '0.00°'}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>ĐỘ LỆCH PITCH HIỆN TẠI (OFFSET):</Text>
           <Text style={[styles.metaVal, { color: C.amber }]}>
-            {cal ? `${cal.pitch_offset_deg > 0 ? '+' : ''}${cal.pitch_offset_deg.toFixed(2)}°` : '0.00°'}
+            {cal ? `${cal.pitch_offset_deg > 0 ? '+' : ''}${cal.pitch_offset_deg.toFixed(2)}°` : data.mode === 'live' ? '—' : '0.00°'}
           </Text>
         </View>
         {cal && (
@@ -330,13 +385,18 @@ export function ModelMonitorScreen({ data, actions }: ScreenProps) {
   const isOp = data.session?.role === 'Operator';
   const m = data.model;
   const t = data.telemetry;
-  const agree = t.sensor_ok ? t.class_rf === t.class_baseline_b : null;
+  const classified = (c: string) => c !== 'UNKNOWN' && c !== 'FAULT';
+  // UNKNOWN/FAULT không được tính là đồng thuận (cùng quy tắc với Backend).
+  const agree =
+    t.sensor_ok && classified(t.class_rf) && classified(t.class_baseline_b)
+      ? t.class_rf === t.class_baseline_b
+      : null;
 
   // RBAC Guard - Table 3.1
   if (isOp) {
     return (
       <Page
-        vesselName="VESSEL DEMO 01"
+        vesselName={data.vesselName}
         title="MODEL MONITOR"
         subtitle="HỆ THỐNG GIÁM SÁT MÔ HÌNH HỌC MÁY"
         onBack={actions.back}
@@ -362,7 +422,7 @@ export function ModelMonitorScreen({ data, actions }: ScreenProps) {
 
   return (
     <Page
-      vesselName="VESSEL DEMO 01"
+      vesselName={data.vesselName}
       utcTime={t.utc_time}
       isHornMuted={data.buzzerMuted}
       onToggleHorn={actions.toggleBuzzer}
@@ -371,7 +431,7 @@ export function ModelMonitorScreen({ data, actions }: ScreenProps) {
       onBack={actions.back}
     >
       {/* 1. Active vs Shadow Model Overview */}
-      <Panel title="CẤU HÌNH BỘ SUY LUẬN (INFERENCE ENGINE)" tag={`CHÍNH: ${m.activeModelId}`}>
+      <Panel title="CẤU HÌNH BỘ SUY LUẬN (INFERENCE ENGINE)" tag={`CHÍNH: ${m.activeModelId ?? '—'}`}>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>MÔ HÌNH QUYẾT ĐỊNH CHÍNH:</Text>
           <Text style={[styles.metaVal, { color: C.cyan, fontWeight: 'bold' }]}>
@@ -388,7 +448,7 @@ export function ModelMonitorScreen({ data, actions }: ScreenProps) {
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>THỜI GIAN SUY LUẬN TRÊN ESP32:</Text>
-          <Text style={[styles.metaVal, { color: C.green }]}>{m.inferenceMs} ms / mẫu</Text>
+          <Text style={[styles.metaVal, { color: C.green }]}>{n(m.inferenceMs, ' ms / mẫu')}</Text>
         </View>
       </Panel>
 
@@ -439,51 +499,52 @@ export function ModelMonitorScreen({ data, actions }: ScreenProps) {
       </Panel>
 
       {/* Interactive Dual-Stream Concordance Timeline */}
-      <MobileModelConcordanceChart scenario={data.scenario} height={145} />
+      {data.mode === 'mock' && <MobileModelConcordanceChart scenario={data.scenario} height={145} />}
 
       {/* 3. Model Registry & Edge Specs */}
       <Panel title="THÔNG TIN ĐẶC TẢ MÔ HÌNH (MODEL REGISTRY)" tag="TINYML SPEC">
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>THUẬT TOÁN HỌC MÁY:</Text>
-          <Text style={styles.metaVal}>{m.algorithm}</Text>
+          <Text style={styles.metaVal}>{m.algorithm ?? '—'}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>CHIẾM DỤNG BỘ NHỚ FLASH:</Text>
-          <Text style={styles.metaVal}>{m.flashKb} KB (trong phân vùng 4MB)</Text>
+          <Text style={styles.metaVal}>{n(m.flashKb, ' KB')}{data.mode === 'mock' ? ' (trong phân vùng 4MB)' : ''}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>CHIẾM DỤNG BỘ NHỚ RAM:</Text>
-          <Text style={styles.metaVal}>{m.ramKb} KB (trong 320KB SRAM)</Text>
+          <Text style={styles.metaVal}>{n(m.ramKb, ' KB')}{data.mode === 'mock' ? ' (trong 320KB SRAM)' : ''}</Text>
         </View>
         <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>VECTƠ ĐẶC TRƯNG ({m.featuresCount} FEATURES):</Text>
-          <Text style={[styles.metaVal, { fontSize: 9 }]}>{m.features.join(', ')}</Text>
+          <Text style={styles.metaLabel}>VECTƠ ĐẶC TRƯNG ({m.featuresCount ?? '—'} FEATURES):</Text>
+          <Text style={[styles.metaVal, { fontSize: 9 }]}>{m.features.length ? m.features.join(', ') : '—'}</Text>
         </View>
       </Panel>
 
       {/* 4. Concordance Breakdown */}
-      <Panel title="THỐNG KÊ ĐỒNG THUẬN GIỮA RF VÀ BASELINE B" tag={`${m.agreementPercent}% ĐỒNG THUẬN`}>
+      <Panel title="THỐNG KÊ ĐỒNG THUẬN GIỮA RF VÀ BASELINE B" tag={m.agreementPercent === null ? 'CHƯA ĐỦ DỮ LIỆU' : `${m.agreementPercent}% ĐỒNG THUẬN`}>
+        {m.note ? <Text style={[styles.calloutText, { marginBottom: 8, color: C.muted }]}>{m.note}</Text> : null}
         <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>TỔNG TỶ LỆ ĐỒNG THUẬN (V-2026-001):</Text>
+          <Text style={styles.metaLabel}>TỔNG TỶ LỆ ĐỒNG THUẬN {data.mode === 'live' ? '(THIẾT BỊ)' : '(V-2026-001)'}:</Text>
           <Text style={[styles.metaVal, { color: C.green, fontWeight: 'bold' }]}>
-            {m.agreementPercent}%
+            {n(m.agreementPercent, '%')}
           </Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Lớp NORMAL:</Text>
-          <Text style={styles.metaVal}>{m.concordanceBreakdown.normal}%</Text>
+          <Text style={styles.metaVal}>{n(m.concordanceBreakdown.normal, '%')}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Lớp HIGH_ROLL:</Text>
-          <Text style={styles.metaVal}>{m.concordanceBreakdown.highRoll}%</Text>
+          <Text style={styles.metaVal}>{n(m.concordanceBreakdown.highRoll, '%')}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Lớp PERSISTENT_OFFSET:</Text>
-          <Text style={styles.metaVal}>{m.concordanceBreakdown.persistentOffset}%</Text>
+          <Text style={styles.metaVal}>{n(m.concordanceBreakdown.persistentOffset, '%')}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Lớp AMPLITUDE_GROWTH:</Text>
-          <Text style={styles.metaVal}>{m.concordanceBreakdown.amplitudeGrowth}%</Text>
+          <Text style={styles.metaVal}>{n(m.concordanceBreakdown.amplitudeGrowth, '%')}</Text>
         </View>
       </Panel>
 
@@ -501,7 +562,7 @@ export function ModelMonitorScreen({ data, actions }: ScreenProps) {
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>ISOLATION FOREST (BACKEND):</Text>
-          <Text style={[styles.metaVal, { color: C.amber }]}>Chờ kết nối Backend TV3</Text>
+          <Text style={[styles.metaVal, { color: C.amber }]}>{data.mode === 'live' ? 'Backend chưa cung cấp' : 'Chờ kết nối Backend TV3'}</Text>
         </View>
         <Text style={[styles.calloutText, { marginTop: 10, color: C.muted }]}>
           Lưu ý kỹ thuật: Backend TV3 chịu trách nhiệm định kỳ tính toán chỉ số PSI và Isolation Forest

@@ -16,7 +16,7 @@ export interface Session {
   username: string;
   displayName: string;
   role: Role;
-  demo: true;
+  demo: boolean;
 }
 
 export interface Vessel {
@@ -44,7 +44,7 @@ export interface Telemetry {
   alarm_level: AlarmLevel;
   sensor_ok: boolean;
   model_version: string;
-  config_version: number;
+  config_version: number | null;
   connection: Connection;
   utc_time?: string;
 }
@@ -63,6 +63,11 @@ export interface Alarm {
   muted?: boolean;
   review?: 'TRUE' | 'FALSE' | 'UNCERTAIN';
   notes?: string;
+  /** Chỉ LIVE: khóa chính trên Backend và trạng thái ACK của thiết bị. */
+  pk?: number;
+  deviceAck?: string;
+  /** Chỉ LIVE: mốc thời gian thật của vòng đời cảnh báo. */
+  timeline?: { time: string; text: string; tone: 'trigger' | 'info' | 'ok' }[];
 }
 
 export interface Command {
@@ -71,7 +76,7 @@ export interface Command {
   status: CommandStatus;
   at: string;
   detail: string;
-  config_version: number;
+  config_version: number | null;
   issued_by?: string;
   reason?: string;
   is_test_utility?: boolean;
@@ -104,12 +109,13 @@ export interface MotionSnapshot {
 export interface DeviceConfig {
   profile: 'STANDARD' | 'SENSITIVE' | 'CONSERVATIVE';
   config_version: number;
-  roll_warning_deg: number;
-  roll_trip_deg: number;
-  mai_alert_threshold: number;
+  /** null = Backend/thiết bị không có tham số này (không suy đoán). */
+  roll_warning_deg: number | null;
+  roll_trip_deg: number | null;
+  mai_alert_threshold: number | null;
   source_mode: 'SIMULATION' | 'SENSOR';
-  timewarp: number;
-  active_model: 'RF' | 'BASELINE_B';
+  timewarp: number | null;
+  active_model: 'RF' | 'BASELINE_B' | null;
   scenario: Scenario;
   zero_calibration?: ZeroCalibration | null;
 }
@@ -118,32 +124,35 @@ export interface Voyage {
   id: string;
   name: string;
   route: string;
-  durationMinutes: number;
-  durationHours: number;
+  durationMinutes: number | null;
+  durationHours: number | null;
   startTime: string;
   endTime: string;
   sourceMode: 'SIMULATION' | 'SENSOR';
   deviceId: string;
   modelVersion: string;
-  configVersion: number;
-  sampleCount: number;
-  maxAbsRollDeg: number;
-  rmsRollDeg: number;
-  p95AbsRollDeg: number;
-  maxAbsPitchDeg: number;
-  rmsPitchDeg: number;
-  maiMax: number;
-  maiAvg: number;
-  maiCautionMinutes: number;
-  alarms: number;
-  mttaSeconds: number;
+  configVersion: number | null;
+  sampleCount: number | null;
+  maxAbsRollDeg: number | null;
+  rmsRollDeg: number | null;
+  p95AbsRollDeg: number | null;
+  maxAbsPitchDeg: number | null;
+  rmsPitchDeg: number | null;
+  maiMax: number | null;
+  maiAvg: number | null;
+  maiCautionMinutes: number | null;
+  alarms: number | null;
+  mttaSeconds: number | null;
   rfDistribution: {
-    normalPct: number;
-    highRollPct: number;
-    persistentOffsetPct: number;
-    amplitudeGrowthPct: number;
+    normalPct: number | null;
+    highRollPct: number | null;
+    persistentOffsetPct: number | null;
+    amplitudeGrowthPct: number | null;
   };
-  agreementPercent: number;
+  agreementPercent: number | null;
+  /** Chỉ LIVE: số liệu chuyến đang chạy là tạm thời; chuyến chưa tải được số liệu. */
+  provisional?: boolean;
+  metricsLoaded?: boolean;
 }
 
 export interface ReplayPoint {
@@ -153,60 +162,93 @@ export interface ReplayPoint {
   pitch: number;
   class_rf: RFClass;
   class_baseline_b: RFClass;
-  mai: number;
+  mai: number | null;
   alarm_level: AlarmLevel;
   alarm_id?: string;
-  source_mode: 'SIMULATION';
-  synthetic: true;
+  source_mode: 'SIMULATION' | 'SENSOR';
+  synthetic: boolean;
 }
 
 export interface DeviceHealth {
   sensor: 'OK' | 'FAULT' | 'UNKNOWN';
   sensorOk: boolean;
-  i2cErrors: number;
+  /** null = thiết bị/Backend chưa báo giá trị này. */
+  i2cErrors: number | null;
   lastI2cError?: string;
   rssiDbm: number | null;
-  uptimeS: number;
-  uptimeMinutes: number;
-  freeHeapKb: number;
-  minFreeHeapKb: number;
-  heapFragmentationPct: number;
-  inferenceMs: number;
-  mqttReconnects: number;
-  bufferUsed: number;
-  bufferCapacity: number;
-  bufferStatus: 'EMPTY' | 'BUFFERING' | 'OVERFLOW';
-  queueLatencyMs: number;
+  uptimeS: number | null;
+  uptimeMinutes: number | null;
+  freeHeapKb: number | null;
+  minFreeHeapKb: number | null;
+  heapFragmentationPct: number | null;
+  inferenceMs: number | null;
+  mqttReconnects: number | null;
+  bufferUsed: number | null;
+  bufferCapacity: number | null;
+  bufferStatus: 'EMPTY' | 'BUFFERING' | 'OVERFLOW' | 'UNKNOWN';
+  queueLatencyMs: number | null;
   lastPacketUtc: string;
-  packetGapS: number;
-  healthScore: number;
+  packetGapS: number | null;
+  healthScore: number | null;
   healthStatus: 'HEALTHY' | 'DEGRADED' | 'CRITICAL';
+  lastCalibratedAt?: string | null;
+  lastCalibrationState?: string | null;
 }
 
 export interface ModelInfo {
   active: string;
-  activeModelId: 'RF' | 'BASELINE_B';
+  activeModelId: 'RF' | 'BASELINE_B' | null;
   baseline: string;
   baselineModelId: 'RF' | 'BASELINE_B';
   version: string;
-  algorithm: string;
-  featuresCount: number;
+  algorithm: string | null;
+  featuresCount: number | null;
   features: string[];
-  inferenceMs: number;
-  flashKb: number;
-  ramKb: number;
-  agreementPercent: number;
+  inferenceMs: number | null;
+  flashKb: number | null;
+  ramKb: number | null;
+  agreementPercent: number | null;
   psi: number | null;
   psiStatus: string;
   concordanceBreakdown: {
-    normal: number;
-    highRoll: number;
-    persistentOffset: number;
-    amplitudeGrowth: number;
+    normal: number | null;
+    highRoll: number | null;
+    persistentOffset: number | null;
+    amplitudeGrowth: number | null;
   };
+  /** Chỉ LIVE: ghi chú từ Backend (vd. thiếu dữ liệu đồng thuận). */
+  note?: string;
+}
+
+export type DataMode = 'mock' | 'live';
+
+export interface LinkStatus {
+  state: 'API_ERROR' | 'NO_DATA' | 'STALE' | 'SENSOR_FAULT' | 'ONLINE';
+  label: string;
+  ageS: number | null;
+  error?: string;
+}
+
+export interface ActionResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface LoginTarget {
+  mode: DataMode;
+  url: string;
 }
 
 export interface AppData {
+  mode: DataMode;
+  /** Chỉ LIVE: tình trạng kết nối Backend/thiết bị. */
+  link: LinkStatus | null;
+  vesselName: string;
+  deviceId: string | null;
+  firmware: string | null;
+  bootId: string | null;
+  /** Chuỗi roll/pitch gần nhất để vẽ biểu đồ (MOCK: sinh từ kịch bản, LIVE: telemetry thật). */
+  getSeries: (count: number, endSeq?: number) => { roll: number[]; pitch: number[] };
   route: Route;
   session: Session | null;
   scenario: Scenario;
@@ -232,16 +274,16 @@ export interface AppData {
 export interface AppActions {
   go: (route: Route) => void;
   back: () => void;
-  login: (username: string, password: string) => boolean;
+  login: (username: string, password: string, target: LoginTarget) => Promise<ActionResult>;
   logout: () => void;
   setScenario: (scenario: Scenario) => void;
   selectAlarm: (id: string) => void;
   selectedAlarmId: string;
-  ackAlarm: (id: string) => void;
-  muteAlarm: (id: string) => void;
+  ackAlarm: (id: string) => Promise<ActionResult>;
+  muteAlarm: (id: string) => Promise<ActionResult>;
   toggleBuzzer: () => void;
-  updateAlarmNote: (id: string, note: string) => void;
-  reviewAlarm: (id: string, label: 'TRUE' | 'FALSE' | 'UNCERTAIN') => void;
+  updateAlarmNote: (id: string, note: string) => ActionResult;
+  reviewAlarm: (id: string, label: 'TRUE' | 'FALSE' | 'UNCERTAIN') => Promise<ActionResult>;
   sendCommand: (name: string, adminOnly?: boolean, argument?: string) => void;
   setReplaySeconds: (seconds: number) => void;
   setReplayPlaying: (playing: boolean) => void;

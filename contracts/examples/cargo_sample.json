@@ -1,0 +1,12 @@
+{
+  "device_id": "vessel-demo-01-cargo",
+  "boot_id": "9f3c21aa",
+  "seq": 42,
+  "uptime_ms": 210000,
+  "sensor_ok": true,
+  "cargo_water_pct": 18.5,
+  "cargo_temp_c": 27.4,
+  "cargo_humidity_pct": 61.2,
+  "source_mode": "SIMULATION",
+  "parent_device_id": "vessel-demo-01"
+}

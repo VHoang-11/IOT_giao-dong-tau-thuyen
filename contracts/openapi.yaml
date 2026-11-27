@@ -129,6 +129,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/devices/{device_id}/cargo:
+    get:
+      tags:
+      - devices
+      summary: Get Cargo
+      description: 'Du lieu ham hang (moi nhat truoc). `device_id` la tau chinh (gop
+        moi Cargo Node gan vao no theo
+
+        `parent_device_id`) hoac chinh Cargo Node. Gia tri khong doc duoc la null
+        (khong phai 0).'
+      operationId: get_cargo_api_v1_devices__device_id__cargo_get
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CargoOut'
+                title: Response Get Cargo Api V1 Devices  Device Id  Cargo Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/devices/{device_id}/telemetry:
     get:
       tags:
@@ -1843,6 +1888,56 @@ components:
       - username
       - password
       title: Body_login_api_v1_auth_login_post
+    CargoOut:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        boot_id:
+          type: string
+          title: Boot Id
+        seq:
+          type: integer
+          title: Seq
+        uptime_ms:
+          type: integer
+          title: Uptime Ms
+        source_mode:
+          $ref: '#/components/schemas/SourceMode'
+        sensor_ok:
+          type: boolean
+          title: Sensor Ok
+        cargo_water_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Water Pct
+        cargo_temp_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Temp C
+        cargo_humidity_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Humidity Pct
+        server_rx_time:
+          type: string
+          format: date-time
+          title: Server Rx Time
+      type: object
+      required:
+      - device_id
+      - boot_id
+      - seq
+      - uptime_ms
+      - source_mode
+      - sensor_ok
+      - server_rx_time
+      title: CargoOut
+      description: Mot ban ghi ham hang (Cargo Node). Gia tri khong doc duoc = null
+        (khong phai 0).
     ChannelStatus:
       properties:
         name:
@@ -2256,6 +2351,17 @@ components:
           title: Name
         source_mode:
           $ref: '#/components/schemas/SourceMode'
+        node_type:
+          $ref: '#/components/schemas/NodeType'
+          default: MOTION
+        parent_device_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+            pattern: ^[A-Za-z0-9_.-]+$
+          - type: 'null'
+          title: Parent Device Id
       additionalProperties: false
       type: object
       required:
@@ -2414,6 +2520,14 @@ components:
           - type: integer
           - type: 'null'
           title: Config Version
+        node_type:
+          $ref: '#/components/schemas/NodeType'
+          default: MOTION
+        parent_device_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Device Id
       type: object
       required:
       - device_id
@@ -2439,6 +2553,14 @@ components:
           - type: boolean
           - type: 'null'
           title: Enabled
+        parent_device_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+            pattern: ^[A-Za-z0-9_.-]+$
+          - type: 'null'
+          title: Parent Device Id
       additionalProperties: false
       type: object
       title: DeviceUpdate
@@ -2741,6 +2863,14 @@ components:
       required:
       - samples_used
       title: MotionStats
+    NodeType:
+      type: string
+      enum:
+      - MOTION
+      - CARGO
+      title: NodeType
+      description: 'Multi-Node: MOTION = ESP32 do dao dong (telemetry/event); CARGO
+        = ESP32 ham hang (chi topic cargo).'
     NotifyStatus:
       properties:
         channels:
@@ -3064,6 +3194,21 @@ components:
           - type: number
           - type: 'null'
           title: Trend Rms Deg Per Min
+        cargo_water_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Water Pct
+        cargo_temp_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Temp C
+        cargo_humidity_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Humidity Pct
         class_rf:
           $ref: '#/components/schemas/MotionClass'
         class_baseline_b:
@@ -3322,6 +3467,21 @@ components:
           - type: number
           - type: 'null'
           title: Rms Roll Deg
+        cargo_water_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Water Pct
+        cargo_temp_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Temp C
+        cargo_humidity_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cargo Humidity Pct
         class_rf:
           $ref: '#/components/schemas/MotionClass'
         class_baseline_b:

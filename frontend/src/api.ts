@@ -27,6 +27,7 @@ export interface LiveTelemetry {
   roll_deg: number;
   pitch_deg: number;
   rms_roll_deg: number | null;
+  /** NGỪNG DÙNG: Motion Node không còn gửi các trường này; dữ liệu hầm hàng nay đến từ Cargo Node (CargoOut). */
   cargo_water_pct?: number | null;
   cargo_temp_c?: number | null;
   cargo_humidity_pct?: number | null;
@@ -38,7 +39,14 @@ export interface LiveTelemetry {
   server_rx_time: string;
 }
 
+/** Một bản ghi hầm hàng từ Cargo Node (ESP32 thứ 2). Giá trị không đọc được = null (không phải 0). */
+export interface CargoOut {
+  device_id: string; boot_id: string; seq: number; uptime_ms: number; source_mode: SourceMode; sensor_ok: boolean;
+  cargo_water_pct: number | null; cargo_temp_c: number | null; cargo_humidity_pct: number | null; server_rx_time: string;
+}
 export interface DeviceOut {
+  /** MOTION = tàu chính (ESP32 đo dao động); CARGO = mạch hầm hàng riêng, gắn vào tàu chính qua parent_device_id. */
+  node_type?: 'MOTION' | 'CARGO'; parent_device_id?: string | null;
   device_id: string; name?: string | null; enabled?: boolean; source_mode: SourceMode; state: 'online' | 'offline';
   last_seen?: string | null; fw?: string | null; boot_id?: string | null; model_version?: string | null; config_version?: number | null;
 }

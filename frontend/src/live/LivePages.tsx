@@ -7,7 +7,7 @@ import type {Page,Session} from '../domain';
 import {Button,Metric,Panel,Pill} from '../ui';
 import {ShipMotionVisualizer} from '../ShipMotionVisualizer';
 import {getAlarmLevelNameVi,getRFClassNameVi,getRoleNameVi} from '../i18n/vi';
-import {parseTime,useResource} from './useLive';
+import {isMotionNode,parseTime,useResource} from './useLive';
 import type {LiveCore} from './useLive';
 
 export interface LiveProps{page:Page;core:LiveCore;session:Session;token:string;notify:(msg:string)=>void;onUnauthorized:()=>void;goto:(p:Page)=>void;setDevice:(id:string)=>void}
@@ -16,6 +16,17 @@ const deg=(n:number|null|undefined)=>n==null||!Number.isFinite(n)?'—':`${n>0?'
 const clock=(iso?:string|null)=>{const t=parseTime(iso);return Number.isFinite(t)?new Date(t).toLocaleString('vi-VN'):'—'};
 const pct=(r?:number|null)=>r==null?'—':`${(r*100).toFixed(1)}%`;
 const isSupervisor=(s:Session)=>s.role!=='Operator';
+/** Thẻ trạng thái RIÊNG của Cargo Node (ESP32 thứ 2), tách khỏi kết nối của tàu chính. */
+function CargoStatus({core}:{core:LiveCore}){
+ const c=core.cargoLink;
+ const text=c.state==='NO_NODE'?'Chưa có Cargo Node nào được gắn vào tàu này. Admin gắn bằng PATCH /api/v1/devices/{cargo_id} với parent_device_id.'
+  :c.state==='API_ERROR'?`Không đọc được dữ liệu hầm hàng: ${core.cargo.error}`
+  :c.state==='NO_DATA'?`Cargo Node ${c.node?.device_id??''} chưa gửi bản tin hầm hàng nào.`
+  :c.state==='STALE'?`Cargo Node ${c.node?.device_id??''} không gửi dữ liệu trong ${c.ageS??'?'}s (ngưỡng ${c.staleAfterS}s). Giá trị cuối KHÔNG được hiển thị như thời gian thực.`
+  :c.state==='SENSOR_FAULT'?'DHT22 không đọc được: nhiệt độ/độ ẩm không khả dụng. Mực nước (chiết áp) vẫn đo bình thường.'
+  :`Cargo Node ${c.node?.device_id??''} • nguồn ${c.latest?.source_mode??'—'} • mẫu cuối ${c.ageS??'—'}s trước`;
+ return <div className={`note ${c.state==='ONLINE'?'':c.state==='SENSOR_FAULT'?'warning':'offline'}`} style={{marginBottom:14}}><b>{c.label}:</b> {text}</div>;
+}
 const levelTone=(l?:string|null)=>l==='CRITICAL'?'red':l==='WARNING'?'amber':l==='CAUTION'?'amber':'green';
 const UNAVAILABLE='Chưa khả dụng';
 const NO_AGREEMENT='Chưa đủ dữ liệu để đánh giá đồng thuận';
@@ -120,9 +131,11 @@ function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
  const liveLevel=core.link.state==='ONLINE'?core.link.fresh?.alarm_level??null:null;
  const dev=core.devices.data?.find(d=>d.device_id===core.deviceId);
  const ok=core.link.state==='ONLINE';
+ const cg=core.cargoLink.fresh;
  return <>
   <div className="page-hero"><div><span className="eyebrow">Buồng lái chỉ huy • LIVE</span><h1>Tổng quan vận hành</h1><p>Dữ liệu thật: ESP32/Wokwi → MQTT → FastAPI → SQLite, làm mới mỗi 5 giây.</p></div><LinkPills core={core}/></div>
   <StaleNote core={core}/>
+  <CargoStatus core={core}/>
   <div className="metrics">
    <Metric label="Mức cảnh báo tàu" value={f?getAlarmLevelNameVi(f.alarm_level):'—'} note={f?`Theo telemetry seq ${f.seq}`:'Không có dữ liệu tức thời'} tone={levelTone(f?.alarm_level)}/>
    <Metric label="Trạng thái thiết bị" value={ok?'Đang kết nối':core.link.state==='SENSOR_FAULT'?'Lỗi cảm biến':'Mất kết nối'} note={`Tuổi dữ liệu: ${core.link.ageS??'—'}s`} tone={ok?'green':core.link.state==='SENSOR_FAULT'?'amber':'red'}/>
@@ -138,12 +151,13 @@ function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
       <dt>RMS Roll</dt><dd>{ok?deg(f?.rms_roll_deg):'—'}</dd>
       <dt>Baseline B (mô hình quyết định)</dt><dd style={{fontWeight:600}}>{f?.class_baseline_b?`${getRFClassNameVi(f.class_baseline_b)} (${f.class_baseline_b})`:'—'}</dd>
       <dt>Random Forest</dt><dd className="text-muted">{f?`${f.class_rf}${f.class_rf==='UNKNOWN'?' — RF chưa hoạt động trên firmware chính':''}`:'—'}</dd>
-      <dt>Mực nước hầm hàng</dt><dd>{ok&&f?.cargo_water_pct!=null?`${f.cargo_water_pct.toFixed(1)}%`:'—'}</dd>
-      <dt>Nhiệt độ / Độ ẩm hầm hàng</dt><dd>{ok&&(f?.cargo_temp_c!=null||f?.cargo_humidity_pct!=null)?`${f?.cargo_temp_c!=null?`${f.cargo_temp_c.toFixed(1)}°C`:'—'} / ${f?.cargo_humidity_pct!=null?`${f.cargo_humidity_pct.toFixed(1)}%`:'—'}`:'—'}</dd>
+      <dt>Mực nước hầm hàng <small>(Cargo Node)</small></dt><dd>{cg?.cargo_water_pct!=null?`${cg.cargo_water_pct.toFixed(1)}%`:'—'}</dd>
+      <dt>Nhiệt độ / Độ ẩm hầm hàng <small>(Cargo Node)</small></dt><dd>{cg&&(cg.cargo_temp_c!=null||cg.cargo_humidity_pct!=null)?`${cg.cargo_temp_c!=null?`${cg.cargo_temp_c.toFixed(1)}°C`:'—'} / ${cg.cargo_humidity_pct!=null?`${cg.cargo_humidity_pct.toFixed(1)}%`:'—'}`:'—'}</dd>
+      <dt>Kết nối Cargo Node</dt><dd><Pill kind={core.cargoLink.kind}>{core.cargoLink.label}</Pill></dd>
      </dl>
     </Panel>
     <Panel title="Thông số tàu & Kết nối thiết bị" tag={core.deviceId??'Chưa có thiết bị'}>
-     {(core.devices.data?.length??0)>1&&<div className="filter-line"><label htmlFor="live-device">Thiết bị</label><select id="live-device" value={core.deviceId??''} onChange={e=>setDevice(e.target.value)}>{core.devices.data!.map(d=><option key={d.device_id} value={d.device_id}>{d.device_id} ({d.state})</option>)}</select></div>}
+     {(core.devices.data?.filter(isMotionNode).length??0)>1&&<div className="filter-line"><label htmlFor="live-device">Thiết bị</label><select id="live-device" value={core.deviceId??''} onChange={e=>setDevice(e.target.value)}>{core.devices.data!.filter(isMotionNode).map(d=><option key={d.device_id} value={d.device_id}>{d.device_id} ({d.state})</option>)}</select></div>}
      <dl className="kv">
       <dt>Thiết bị / trạng thái Backend</dt><dd>{dev?`${dev.device_id} • ${dev.state}${dev.enabled===false?' • đã vô hiệu hóa':''}`:'—'}</dd>
       <dt>Nguồn dữ liệu</dt><dd>{latest?.source_mode??dev?.source_mode??'—'}</dd>
@@ -176,7 +190,7 @@ function Overview({core,session,token,notify,goto,setDevice}:LiveProps){
 }
 
 function Motion({core}:LiveProps){
- const f=core.link.fresh,ok=core.link.state==='ONLINE';
+ const f=core.link.fresh,ok=core.link.state==='ONLINE',cg=core.cargoLink.fresh;
  const rows=sameBoot(core.telemetry.data??[]);
  return <>
   <div className="page-hero"><div><span className="eyebrow">Viễn trắc động học • LIVE</span><h1>Giám sát chuyển động</h1><p>Roll/Pitch, MAI và lớp chuyển động từ telemetry thật của phiên khởi động hiện tại.</p></div><LinkPills core={core}/></div>
@@ -199,11 +213,12 @@ function Motion({core}:LiveProps){
   <Panel title="Xu hướng chỉ số bất thường MAI" tag="Lịch sử thật, không nội suy">
    <LiveLineChart height={170} series={[{label:'MAI',color:'#7C3AED',values:rows.map(r=>r.mai)}]} empty="Thiết bị chưa gửi MAI"/>
   </Panel>
-  <Panel title="Cảm biến hầm hàng (GPIO 35 & DHT22)" tag="Dữ liệu thật từ ESP32">
+  <Panel title="Hầm hàng (Cargo Node riêng: GPIO 35 & DHT22)" tag={core.cargoLink.node?core.cargoLink.node.device_id:'Chưa gắn Cargo Node'}>
+   <CargoStatus core={core}/>
    <div className="compact-metrics-grid">
-    <Metric label="Mực nước hầm hàng" value={ok&&f?.cargo_water_pct!=null?`${f.cargo_water_pct.toFixed(1)}%`:'—'} note={ok?'GPIO 35 (ADC1)':core.link.label} tone={(f?.cargo_water_pct??0)>=70?'red':(f?.cargo_water_pct??0)>=35?'amber':'green'}/>
-    <Metric label="Nhiệt độ hầm hàng" value={ok&&f?.cargo_temp_c!=null?`${f.cargo_temp_c.toFixed(1)}°C`:'—'} note={ok?'DHT22 (GPIO 4)':core.link.label} tone={(f?.cargo_temp_c??0)>=45?'red':'cyan'}/>
-    <Metric label="Độ ẩm hầm hàng" value={ok&&f?.cargo_humidity_pct!=null?`${f.cargo_humidity_pct.toFixed(1)}%`:'—'} note={ok?'DHT22 (GPIO 4)':core.link.label} tone={(f?.cargo_humidity_pct??0)>=85?'amber':'green'}/>
+    <Metric label="Mực nước hầm hàng" value={cg?.cargo_water_pct!=null?`${cg.cargo_water_pct.toFixed(1)}%`:'—'} note={cg?'Chiết áp GPIO 35 (ADC1)':core.cargoLink.label} tone={(cg?.cargo_water_pct??0)>=70?'red':(cg?.cargo_water_pct??0)>=35?'amber':cg?'green':'cyan'}/>
+    <Metric label="Nhiệt độ hầm hàng" value={cg?.cargo_temp_c!=null?`${cg.cargo_temp_c.toFixed(1)}°C`:'—'} note={cg?'DHT22 (GPIO 4)':core.cargoLink.label} tone={(cg?.cargo_temp_c??0)>=45?'red':'cyan'}/>
+    <Metric label="Độ ẩm hầm hàng" value={cg?.cargo_humidity_pct!=null?`${cg.cargo_humidity_pct.toFixed(1)}%`:'—'} note={cg?'DHT22 (GPIO 4)':core.cargoLink.label} tone={(cg?.cargo_humidity_pct??0)>=85?'amber':cg?'green':'cyan'}/>
    </div>
   </Panel>
   <div className="columns">

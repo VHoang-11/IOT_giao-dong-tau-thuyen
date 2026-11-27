@@ -63,8 +63,7 @@ firmware/
 | LED xanh / vàng / đỏ | GPIO 33 / 26 / 25 | qua điện trở 220 Ω |
 | Buzzer | GPIO 32 | `tone()` 1 kHz |
 | Chiết áp (SIG) | GPIO 34 | ADC1; sea state 0–5 chia đều 6 mức, có trễ |
-| Chiết áp mực nước (`pot_water`) | GPIO 35 | ADC1; mực nước hầm hàng 0–100 % |
-| DHT22 (`dht`) | GPIO 4 | Nhiệt độ (°C) & độ ẩm (%) hầm hàng |
+| *(không còn)* | GPIO 35, 4 | Mực nước/DHT22 hầm hàng đã chuyển sang **Cargo Node** riêng (ESP32 thứ 2, xem `target_cargo/`) |
 
 Không dùng chân strapping (0, 2, 5, 12, 15) và GPIO 6–11.
 

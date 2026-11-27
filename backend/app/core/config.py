@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     retention_telemetry_days: int = Field(0, ge=0)
     retention_batch: int = Field(5000, ge=1)       # xoa tung lo nho, commit tung lo de khong khoa DB lau
     retention_interval_s: int = Field(3600, ge=60)
+    cargo_stale_s: int = 30                 # Cargo Node im qua N giay = du lieu ham hang 'cu' (gui moi ~5 s) -> trang thai UNKNOWN/STALE
     health_stale_s: int = 90                # thiet bi im qua N giay = 'stale' (health gui moi 30s -> 3 chu ky)
 
 

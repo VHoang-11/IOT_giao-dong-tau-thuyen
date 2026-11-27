@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { C } from '../theme';
 import { Voyage } from '../types/domain';
+import { f, n } from '../data/format';
 
 interface MobileVoyageChartsProps {
   voyage: Voyage;
@@ -9,7 +10,7 @@ interface MobileVoyageChartsProps {
 
 export function MobileVoyageDistributionChart({ voyage }: MobileVoyageChartsProps) {
   const bars = [
-    { label: 'Max Roll', val: voyage.maxAbsRollDeg, max: 25, unit: '°', color: voyage.maxAbsRollDeg > 15 ? C.red : C.cyan, threshold: 15.0 },
+    { label: 'Max Roll', val: voyage.maxAbsRollDeg, max: 25, unit: '°', color: (voyage.maxAbsRollDeg ?? 0) > 15 ? C.red : C.cyan, threshold: 15.0 },
     { label: 'RMS Roll (T11)', val: voyage.rmsRollDeg, max: 25, unit: '°', color: C.cyan },
     { label: 'P95 Roll', val: voyage.p95AbsRollDeg, max: 25, unit: '°', color: '#0369A1' },
     { label: 'Max Pitch', val: voyage.maxAbsPitchDeg, max: 10, unit: '°', color: C.amber },
@@ -20,18 +21,18 @@ export function MobileVoyageDistributionChart({ voyage }: MobileVoyageChartsProp
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>PHÂN PHỐI THỐNG KÊ ĐỘNG HỌC (T11)</Text>
-        <Text style={styles.cardBadge}>{voyage.sampleCount} MẪU</Text>
+        <Text style={styles.cardBadge}>{n(voyage.sampleCount)} MẪU</Text>
       </View>
 
       <View style={styles.barsContainer}>
         {bars.map((b) => {
-          const pct = Math.min(100, (b.val / b.max) * 100);
+          const pct = b.val === null ? 0 : Math.min(100, (b.val / b.max) * 100);
           return (
             <View key={b.label} style={styles.barRow}>
               <View style={styles.barLabelRow}>
                 <Text style={styles.barLabel}>{b.label}</Text>
                 <Text style={[styles.barVal, { color: b.color }]}>
-                  {b.val.toFixed(2)}{b.unit}
+                  {b.val === null ? '—' : `${f(b.val, 2)}${b.unit}`}
                 </Text>
               </View>
               <View style={styles.barTrack}>
@@ -69,7 +70,7 @@ export function MobileRfBreakdownChart({ voyage }: MobileVoyageChartsProps) {
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>PHÂN BỐ TRẠNG THÁI RANDOM FOREST</Text>
         <Text style={[styles.cardBadge, { color: C.green, backgroundColor: '#D1FAE5', borderColor: '#A7F3D0' }]}>
-          ✓ {voyage.agreementPercent}% Đồng thuận
+          {voyage.agreementPercent === null ? 'Chưa đủ dữ liệu đồng thuận' : `✓ ${voyage.agreementPercent}% Đồng thuận`}
         </Text>
       </View>
 
@@ -80,7 +81,7 @@ export function MobileRfBreakdownChart({ voyage }: MobileVoyageChartsProps) {
             key={s.label}
             style={[
               styles.segmentSlice,
-              { width: `${s.pct}%`, backgroundColor: s.color },
+              { width: `${s.pct ?? 0}%`, backgroundColor: s.color },
             ]}
           />
         ))}
@@ -92,7 +93,7 @@ export function MobileRfBreakdownChart({ voyage }: MobileVoyageChartsProps) {
           <View key={s.label} style={styles.legendPill}>
             <View style={[styles.dot, { backgroundColor: s.color }]} />
             <Text style={styles.legendLabel}>{s.label}:</Text>
-            <Text style={[styles.legendVal, { color: s.color }]}>{s.pct.toFixed(1)}%</Text>
+            <Text style={[styles.legendVal, { color: s.color }]}>{s.pct === null ? '—' : `${s.pct.toFixed(1)}%`}</Text>
           </View>
         ))}
       </View>

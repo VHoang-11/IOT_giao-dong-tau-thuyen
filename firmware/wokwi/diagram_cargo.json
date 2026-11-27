@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "author": "SVMG Cargo Node (Multi-Node)",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 270,
+      "left": 370,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_water",
+      "top": 142.7,
+      "left": 508.6,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht",
+      "top": 221.1,
+      "left": 618.6,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-text",
+      "id": "label_water",
+      "top": 96,
+      "left": 432,
+      "attrs": {
+        "text": "CARGO HOLD WATER LEVEL"
+      }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "label_dht",
+      "top": 182.4,
+      "left": 624,
+      "attrs": {
+        "text": "CARGO HOLD TEMP/HUMIDITY (DHT22)"
+      }
+    },
+    {
+      "type": "wokwi-text",
+      "id": "label_title",
+      "top": 38.4,
+      "left": 364.8,
+      "attrs": {
+        "text": "SVMG CARGO NODE - vessel-demo-01-cargo"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "pot_water:VCC",
+      "esp:3V3",
+      "red",
+      [
+        "v28.8",
+        "h-173.39"
+      ]
+    ],
+    [
+      "pot_water:SIG",
+      "esp:35",
+      "violet",
+      [
+        "v38.4",
+        "h-154",
+        "v222"
+      ]
+    ],
+    [
+      "pot_water:GND",
+      "esp:GND.3",
+      "black",
+      [
+        "v28.8",
+        "v231.6"
+      ]
+    ],
+    [
+      "dht:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "dht:GND",
+      "esp:GND.3",
+      "black",
+      [
+        "v9.6",
+        "h-326.04"
+      ]
+    ],
+    [
+      "esp:4",
+      "dht:SDA",
+      "purple",
+      [
+        "v-1.2",
+        "h306.74"
+      ]
+    ]
+  ],
+  "dependencies": {}
+}

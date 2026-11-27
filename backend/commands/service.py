@@ -20,7 +20,7 @@ from alarms.realtime import hub
 from alarms.service import MuteNotAllowed, ensure_mute_allowed
 from app.core.db import SessionLocal
 from app.models import Command, Device, DeviceConfigVersion
-from app.models.enums import CommandName, CommandState, Role
+from app.models.enums import CommandName, CommandState, NodeType, Role
 from app.services.audit import audit
 from commands import config_service
 from commands.config_service import DeviceNotFound  # noqa: F401  (re-export cho router)
@@ -109,6 +109,8 @@ def create_command(db: Session, device_id: str, cmd: CommandName, params: dict[s
         audit(db, actor, "CMD_BLOCKED", f"{device_id}:{cmd_id or '-'}", {"cmd": cmd.value, "reason": msg})
         db.commit()  # lan bi chan van phai de lai dau vet
         raise CommandBlocked(msg)
+    if dev.node_type == NodeType.CARGO:
+        raise CommandBlocked("Cargo Node chỉ đo hầm hàng, không nhận lệnh điều khiển (không có topic cmd)")
     clean = validate_params(cmd, params)
     cmd_id = cmd_id or "c-" + uuid.uuid4().hex[:8]
 

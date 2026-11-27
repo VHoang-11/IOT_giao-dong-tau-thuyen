@@ -1,7 +1,7 @@
 /**
- * Separation boundary between screens and data providers.
- * The UI uses AppData/AppActions, NOT network APIs. TV3 API/WS contract is pending.
- * This scaffold currently runs the MockDataService only.
+ * MOCK data provider (offline demo accounts + generated telemetry).
+ * Dữ liệu thật (LIVE) không đi qua file này: xem liveApi.ts / liveMapper.ts / useLiveBackend.ts,
+ * được App.tsx chọn khi đăng nhập ở chế độ LIVE. LIVE không bao giờ rơi về MOCK khi lỗi.
  */
 import { Scenario, Session, Telemetry } from '../types/domain';
 import { createTelemetry, mockLogin, mockRegister, mockForgotPassword } from './mock';
@@ -18,12 +18,4 @@ export const MockDataService:DataService={
   registerDemo:mockRegister,
   forgotPasswordDemo:mockForgotPassword,
   getDemoTelemetry:createTelemetry
-};
-// Deliberate fail-closed placeholder: no invented TV3 endpoints and no false success.
-export const LiveDataService:DataService={
- name:'live',
- authenticateDemo(){throw new Error('NOT_CONFIGURED: Backend TV3 authentication contract unavailable')},
- registerDemo(){throw new Error('NOT_CONFIGURED: Backend TV3 authentication contract unavailable')},
- forgotPasswordDemo(){throw new Error('NOT_CONFIGURED: Backend TV3 authentication contract unavailable')},
- getDemoTelemetry(){throw new Error('NOT_CONFIGURED: Backend TV3 telemetry/WebSocket contract unavailable')}
 };
